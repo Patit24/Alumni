@@ -1,0 +1,22 @@
+{
+  "name": "Alumni Network",
+  "short_name": "Alumni",
+  "description": "Connect with your alumni, find mentors, discover opportunities, and stay connected with your alma mater.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
