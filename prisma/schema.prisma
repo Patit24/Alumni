@@ -1,10 +1,229 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Prisma schema for Alumni Network
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
+}
+
+model Institution {
+  id               String       @id @default(cuid())
+  name             String
+  slug             String       @unique
+  type             String       @default("COLLEGE") // "COLLEGE", "SCHOOL", "UNIVERSITY"
+  city             String?
+  state            String?
+  country          String       @default("India")
+  logoUrl          String?
+  isApproved       Boolean      @default(true)
+  foundingMemberId String?
+
+  departments      Department[]
+  batches          Batch[]
+  users            User[]
+  jobs             Job[]
+  events           Event[]
+  feedItems        FeedItem[]
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model Department {
+  id            String       @id @default(cuid())
+  name          String
+  institutionId String
+  institution   Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  users         User[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([institutionId, name])
+}
+
+model Batch {
+  id            String       @id @default(cuid())
+  year          Int
+  estimatedSize Int          @default(60) // Used for virality counter "X of ~Y joined"
+  institutionId String
+  institution   Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  users         User[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([institutionId, year])
+}
+
+model User {
+  id                 String       @id @default(cuid())
+  phone              String       @unique
+  name               String
+  avatarUrl          String?
+  role               String       @default("USER") // "USER", "INSTITUTION_ADMIN", "SUPER_ADMIN"
+  verificationStatus String       @default("UNVERIFIED") // "UNVERIFIED", "VERIFIED"
+  verifiedAt         DateTime?
+  verifiedById       String?
+
+  institutionId      String
+  institution        Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  departmentId       String?
+  department         Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  batchId            String
+  batch              Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batchYear          Int
+
+  currentCompany     String?
+  currentRole        String?
+  city               String?
+  linkedinUrl        String?
+
+  // Mentorship
+  isOpenToMentor     Boolean      @default(false)
+  mentorTopics       String?      // Comma-separated or JSON list of topics (e.g. "resume,mock_interview")
+  mentorScope        String       @default("INSTITUTION_ONLY") // "INSTITUTION_ONLY", "ALL"
+
+  // Privacy toggles
+  isPhoneVisible     Boolean      @default(false)
+  isLinkedinVisible  Boolean      @default(true)
+
+  // Relations
+  sentMentorships     MentorshipRequest[]  @relation("SentMentorships")
+  receivedMentorships MentorshipRequest[]  @relation("ReceivedMentorships")
+  postedJobs          Job[]
+  createdEvents       Event[]
+  eventRsvps          EventRsvp[]
+  eventPhotos         EventPhoto[]
+  feedItems           FeedItem[]
+
+  // Vouches
+  vouchesGiven        VerificationVouch[]   @relation("VouchesGiven")
+  vouchesReceived     VerificationVouch[]   @relation("VouchesReceived")
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model VerificationVouch {
+  id           String   @id @default(cuid())
+  confirmerId  String
+  confirmer    User     @relation("VouchesGiven", fields: [confirmerId], references: [id], onDelete: Cascade)
+  targetUserId String
+  targetUser   User     @relation("VouchesReceived", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+
+  @@unique([confirmerId, targetUserId])
+}
+
+model MentorshipRequest {
+  id        String   @id @default(cuid())
+  senderId  String
+  sender    User     @relation("SentMentorships", fields: [senderId], references: [id], onDelete: Cascade)
+  mentorId  String
+  mentor    User     @relation("ReceivedMentorships", fields: [mentorId], references: [id], onDelete: Cascade)
+
+  topic     String   // "Resume Review", "Mock Interviews", "Career Switch", "Referrals", "Domain Guidance"
+  message   String
+  status    String   @default("PENDING") // "PENDING", "ACCEPTED", "DECLINED", "COMPLETED"
+  helped    Boolean? // Post-session "this helped" trust mark
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Job {
+  id            String      @id @default(cuid())
+  posterId      String
+  poster        User        @relation(fields: [posterId], references: [id], onDelete: Cascade)
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  title         String
+  company       String
+  location      String
+  roleType      String      @default("FULL_TIME") // "FULL_TIME", "INTERNSHIP", "CONTRACT", "REMOTE"
+  description   String
+  applyUrl      String?
+  visibility    String      @default("INSTITUTION_ONLY") // "INSTITUTION_ONLY", "ALL"
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model Event {
+  id            String       @id @default(cuid())
+  creatorId     String
+  creator       User         @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  institutionId String
+  institution   Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  title         String
+  description   String
+  date          DateTime
+  location      String?
+  batchScope    String       @default("ALL") // "ALL" or comma-separated years e.g. "2020,2021"
+  coverPhoto    String?
+
+  rsvps         EventRsvp[]
+  photos        EventPhoto[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model EventRsvp {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String   @default("CONFIRMED") // "CONFIRMED", "CANCELLED"
+
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId])
+}
+
+model EventPhoto {
+  id         String   @id @default(cuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  uploaderId String
+  uploader   User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  url        String
+  caption    String?
+
+  createdAt  DateTime @default(now())
+}
+
+model FeedItem {
+  id            String      @id @default(cuid())
+  institutionId String
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  actorId       String
+  actor         User        @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  type          String      // "USER_JOINED", "JOB_POSTED", "MENTORSHIP_REQUEST", "EVENT_CREATED", "ANNIVERSARY"
+  targetId      String?
+  metadata      String?     // Serialized JSON for rich context
+
+  createdAt     DateTime    @default(now())
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([phone])
 }
