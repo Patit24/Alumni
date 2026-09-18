@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   ThumbsUp,
@@ -49,13 +49,10 @@ interface FeedSectionProps {
   batchYear: number;
 }
 
-function subscribe() {
-  return () => {};
-}
-
-function calculateTimeAgo(isoString: string, now: number) {
-  if (!now) return "";
-  const diffMs = now - new Date(isoString).getTime();
+function calculateTimeAgo(isoString: string) {
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / (1000 * 60));
   if (diffMins < 1) return "Just now";
   if (diffMins < 60) return `${diffMins}m ago`;
@@ -78,16 +75,8 @@ export default function FeedSection({
   const [postLikes, setPostLikes] = useState<Record<string, number>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Safely read client-side time without React purity error
-  const now = useSyncExternalStore(
-    subscribe,
-    () => Date.now(),
-    () => 0
-  );
-
   const fetchFeed = useCallback(async (selectedFilter: string) => {
     try {
-      setLoading(true);
       const res = await fetch(`/api/feed?filter=${selectedFilter}`);
       if (!res.ok) throw new Error("Failed to load feed");
       const json = await res.json();
@@ -310,7 +299,7 @@ export default function FeedSection({
                           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                         )}
                         <span className="text-[10px] text-slate-400">
-                          • {calculateTimeAgo(item.createdAt, now)}
+                          • {calculateTimeAgo(item.createdAt)}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500">
