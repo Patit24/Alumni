@@ -117,20 +117,28 @@ export default async function HomePage() {
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
         {/* Verification Status Banner (Phase 1 & 3 requirement) */}
         {!isVerified && (
-          <div className="rounded-2xl bg-amber-50 border border-amber-200/80 p-4 sm:p-5 flex items-start gap-3.5">
-            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-amber-900">Your Account is Unverified</h2>
-                <span className="text-[10px] font-semibold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
-                  Action Required in Phase 3
-                </span>
+          <div className="rounded-2xl bg-amber-50 border border-amber-200/80 p-4 sm:p-5 flex items-start justify-between gap-3.5">
+            <div className="flex items-start gap-3.5">
+              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-amber-900">Your Account is Unverified</h2>
+                  <span className="text-[10px] font-semibold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+                    Action Required
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800 mt-1 leading-relaxed max-w-xl">
+                  To protect privacy and prevent spam, posting jobs or sending direct mentor requests requires verification.
+                  Any verified batchmate from your <strong>Class of {user.batchYear}</strong> can vouch for you with one tap.
+                </p>
               </div>
-              <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                To protect privacy and prevent spam, posting jobs or sending direct mentor requests requires verification.
-                Any verified batchmate from your <strong>Class of {user.batchYear}</strong> can vouch for you with one tap.
-              </p>
             </div>
+            <Link
+              href="/verification"
+              className="shrink-0 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shadow-sm"
+            >
+              Get Verified →
+            </Link>
           </div>
         )}
 
@@ -207,50 +215,77 @@ export default async function HomePage() {
               </p>
             </Link>
 
-            <div className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 transition shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                  <UserCheck className="w-4 h-4" />
+            <Link
+              href="/verification"
+              className="p-4 rounded-2xl bg-white border border-emerald-200/80 hover:border-emerald-400 hover:shadow-md transition shadow-sm group block"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold group-hover:bg-emerald-600 group-hover:text-white transition">
+                    <UserCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-emerald-600 transition">Passive Verification</h4>
+                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Phase 3 Active
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-800">Passive Verification</h4>
-                  <p className="text-[11px] text-slate-500">Coming in Phase 3</p>
-                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition" />
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Vouch for your Class of {user.batchYear} batchmates to give them verified access.
               </p>
-            </div>
+            </Link>
 
-            <div className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 transition shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                  <Sparkles className="w-4 h-4" />
+            <Link
+              href="/mentorship"
+              className="p-4 rounded-2xl bg-white border border-indigo-200/80 hover:border-indigo-400 hover:shadow-md transition shadow-sm group block"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold group-hover:bg-indigo-600 group-hover:text-white transition">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition">Mentorship Network</h4>
+                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Phase 5 Active
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-800">Mentorship Network</h4>
-                  <p className="text-[11px] text-slate-500">Coming in Phase 5</p>
-                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition" />
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Request guidance from seniors or mark yourself available to help juniors.
               </p>
-            </div>
+            </Link>
 
-            <div className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 transition shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="h-8 w-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-                  <Briefcase className="w-4 h-4" />
+            <Link
+              href="/jobs"
+              className="p-4 rounded-2xl bg-white border border-purple-200/80 hover:border-purple-400 hover:shadow-md transition shadow-sm group block"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold group-hover:bg-purple-600 group-hover:text-white transition">
+                    <Briefcase className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-purple-600 transition">Jobs & Referrals</h4>
+                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Phase 6 Active
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-800">Jobs & Referrals</h4>
-                  <p className="text-[11px] text-slate-500">Coming in Phase 6</p>
-                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition" />
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Post hiring opportunities and ask alumni for internal employee referrals.
               </p>
-            </div>
+            </Link>
           </div>
         </div>
       </main>
