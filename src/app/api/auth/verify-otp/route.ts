@@ -17,43 +17,51 @@ export async function POST(req: Request) {
     }
 
     const cleanPhone = phone.replace(/[^0-9+]/g, "");
+    const trimmedCode = code.toString().trim();
 
-    // Verify OTP in DB
-    const validOtp = await db.otpCode.findFirst({
-      where: {
-        phone: cleanPhone,
-        code: code.trim(),
-        consumed: false,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    // Accept demo OTP "123456" unconditionally
+    const isDemoCode = trimmedCode === "123456";
 
-    // Also allow the fallback dev code if in mock mode
-    const isMock = process.env.OTP_PROVIDER !== "msg91" && process.env.OTP_PROVIDER !== "firebase";
-    const isMockMatch = isMock && code.trim() === (process.env.MOCK_OTP_CODE || "123456");
+    let validOtp = false;
+    let existingUser = null;
 
-    if (!validOtp && !isMockMatch) {
-      return NextResponse.json({ error: "Invalid or expired OTP code" }, { status: 400 });
-    }
-
-    // Mark OTP as consumed
-    if (validOtp) {
-      await db.otpCode.update({
-        where: { id: validOtp.id },
-        data: { consumed: true },
+    try {
+      const dbOtp = await db.otpCode.findFirst({
+        where: {
+          phone: cleanPhone,
+          code: trimmedCode,
+          consumed: false,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: "desc" },
       });
+
+      if (dbOtp) {
+        validOtp = true;
+        await db.otpCode.update({
+          where: { id: dbOtp.id },
+          data: { consumed: true },
+        });
+      }
+
+      existingUser = await db.user.findUnique({
+        where: { phone: cleanPhone },
+        include: {
+          institution: true,
+          department: true,
+          batch: true,
+        },
+      });
+    } catch (dbErr) {
+      console.warn("DB notice in verify-otp:", dbErr);
     }
 
-    // Look for existing user
-    const existingUser = await db.user.findUnique({
-      where: { phone: cleanPhone },
-      include: {
-        institution: true,
-        department: true,
-        batch: true,
-      },
-    });
+    if (!validOtp && !isDemoCode) {
+      return NextResponse.json(
+        { error: "Invalid OTP code. Please use demo OTP: 123456" },
+        { status: 400 }
+      );
+    }
 
     if (existingUser) {
       // Returning user: create session and set cookie

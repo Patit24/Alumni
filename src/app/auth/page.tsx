@@ -9,6 +9,7 @@ import {
   Sparkles,
   Search,
   CheckCircle2,
+  KeyRound,
 } from "lucide-react";
 
 interface Institution {
@@ -27,11 +28,11 @@ export default function AuthPage() {
   const [step, setStep] = useState<"phone" | "otp" | "onboarding">("phone");
 
   // Form fields
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
+  const [phone, setPhone] = useState("9868543657");
+  const [otp, setOtp] = useState("123456");
   const [signupToken, setSignupToken] = useState("");
   const [isExistingUser, setIsExistingUser] = useState(false);
-  const [devCode, setDevCode] = useState<string | null>(null);
+  const [devCode, setDevCode] = useState<string>("123456");
 
   // Onboarding fields
   const [name, setName] = useState("");
@@ -72,9 +73,9 @@ export default function AuthPage() {
     return () => clearTimeout(timer);
   }, [instSearchQuery, step]);
 
-  // Step 1: Send OTP
-  const handleSendOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Step 1: Send OTP (Demo Mode)
+  const handleSendOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setError(null);
     if (!phone || phone.trim().length < 10) {
       setError("Please enter a valid 10-digit mobile number");
@@ -90,37 +91,32 @@ export default function AuthPage() {
       });
       const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to send OTP");
-      }
-
-      setIsExistingUser(data.isExistingUser);
-      if (data.devCode) {
-        setDevCode(data.devCode);
-      }
+      setIsExistingUser(data?.isExistingUser || false);
+      setDevCode("123456");
+      setOtp("123456");
       setStep("otp");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to send OTP");
+    } catch {
+      // Fallback in case of network glitch
+      setDevCode("123456");
+      setOtp("123456");
+      setStep("otp");
     } finally {
       setLoading(false);
     }
   };
 
   // Step 2: Verify OTP
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleVerifyOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setError(null);
-    if (!otp || otp.trim().length < 4) {
-      setError("Please enter the verification code");
-      return;
-    }
+    const codeToVerify = otp || "123456";
 
     setLoading(true);
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, code: otp }),
+        body: JSON.stringify({ phone, code: codeToVerify }),
       });
       const data = await res.json();
 
@@ -225,6 +221,15 @@ export default function AuthPage() {
           </div>
         </div>
 
+        {/* Demo Mode Notice */}
+        <div className="mb-5 p-3 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-start gap-2.5">
+          <KeyRound className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-blue-900">
+            <span className="font-bold">Demo OTP Mode:</span> Real SMS verification will be integrated later. Demo OTP is{" "}
+            <code className="bg-blue-100 px-1.5 py-0.5 rounded font-mono font-bold text-blue-800">123456</code>.
+          </div>
+        </div>
+
         {/* Error Alert */}
         {error && (
           <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-medium leading-relaxed">
@@ -247,27 +252,27 @@ export default function AuthPage() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="9876543210"
+                  placeholder="9868543657"
                   autoFocus
                   required
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-3 pl-14 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100"
                 />
               </div>
               <p className="text-[11px] text-slate-400 mt-1.5">
-                We&apos;ll send you a 6-digit OTP code to verify your phone number.
+                Enter any 10-digit number. Use Demo OTP <code className="font-semibold text-slate-600">123456</code> on next step.
               </p>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50"
+              className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <>
-                  Continue <ArrowRight className="w-4 h-4" />
+                  Continue with Demo OTP <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
@@ -280,7 +285,7 @@ export default function AuthPage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  {isExistingUser ? "Welcome back • Enter OTP" : "Enter 6-digit OTP"}
+                  {isExistingUser ? "Welcome back • Enter OTP" : "Enter 6-digit Demo OTP"}
                 </label>
                 <button
                   type="button"
@@ -302,29 +307,27 @@ export default function AuthPage() {
               />
             </div>
 
-            {/* Dev bypass helper banner */}
-            {devCode && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-between">
-                <div className="text-xs text-amber-800">
-                  <span className="font-semibold">Dev Test Code:</span>{" "}
-                  <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono font-bold">
-                    {devCode}
-                  </code>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setOtp(devCode)}
-                  className="text-[11px] font-semibold text-amber-900 bg-amber-200/70 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition"
-                >
-                  Fill Code
-                </button>
+            {/* Demo bypass helper */}
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-between">
+              <div className="text-xs text-amber-800">
+                <span className="font-semibold">Demo OTP:</span>{" "}
+                <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono font-bold">
+                  {devCode}
+                </code>
               </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setOtp("123456")}
+                className="text-[11px] font-semibold text-amber-900 bg-amber-200/70 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition"
+              >
+                Auto-fill
+              </button>
+            </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -525,7 +528,7 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-4 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50"
+              className="w-full mt-4 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

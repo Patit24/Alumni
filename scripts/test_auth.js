@@ -1,3 +1,4 @@
+/* eslint-disable */
 const { PrismaBetterSqlite3 } = require("@prisma/adapter-better-sqlite3");
 const { PrismaClient } = require("@prisma/client");
 const path = require("path");
