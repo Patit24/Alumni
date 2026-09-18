@@ -196,7 +196,10 @@ export async function POST(req: Request) {
       user: newUser,
     });
   } catch (error) {
-    console.error("signup error:", error);
-    return NextResponse.json({ error: "Failed to complete signup" }, { status: 500 });
+    console.error("signup error:", (error as Error)?.stack || error);
+    return NextResponse.json(
+      { error: (error as Error)?.message || "Failed to complete signup" },
+      { status: 500 }
+    );
   }
 }
