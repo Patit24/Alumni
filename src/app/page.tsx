@@ -183,20 +183,29 @@ export default async function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <div className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 transition shadow-sm">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                  <Users className="w-4 h-4" />
+            <Link
+              href="/directory"
+              className="p-4 rounded-2xl bg-white border border-blue-200/80 hover:border-blue-400 hover:shadow-md transition shadow-sm group block"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold group-hover:bg-blue-600 group-hover:text-white transition">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition">Alumni Directory</h4>
+                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Phase 2 Active
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-800">Alumni Directory</h4>
-                  <p className="text-[11px] text-slate-500">Coming in Phase 2</p>
-                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition" />
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
                 Filter and discover batchmates from {user.institution.name} by company, city, and batch.
               </p>
-            </div>
+            </Link>
 
             <div className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 transition shadow-sm">
               <div className="flex items-center gap-3 mb-2">

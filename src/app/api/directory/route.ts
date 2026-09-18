@@ -1,0 +1,112 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
+
+export async function GET(req: Request) {
+  try {
+    const currentUser = await getCurrentUser();
+    const { searchParams } = new URL(req.url);
+
+    const q = searchParams.get("q")?.trim() || "";
+    const institutionScope = searchParams.get("institutionScope") || "my";
+    const batchScope = searchParams.get("batchScope") || "my";
+    const city = searchParams.get("city")?.trim() || "";
+    const department = searchParams.get("department")?.trim() || "";
+
+    // Build Prisma where filter
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {};
+
+    // 1. Institution filter
+    if (institutionScope === "my" && currentUser?.institutionId) {
+      where.institutionId = currentUser.institutionId;
+    }
+
+    // 2. Batch year filter
+    if (batchScope === "my" && currentUser?.batchYear) {
+      where.batchYear = currentUser.batchYear;
+    } else if (batchScope !== "all" && batchScope !== "my" && !isNaN(parseInt(batchScope, 10))) {
+      where.batchYear = parseInt(batchScope, 10);
+    }
+
+    // 3. City filter
+    if (city && city !== "all") {
+      where.city = city;
+    }
+
+    // 4. Department filter
+    if (department && department !== "all") {
+      where.department = {
+        name: department,
+      };
+    }
+
+    // 5. Search query
+    if (q) {
+      where.OR = [
+        { name: { contains: q } },
+        { currentCompany: { contains: q } },
+        { currentRole: { contains: q } },
+        { city: { contains: q } },
+      ];
+    }
+
+    const alumni = await db.user.findMany({
+      where,
+      include: {
+        institution: {
+          select: { id: true, name: true, city: true },
+        },
+        batch: {
+          select: { id: true, year: true },
+        },
+        department: {
+          select: { id: true, name: true },
+        },
+      },
+      orderBy: [
+        { verificationStatus: "desc" }, // VERIFIED first
+        { name: "asc" },
+      ],
+    });
+
+    // Fetch available filter options
+    const allUsers = await db.user.findMany({
+      select: {
+        batchYear: true,
+        city: true,
+        department: { select: { name: true } },
+      },
+    });
+
+    const availableBatches = Array.from(new Set(allUsers.map((u) => u.batchYear))).sort(
+      (a, b) => b - a
+    );
+    const availableCities = Array.from(
+      new Set(allUsers.map((u) => u.city).filter((c): c is string => Boolean(c)))
+    ).sort();
+    const availableDepartments = Array.from(
+      new Set(allUsers.map((u) => u.department?.name).filter((d): d is string => Boolean(d)))
+    ).sort();
+
+    return NextResponse.json({
+      currentUser: currentUser
+        ? {
+            id: currentUser.id,
+            name: currentUser.name,
+            institutionId: currentUser.institutionId,
+            institutionName: currentUser.institution?.name,
+            batchYear: currentUser.batchYear,
+          }
+        : null,
+      alumni,
+      totalCount: alumni.length,
+      availableBatches,
+      availableCities,
+      availableDepartments,
+    });
+  } catch (error) {
+    console.error("Directory GET error:", (error as Error)?.stack || error);
+    return NextResponse.json({ error: "Failed to load directory" }, { status: 500 });
+  }
+}
