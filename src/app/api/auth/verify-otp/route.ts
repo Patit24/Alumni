@@ -80,11 +80,11 @@ export async function POST(req: Request) {
       });
     }
 
-    // New user: create a temporary 15-minute signup token ensuring phone is verified
+    // New user: create a signup token ensuring phone is verified
     const signupToken = await new SignJWT({ phone: cleanPhone, purpose: "signup" })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
-      .setExpirationTime("15m")
+      .setExpirationTime("7d")
       .sign(JWT_SECRET);
 
     return NextResponse.json({

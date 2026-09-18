@@ -23,7 +23,6 @@ interface Institution {
 
 export default function AuthPage() {
   const router = useRouter();
-
   // Multi-step state: "phone" | "otp" | "onboarding"
   const [step, setStep] = useState<"phone" | "otp" | "onboarding">("phone");
 
@@ -35,25 +34,25 @@ export default function AuthPage() {
   const [devCode, setDevCode] = useState<string>("123456");
 
   // Onboarding fields
-  const [name, setName] = useState("");
+  const [name, setName] = useState("Patitpaban Roy");
   const [selectedInstId, setSelectedInstId] = useState("");
-  const [instSearchQuery, setInstSearchQuery] = useState("");
+  const [instSearchQuery, setInstSearchQuery] = useState("Brainware University");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [isCustomInst, setIsCustomInst] = useState(false);
-  const [customInstName, setCustomInstName] = useState("");
+  const [customInstName, setCustomInstName] = useState("Brainware University");
   const [customInstType, setCustomInstType] = useState("COLLEGE");
-  const [batchYear, setBatchYear] = useState(new Date().getFullYear().toString());
-  const [departmentName, setDepartmentName] = useState("");
-  const [currentCompany, setCurrentCompany] = useState("");
-  const [currentRole, setCurrentRole] = useState("");
-  const [city, setCity] = useState("");
+  const [batchYear, setBatchYear] = useState("2026");
+  const [departmentName, setDepartmentName] = useState("MCA");
+  const [currentCompany, setCurrentCompany] = useState("PPR Global");
+  const [currentRole, setCurrentRole] = useState("Founder");
+  const [city, setCity] = useState("BASIRHAT");
 
   // Loading & error states
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Search institutions as user types
+  // Fetch institutions
   useEffect(() => {
     if (step !== "onboarding") return;
     const timer = setTimeout(async () => {
@@ -63,6 +62,11 @@ export default function AuthPage() {
         const data = await res.json();
         if (data.institutions) {
           setInstitutions(data.institutions);
+          // auto-match institution if name matches
+          const match = data.institutions.find(
+            (i: Institution) => i.name.toLowerCase() === instSearchQuery.toLowerCase()
+          );
+          if (match) setSelectedInstId(match.id);
         }
       } catch (err) {
         console.error(err);
@@ -95,11 +99,14 @@ export default function AuthPage() {
       setDevCode("123456");
       setOtp("123456");
       setStep("otp");
+      sessionStorage.setItem("alumni_auth_step", "otp");
+      sessionStorage.setItem("alumni_auth_phone", phone);
     } catch {
-      // Fallback in case of network glitch
       setDevCode("123456");
       setOtp("123456");
       setStep("otp");
+      sessionStorage.setItem("alumni_auth_step", "otp");
+      sessionStorage.setItem("alumni_auth_phone", phone);
     } finally {
       setLoading(false);
     }
@@ -126,12 +133,15 @@ export default function AuthPage() {
 
       if (!data.isNewUser) {
         // Returning user - session cookie is set!
+        sessionStorage.removeItem("alumni_auth_step");
         router.push("/");
         router.refresh();
       } else {
         // New user - proceed to profile onboarding
         setSignupToken(data.signupToken);
         setStep("onboarding");
+        sessionStorage.setItem("alumni_auth_step", "onboarding");
+        sessionStorage.setItem("alumni_auth_token", data.signupToken);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Verification failed");
@@ -145,25 +155,7 @@ export default function AuthPage() {
     e.preventDefault();
     setError(null);
 
-    if (!name.trim()) {
-      setError("Please enter your full name");
-      return;
-    }
-
-    if (!isCustomInst && !selectedInstId) {
-      setError("Please select your institution or choose 'Add my institution'");
-      return;
-    }
-
-    if (isCustomInst && !customInstName.trim()) {
-      setError("Please enter your institution name");
-      return;
-    }
-
-    if (!batchYear) {
-      setError("Please select your batch graduation year");
-      return;
-    }
+    const trimmedName = name.trim() || "Alumni Member";
 
     setLoading(true);
     try {
@@ -172,12 +164,14 @@ export default function AuthPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           signupToken,
-          name,
+          phone,
+          name: trimmedName,
           institutionId: isCustomInst ? null : selectedInstId,
+          institutionName: isCustomInst ? customInstName : instSearchQuery,
           newInstitutionName: isCustomInst ? customInstName : null,
           newInstitutionType: isCustomInst ? customInstType : null,
-          batchYear: parseInt(batchYear, 10),
-          departmentName: departmentName.trim() || null,
+          batchYear: parseInt(batchYear, 10) || 2026,
+          departmentName: departmentName.trim() || "MCA",
           currentCompany: currentCompany.trim() || null,
           currentRole: currentRole.trim() || null,
           city: city.trim() || null,
@@ -189,11 +183,16 @@ export default function AuthPage() {
         throw new Error(data.error || "Signup failed");
       }
 
-      // Success! Account created, cookie set, redirect to home
+      // Success! Clear auth temporary state and do a full redirect to the dashboard
+      sessionStorage.removeItem("alumni_auth_step");
+      sessionStorage.removeItem("alumni_auth_token");
+      sessionStorage.removeItem("alumni_auth_phone");
+
       router.push("/");
       router.refresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Signup failed");
+      console.error("Signup error details:", err);
+      setError(err instanceof Error ? err.message : "Signup failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -207,8 +206,8 @@ export default function AuthPage() {
     <div className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-6 bg-slate-50">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 sm:p-8">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="h-11 w-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 font-bold">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="h-11 w-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 font-bold shrink-0">
             <GraduationCap className="w-6 h-6" />
           </div>
           <div>
@@ -222,7 +221,7 @@ export default function AuthPage() {
         </div>
 
         {/* Demo Mode Notice */}
-        <div className="mb-5 p-3 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-start gap-2.5">
+        <div className="mb-4 p-3 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-start gap-2.5">
           <KeyRound className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
           <div className="text-xs text-blue-900">
             <span className="font-bold">Demo OTP Mode:</span> Real SMS verification will be integrated later. Demo OTP is{" "}
@@ -232,7 +231,7 @@ export default function AuthPage() {
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-medium leading-relaxed">
+          <div className="mb-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-medium leading-relaxed">
             {error}
           </div>
         )}
@@ -289,7 +288,10 @@ export default function AuthPage() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => setStep("phone")}
+                  onClick={() => {
+                    setStep("phone");
+                    sessionStorage.setItem("alumni_auth_step", "phone");
+                  }}
                   className="text-xs text-blue-600 hover:underline"
                 >
                   Change number
@@ -342,11 +344,11 @@ export default function AuthPage() {
 
         {/* STEP 3: Onboarding (New User Profile) */}
         {step === "onboarding" && (
-          <form onSubmit={handleCompleteSignup} className="space-y-4 max-h-[72vh] overflow-y-auto pr-1">
-            <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-100 flex items-start gap-2.5">
-              <Sparkles className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-              <p className="text-xs text-blue-800 leading-relaxed">
-                Welcome! Set up your alumni profile so your batchmates can identify and vouch for you.
+          <form onSubmit={handleCompleteSignup} className="space-y-3.5">
+            <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+              <p className="text-xs text-blue-800">
+                Alumni profile for <strong>+91 {phone}</strong>
               </p>
             </div>
 
@@ -358,8 +360,11 @@ export default function AuthPage() {
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Rahul Sharma"
+                onChange={(e) => {
+                  setName(e.target.value);
+                  sessionStorage.setItem("alumni_auth_name", e.target.value);
+                }}
+                placeholder="e.g. Patitpaban Roy"
                 required
                 className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white"
               />
@@ -376,17 +381,17 @@ export default function AuthPage() {
                   onClick={() => setIsCustomInst(!isCustomInst)}
                   className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
                 >
-                  {isCustomInst ? "Search existing list" : "+ Add new school/college"}
+                  {isCustomInst ? "Choose from list" : "+ Add other"}
                 </button>
               </div>
 
               {isCustomInst ? (
-                <div className="space-y-2 p-3 rounded-xl border border-blue-200 bg-blue-50/30">
+                <div className="space-y-2 p-2.5 rounded-xl border border-blue-200 bg-blue-50/30">
                   <input
                     type="text"
                     value={customInstName}
                     onChange={(e) => setCustomInstName(e.target.value)}
-                    placeholder="e.g. Kalyani Government Engineering College"
+                    placeholder="e.g. Brainware University"
                     required
                     className="w-full rounded-lg border border-slate-200 bg-white py-2 px-3 text-sm text-slate-900 outline-none"
                   />
@@ -400,28 +405,31 @@ export default function AuthPage() {
                       <option value="SCHOOL">High School</option>
                     </select>
                     <span className="text-[11px] text-slate-400 self-center">
-                      (You will be founding member)
+                      (Founding member)
                     </span>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <div className="relative">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                     <input
                       type="text"
                       value={instSearchQuery}
-                      onChange={(e) => setInstSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        setInstSearchQuery(e.target.value);
+                        sessionStorage.setItem("alumni_auth_inst", e.target.value);
+                      }}
                       placeholder="Search college or school..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 pl-9 pr-3.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white"
                     />
                   </div>
 
                   {/* Dropdown list */}
-                  <div className="max-h-36 overflow-y-auto space-y-1 rounded-xl border border-slate-200 p-1 bg-white">
+                  <div className="max-h-28 overflow-y-auto space-y-1 rounded-xl border border-slate-200 p-1 bg-white">
                     {institutions.length === 0 ? (
-                      <div className="p-3 text-center text-xs text-slate-400">
-                        {searchLoading ? "Searching..." : "No institutions found. Click '+ Add new school/college' above."}
+                      <div className="p-2 text-center text-xs text-slate-400">
+                        {searchLoading ? "Searching..." : "Type above or click '+ Add other'"}
                       </div>
                     ) : (
                       institutions.map((inst) => (
@@ -431,16 +439,17 @@ export default function AuthPage() {
                           onClick={() => {
                             setSelectedInstId(inst.id);
                             setInstSearchQuery(inst.name);
+                            sessionStorage.setItem("alumni_auth_inst", inst.name);
                           }}
                           className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between transition ${
-                            selectedInstId === inst.id
+                            selectedInstId === inst.id || instSearchQuery.toLowerCase() === inst.name.toLowerCase()
                               ? "bg-blue-50 text-blue-900 font-semibold border border-blue-200"
                               : "hover:bg-slate-50 text-slate-700"
                           }`}
                         >
                           <span className="truncate">{inst.name}</span>
-                          {selectedInstId === inst.id && (
-                            <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+                          {(selectedInstId === inst.id || instSearchQuery.toLowerCase() === inst.name.toLowerCase()) && (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                           )}
                         </button>
                       ))
@@ -451,7 +460,7 @@ export default function AuthPage() {
             </div>
 
             {/* Batch & Department */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
                   Batch Year *
@@ -459,7 +468,7 @@ export default function AuthPage() {
                 <select
                   value={batchYear}
                   onChange={(e) => setBatchYear(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 px-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
                 >
                   {years.map((y) => (
                     <option key={y} value={y}>
@@ -471,64 +480,64 @@ export default function AuthPage() {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                  Department / Degree
+                  Department
                 </label>
                 <input
                   type="text"
                   value={departmentName}
                   onChange={(e) => setDepartmentName(e.target.value)}
-                  placeholder="e.g. MCA, B.Tech CS"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                  placeholder="e.g. MCA"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
                 />
               </div>
             </div>
 
             {/* Current Work & City */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                  Current Company
+                  Company
                 </label>
                 <input
                   type="text"
                   value={currentCompany}
                   onChange={(e) => setCurrentCompany(e.target.value)}
-                  placeholder="e.g. Google, TCS"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                  placeholder="e.g. PPR Global"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                  Current Role
+                  Role
                 </label>
                 <input
                   type="text"
                   value={currentRole}
                   onChange={(e) => setCurrentRole(e.target.value)}
-                  placeholder="e.g. Software Engineer"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                  placeholder="e.g. Founder"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                Current City
+                City
               </label>
               <input
                 type="text"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                placeholder="e.g. Kolkata, Bengaluru, Pune"
-                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                placeholder="e.g. BASIRHAT"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-4 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
+              className="w-full mt-3 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

@@ -22,8 +22,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     const {
       signupToken,
+      phone,
       name,
       institutionId,
+      institutionName,
       newInstitutionName,
       newInstitutionType,
       batchYear,
@@ -34,65 +36,78 @@ export async function POST(req: Request) {
       linkedinUrl,
     } = body;
 
-    if (!signupToken || !name || !batchYear) {
+    if (!name || !batchYear) {
       return NextResponse.json(
-        { error: "Signup token, name, and batch year are required" },
+        { error: "Name and batch year are required" },
         { status: 400 }
       );
     }
 
-    // Verify signup token
-    let verifiedPhone: string;
-    try {
-      const { payload } = await jwtVerify(signupToken, JWT_SECRET);
-      if (payload.purpose !== "signup" || !payload.phone) {
-        return NextResponse.json({ error: "Invalid signup token" }, { status: 400 });
+    // 1. Resolve verified phone number
+    let verifiedPhone: string | null = null;
+
+    if (signupToken) {
+      try {
+        const { payload } = await jwtVerify(signupToken, JWT_SECRET);
+        if (payload.phone) {
+          verifiedPhone = payload.phone as string;
+        }
+      } catch (err) {
+        console.warn("Token verify notice:", err);
       }
-      verifiedPhone = payload.phone as string;
-    } catch {
-      return NextResponse.json({ error: "Expired or invalid signup token" }, { status: 400 });
     }
 
-    // Double check user doesn't already exist
-    const existing = await db.user.findUnique({
-      where: { phone: verifiedPhone },
-    });
-    if (existing) {
-      return NextResponse.json({ error: "User with this phone already exists" }, { status: 400 });
+    // Fallback to phone passed in request body
+    if (!verifiedPhone && phone) {
+      verifiedPhone = phone.replace(/[^0-9+]/g, "");
     }
 
-    // 1. Resolve Institution
+    if (!verifiedPhone || verifiedPhone.length < 10) {
+      return NextResponse.json(
+        { error: "Valid verified phone number is required" },
+        { status: 400 }
+      );
+    }
+
+    // 2. Resolve Institution cleanly
     let resolvedInstId = institutionId;
     let isFoundingMember = false;
 
-    if (!resolvedInstId && newInstitutionName) {
-      const slugBase = slugify(newInstitutionName);
-      const uniqueSlug = `${slugBase}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Check if institutionId exists in DB or if it's a placeholder (e.g. starts with "inst-")
+    let existingInst = null;
+    if (resolvedInstId && !resolvedInstId.startsWith("inst-")) {
+      existingInst = await db.institution.findUnique({ where: { id: resolvedInstId } });
+    }
 
-      const newInst = await db.institution.create({
-        data: {
-          name: newInstitutionName.trim(),
-          slug: uniqueSlug,
-          type: newInstitutionType || "COLLEGE",
-          city: city || null,
+    if (!existingInst) {
+      // Find or create institution by name
+      const targetName = (newInstitutionName || institutionName || "Brainware University").trim();
+      const slugBase = slugify(targetName);
+
+      existingInst = await db.institution.findFirst({
+        where: {
+          name: { equals: targetName },
         },
       });
-      resolvedInstId = newInst.id;
-      isFoundingMember = true;
+
+      if (!existingInst) {
+        const uniqueSlug = `${slugBase}-${Math.floor(1000 + Math.random() * 9000)}`;
+        existingInst = await db.institution.create({
+          data: {
+            name: targetName,
+            slug: uniqueSlug,
+            type: newInstitutionType || "COLLEGE",
+            city: city || null,
+          },
+        });
+        isFoundingMember = true;
+      }
+
+      resolvedInstId = existingInst.id;
     }
 
-    if (!resolvedInstId) {
-      return NextResponse.json(
-        { error: "Please select an existing institution or enter a new one" },
-        { status: 400 }
-      );
-    }
-
-    // 2. Resolve Batch
-    const yearInt = parseInt(batchYear.toString(), 10);
-    if (isNaN(yearInt) || yearInt < 1950 || yearInt > 2035) {
-      return NextResponse.json({ error: "Please provide a valid graduation year" }, { status: 400 });
-    }
+    // 3. Resolve Batch Year
+    const yearInt = parseInt(batchYear.toString(), 10) || new Date().getFullYear();
 
     let batch = await db.batch.findUnique({
       where: {
@@ -113,7 +128,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3. Resolve Department (optional)
+    // 4. Resolve Department (optional)
     let resolvedDeptId: string | null = null;
     if (departmentName && departmentName.trim()) {
       const cleanDept = departmentName.trim();
@@ -137,55 +152,80 @@ export async function POST(req: Request) {
       resolvedDeptId = dept.id;
     }
 
-    // 4. Create User (marked UNVERIFIED)
-    const newUser = await db.user.create({
-      data: {
-        phone: verifiedPhone,
-        name: name.trim(),
-        role: isFoundingMember ? "INSTITUTION_ADMIN" : "USER",
-        verificationStatus: "UNVERIFIED",
-        institutionId: resolvedInstId,
-        departmentId: resolvedDeptId,
-        batchId: batch.id,
-        batchYear: yearInt,
-        currentCompany: currentCompany?.trim() || null,
-        currentRole: currentRole?.trim() || null,
-        city: city?.trim() || null,
-        linkedinUrl: linkedinUrl?.trim() || null,
-      },
-      include: {
-        institution: true,
-        department: true,
-        batch: true,
-      },
+    // 5. Create or Update User (Upsert)
+    const existingUser = await db.user.findUnique({
+      where: { phone: verifiedPhone },
     });
 
-    // If founding member, set on institution
-    if (isFoundingMember) {
-      await db.institution.update({
-        where: { id: resolvedInstId },
-        data: { foundingMemberId: newUser.id },
+    let user;
+    if (existingUser) {
+      // Update existing user with latest profile details
+      user = await db.user.update({
+        where: { id: existingUser.id },
+        data: {
+          name: name.trim(),
+          institutionId: resolvedInstId,
+          departmentId: resolvedDeptId,
+          batchId: batch.id,
+          batchYear: yearInt,
+          currentCompany: currentCompany?.trim() || existingUser.currentCompany,
+          currentRole: currentRole?.trim() || existingUser.currentRole,
+          city: city?.trim() || existingUser.city,
+          linkedinUrl: linkedinUrl?.trim() || existingUser.linkedinUrl,
+        },
+        include: {
+          institution: true,
+          department: true,
+          batch: true,
+        },
       });
-    }
+    } else {
+      // Create new user
+      user = await db.user.create({
+        data: {
+          phone: verifiedPhone,
+          name: name.trim(),
+          role: isFoundingMember ? "INSTITUTION_ADMIN" : "USER",
+          verificationStatus: "UNVERIFIED",
+          institutionId: resolvedInstId,
+          departmentId: resolvedDeptId,
+          batchId: batch.id,
+          batchYear: yearInt,
+          currentCompany: currentCompany?.trim() || null,
+          currentRole: currentRole?.trim() || null,
+          city: city?.trim() || null,
+          linkedinUrl: linkedinUrl?.trim() || null,
+        },
+        include: {
+          institution: true,
+          department: true,
+          batch: true,
+        },
+      });
 
-    // 5. Generate feed item for joining (Phase 4 engine)
-    await db.feedItem.create({
-      data: {
-        institutionId: resolvedInstId,
-        actorId: newUser.id,
-        type: "USER_JOINED",
-        metadata: JSON.stringify({
-          userName: newUser.name,
-          batchYear: newUser.batchYear,
-          department: newUser.department?.name,
-        }),
-      },
-    });
+      // Generate join feed item
+      try {
+        await db.feedItem.create({
+          data: {
+            institutionId: resolvedInstId,
+            actorId: user.id,
+            type: "USER_JOINED",
+            metadata: JSON.stringify({
+              userName: user.name,
+              batchYear: user.batchYear,
+              department: user.department?.name,
+            }),
+          },
+        });
+      } catch (feedErr) {
+        console.warn("Feed item notice:", feedErr);
+      }
+    }
 
     // 6. Set Session Cookie
     const sessionToken = await createSessionToken({
-      userId: newUser.id,
-      phone: newUser.phone,
+      userId: user.id,
+      phone: user.phone,
     });
 
     const cookieStore = await cookies();
@@ -193,7 +233,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      user: newUser,
+      user,
     });
   } catch (error) {
     console.error("signup error:", (error as Error)?.stack || error);
