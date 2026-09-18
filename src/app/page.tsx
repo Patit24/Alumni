@@ -13,6 +13,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
+import FeedSection from "@/components/FeedSection";
 
 export const dynamic = "force-dynamic";
 
@@ -287,6 +288,24 @@ export default async function HomePage() {
               </p>
             </Link>
           </div>
+        </div>
+
+        {/* LinkedIn-Style Network Feed (Phase 4) */}
+        <div className="pt-2">
+          <div className="flex items-center justify-between mb-3.5">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Campus & Alumni Feed
+            </h3>
+            <span className="text-[11px] text-emerald-600 font-medium">Phase 4 Active</span>
+          </div>
+
+          <FeedSection
+            currentUserName={user.name}
+            currentUserRole={user.currentRole}
+            currentUserCompany={user.currentCompany}
+            currentUserVerified={isVerified}
+            batchYear={user.batchYear}
+          />
         </div>
       </main>
     </div>
