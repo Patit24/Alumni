@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
     "@prisma/adapter-better-sqlite3",
     "better-sqlite3",
   ],
+  outputFileTracingIncludes: {
+    "/**": ["./dev.db"],
+  },
 };
 
 export default nextConfig;
