@@ -12,6 +12,7 @@ import {
   Building,
   UserCheck,
   Music,
+  PartyPopper,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
@@ -291,7 +292,7 @@ export default async function HomePage() {
 
             <Link
               href="/groups"
-              className="p-4 rounded-2xl bg-white border border-pink-200/80 hover:border-pink-400 hover:shadow-md transition shadow-sm group block sm:col-span-2"
+              className="p-4 rounded-2xl bg-white border border-pink-200/80 hover:border-pink-400 hover:shadow-md transition shadow-sm group block"
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3">
@@ -300,7 +301,7 @@ export default async function HomePage() {
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-slate-800 group-hover:text-pink-600 transition">
-                      Batch Groups & Music Lounge
+                      Batch Groups & Music
                     </h4>
                     <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -311,7 +312,33 @@ export default async function HomePage() {
                 <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-pink-600 group-hover:translate-x-0.5 transition" />
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Create groups with people from your batch or university. Chat in real-time or play music directly from your mobile within the app!
+                Create groups with people from your batch or university. Chat in real-time or play music directly from your mobile!
+              </p>
+            </Link>
+
+            <Link
+              href="/reunions"
+              className="p-4 rounded-2xl bg-white border border-amber-200/80 hover:border-amber-400 hover:shadow-md transition shadow-sm group block"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold group-hover:bg-amber-600 group-hover:text-white transition">
+                    <PartyPopper className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-amber-600 transition">
+                      Reunions & Get-Togethers
+                    </h4>
+                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Plan & RSVP Active
+                    </p>
+                  </div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 group-hover:translate-x-0.5 transition" />
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Plan reunions with buddies, set dates & places, view attendee lists, and celebrate offline with 1-tap RSVPs!
               </p>
             </Link>
           </div>

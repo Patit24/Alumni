@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ThumbsUp,
   MessageSquare,
@@ -13,6 +14,8 @@ import {
   RefreshCw,
   Image as ImageIcon,
   CheckCircle2,
+  Calendar,
+  PartyPopper,
 } from "lucide-react";
 
 interface FeedItemData {
@@ -161,60 +164,58 @@ export default function FeedSection({
       {/* Feed Category Filter Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
-          <button
-            onClick={() => setFilter("ALL")}
-            className={`text-xs font-bold px-3.5 py-1.5 rounded-full transition ${
-              filter === "ALL"
-                ? "bg-slate-900 text-white shadow-sm"
-                : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
-            }`}
-          >
-            All Activity
-          </button>
-          <button
-            onClick={() => setFilter("BATCH")}
-            className={`text-xs font-bold px-3.5 py-1.5 rounded-full transition ${
-              filter === "BATCH"
-                ? "bg-slate-900 text-white shadow-sm"
-                : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
-            }`}
-          >
-            Class of {batchYear}
-          </button>
-          <button
-            onClick={() => setFilter("JOBS")}
-            className={`text-xs font-bold px-3.5 py-1.5 rounded-full transition ${
-              filter === "JOBS"
-                ? "bg-slate-900 text-white shadow-sm"
-                : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
-            }`}
-          >
-            Hiring & Referrals
-          </button>
-          <button
-            onClick={() => setFilter("MENTORSHIP")}
-            className={`text-xs font-bold px-3.5 py-1.5 rounded-full transition ${
-              filter === "MENTORSHIP"
-                ? "bg-slate-900 text-white shadow-sm"
-                : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
-            }`}
-          >
-            Mentorship
-          </button>
+          {(["ALL", "BATCH", "JOBS", "MENTORSHIP"] as const).map((tab) => {
+            const label =
+              tab === "ALL"
+                ? "All Activity"
+                : tab === "BATCH"
+                ? `Class of ${batchYear}`
+                : tab === "JOBS"
+                ? "Hiring & Referrals"
+                : "Mentorship";
+            const isActive = filter === tab;
+
+            return (
+              <motion.button
+                key={tab}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => setFilter(tab)}
+                className={`text-xs font-bold px-3.5 py-1.5 rounded-full transition shadow-xs ${
+                  isActive
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
+                }`}
+              >
+                {label}
+              </motion.button>
+            );
+          })}
         </div>
       </div>
 
-      {successMessage && (
-        <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5 text-xs font-semibold text-emerald-800 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successMessage}</span>
-        </div>
-      )}
+      <AnimatePresence>
+        {successMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5 text-xs font-semibold text-emerald-800 flex items-center gap-2 shadow-xs"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{successMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* LinkedIn-style Share Box */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-sm space-y-3">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-sm space-y-3"
+      >
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">
+          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm shadow-blue-500/20">
             {currentUserName.charAt(0)}
           </div>
           <form onSubmit={handleCreatePost} className="flex-1">
@@ -234,29 +235,37 @@ export default function FeedSection({
               <ImageIcon className="w-4 h-4 text-emerald-500" /> Photo
             </span>
             <Link
+              href="/reunions"
+              className="flex items-center gap-1 hover:text-amber-600 cursor-pointer p-1 rounded-lg"
+            >
+              <PartyPopper className="w-4 h-4 text-amber-500" /> Plan Reunion
+            </Link>
+            <Link
               href="/jobs"
               className="flex items-center gap-1 hover:text-purple-600 cursor-pointer p-1 rounded-lg"
             >
-              <Briefcase className="w-4 h-4 text-purple-500" /> Share Referral
+              <Briefcase className="w-4 h-4 text-purple-500" /> Referral
             </Link>
             <Link
               href="/mentorship"
               className="flex items-center gap-1 hover:text-indigo-600 cursor-pointer p-1 rounded-lg"
             >
-              <Sparkles className="w-4 h-4 text-indigo-500" /> Offer Mentorship
+              <Sparkles className="w-4 h-4 text-indigo-500" /> Mentorship
             </Link>
           </div>
 
-          <button
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.95 }}
             onClick={handleCreatePost}
             disabled={posting || !newPostText.trim()}
             className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-sm"
           >
             <Send className="w-3.5 h-3.5" />
             {posting ? "Posting..." : "Post"}
-          </button>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
 
       {/* Feed Stream */}
       {loading ? (
@@ -270,14 +279,18 @@ export default function FeedSection({
         </div>
       ) : (
         <div className="space-y-3.5">
-          {feed.map((item) => {
+          {feed.map((item, index) => {
             const isLiked = !!likedPosts[item.id];
             const likesCount = postLikes[item.id] ?? (item.metadata.likes || 0);
 
             return (
-              <article
+              <motion.article
                 key={item.id}
-                className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:border-slate-300 transition space-y-3"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.04 }}
+                whileHover={{ y: -1 }}
+                className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:border-slate-300 hover:shadow-md transition space-y-3"
               >
                 {/* Author Info Header */}
                 <div className="flex items-start justify-between gap-3">
@@ -324,7 +337,29 @@ export default function FeedSection({
                   {item.metadata.text}
                 </p>
 
-                {/* Rich Metadata Cards (e.g. Job details or Topics) */}
+                {/* Rich Metadata Cards (e.g. Job details or Topics or Reunion Event) */}
+                {item.type === "EVENT_CREATED" && (
+                  <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-xl bg-amber-500 text-white flex items-center justify-center">
+                        <Calendar className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                          Batch Reunion Gathering
+                        </span>
+                        <p className="text-xs font-bold text-slate-900">Check dates, venue & RSVPs</p>
+                      </div>
+                    </div>
+                    <Link
+                      href="/reunions"
+                      className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shrink-0"
+                    >
+                      View Reunion
+                    </Link>
+                  </div>
+                )}
+
                 {item.type === "JOB_POSTED" && item.metadata.jobTitle && (
                   <div className="bg-purple-50/70 border border-purple-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">
                     <div>
@@ -382,7 +417,8 @@ export default function FeedSection({
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.88 }}
                       onClick={() => toggleLike(item.id)}
                       className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl transition ${
                         isLiked
@@ -392,7 +428,7 @@ export default function FeedSection({
                     >
                       <ThumbsUp className={`w-3.5 h-3.5 ${isLiked ? "fill-blue-600" : ""}`} />
                       <span>{isLiked ? "Liked" : "Like"}</span>
-                    </button>
+                    </motion.button>
 
                     <button
                       onClick={() => alert("Comments feature opening soon!")}
@@ -416,7 +452,7 @@ export default function FeedSection({
                     </button>
                   </div>
                 </div>
-              </article>
+              </motion.article>
             );
           })}
         </div>
