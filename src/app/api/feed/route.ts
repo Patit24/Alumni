@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { broadcastFeedEvent } from "@/lib/supabase-broadcast";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/feed - Fetch LinkedIn-style posts
+// GET /api/feed - Fetch LinkedIn-style posts with live like, comment, and share counts
 export async function GET(req: Request) {
   try {
     const user = await getCurrentUser();
@@ -44,20 +45,65 @@ export async function GET(req: Request) {
             department: { select: { name: true } },
           },
         },
+        likes: {
+          select: {
+            userId: true,
+          },
+        },
+        comments: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                batchYear: true,
+                currentRole: true,
+                currentCompany: true,
+                verificationStatus: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        shares: {
+          select: {
+            id: true,
+            platform: true,
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
     });
 
     const parsedItems = items.map((item) => {
-      let meta = {};
+      let meta: Record<string, unknown> = {};
       try {
         if (item.metadata) meta = JSON.parse(item.metadata);
       } catch {
         meta = { text: item.metadata };
       }
+
+      const hasLiked = item.likes.some((l) => l.userId === user.id);
+      const likesCount = item.likes.length;
+      const commentsCount = item.comments.length;
+      const sharesCount = item.shares.length;
+
       return {
-        ...item,
-        metadata: meta,
+        id: item.id,
+        type: item.type,
+        createdAt: item.createdAt,
+        actor: item.actor,
+        hasLiked,
+        likesCount,
+        commentsCount,
+        sharesCount,
+        comments: item.comments,
+        metadata: {
+          ...meta,
+          likes: likesCount,
+          commentsCount,
+          sharesCount,
+        },
       };
     });
 
@@ -68,6 +114,7 @@ export async function GET(req: Request) {
         verificationStatus: user.verificationStatus,
         batchYear: user.batchYear,
         institutionName: user.institution.name,
+        institutionId: user.institutionId,
       },
       feed: parsedItems,
     });
@@ -99,8 +146,6 @@ export async function POST(req: Request) {
         type,
         metadata: JSON.stringify({
           text: text.trim(),
-          likes: 0,
-          commentsCount: 0,
           badge: type === "POST" ? "Alumni Update" : type,
         }),
       },
@@ -126,12 +171,25 @@ export async function POST(req: Request) {
       meta = { text: feedItem.metadata };
     }
 
+    const responsePayload = {
+      id: feedItem.id,
+      type: feedItem.type,
+      createdAt: feedItem.createdAt,
+      actor: feedItem.actor,
+      hasLiked: false,
+      likesCount: 0,
+      commentsCount: 0,
+      sharesCount: 0,
+      comments: [],
+      metadata: meta,
+    };
+
+    // Broadcast new post via Supabase Realtime
+    await broadcastFeedEvent(user.institutionId, "new-post", responsePayload);
+
     return NextResponse.json({
       success: true,
-      feedItem: {
-        ...feedItem,
-        metadata: meta,
-      },
+      feedItem: responsePayload,
     });
   } catch (error) {
     console.error("Feed POST error:", error);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { broadcastFeedEvent } from "@/lib/supabase-broadcast";
 
 export const dynamic = "force-dynamic";
 
@@ -156,12 +157,17 @@ export async function POST(
       meta = message.metadata;
     }
 
+    const payload = {
+      ...message,
+      metadata: meta,
+    };
+
+    // Broadcast chat message over Supabase Realtime
+    await broadcastFeedEvent(groupId, "new-chat-message", payload);
+
     return NextResponse.json({
       success: true,
-      message: {
-        ...message,
-        metadata: meta,
-      },
+      message: payload,
     });
   } catch (error) {
     console.error("Messages POST error:", error);

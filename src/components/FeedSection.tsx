@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -16,12 +16,37 @@ import {
   CheckCircle2,
   Calendar,
   PartyPopper,
+  Radio,
+  Copy,
+  ExternalLink,
+  MessageCircle,
 } from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
+
+interface CommentData {
+  id: string;
+  content: string;
+  createdAt: string;
+  user: {
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+    batchYear: number;
+    currentRole: string | null;
+    currentCompany: string | null;
+    verificationStatus: string;
+  };
+}
 
 interface FeedItemData {
   id: string;
   type: string;
   createdAt: string;
+  hasLiked: boolean;
+  likesCount: number;
+  commentsCount: number;
+  sharesCount: number;
+  comments?: CommentData[];
   actor: {
     id: string;
     name: string;
@@ -38,8 +63,6 @@ interface FeedItemData {
     location?: string;
     topics?: string[];
     tags?: string[];
-    likes?: number;
-    commentsCount?: number;
     badge?: string;
   };
 }
@@ -50,6 +73,7 @@ interface FeedSectionProps {
   currentUserCompany?: string | null;
   currentUserVerified: boolean;
   batchYear: number;
+  institutionId?: string;
 }
 
 function calculateTimeAgo(isoString: string) {
@@ -74,56 +98,115 @@ export default function FeedSection({
   const [filter, setFilter] = useState<"ALL" | "BATCH" | "JOBS" | "MENTORSHIP">("ALL");
   const [newPostText, setNewPostText] = useState("");
   const [posting, setPosting] = useState(false);
-  const [likedPosts, setLikedPosts] = useState<Record<string, boolean>>({});
-  const [postLikes, setPostLikes] = useState<Record<string, number>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const fetchFeed = useCallback(async (selectedFilter: string) => {
+  // Active open comments section by post ID
+  const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [submittingComment, setSubmittingComment] = useState<Record<string, boolean>>({});
+
+  // Share Modal state
+  const [shareModalPost, setShareModalPost] = useState<FeedItemData | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  // Realtime Status
+  const [isRealtimeActive, setIsRealtimeActive] = useState(false);
+  const institutionIdRef = useRef<string | null>(null);
+
+  const fetchFeed = useCallback(async (selectedFilter: string, silent = false) => {
     try {
+      if (!silent) setLoading(true);
       const res = await fetch(`/api/feed?filter=${selectedFilter}`);
       if (!res.ok) throw new Error("Failed to load feed");
       const json = await res.json();
       setFeed(json.feed || []);
-
-      const initialLikes: Record<string, number> = {};
-      json.feed?.forEach((item: FeedItemData) => {
-        initialLikes[item.id] = item.metadata.likes || 0;
-      });
-      setPostLikes((prev) => ({ ...initialLikes, ...prev }));
+      if (json.currentUser?.institutionId) {
+        institutionIdRef.current = json.currentUser.institutionId;
+      }
     } catch (err) {
       console.error("Error fetching feed:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
+  // Initial load on filter change
   useEffect(() => {
-    let ignore = false;
-    async function load() {
-      try {
-        const res = await fetch(`/api/feed?filter=${filter}`);
-        if (!res.ok) throw new Error("Failed to load feed");
-        const json = await res.json();
-        if (!ignore) {
-          setFeed(json.feed || []);
-          const initialLikes: Record<string, number> = {};
-          json.feed?.forEach((item: FeedItemData) => {
-            initialLikes[item.id] = item.metadata.likes || 0;
-          });
-          setPostLikes((prev) => ({ ...initialLikes, ...prev }));
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error(err);
-        if (!ignore) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      ignore = true;
-    };
-  }, [filter]);
+    fetchFeed(filter);
+  }, [filter, fetchFeed]);
 
+  // Supabase Realtime Channel Subscription
+  useEffect(() => {
+    const supabase = createClient();
+    const channelName = "campus-feed-global";
+    const channel = supabase.channel(channelName, {
+      config: { broadcast: { self: true } },
+    });
+
+    channel
+      .on("broadcast", { event: "new-post" }, (event) => {
+        const newPost = event.payload as FeedItemData;
+        setFeed((prev) => {
+          if (prev.some((p) => p.id === newPost.id)) return prev;
+          return [newPost, ...prev];
+        });
+      })
+      .on("broadcast", { event: "like-update" }, (event) => {
+        const { feedItemId, likesCount } = event.payload as {
+          feedItemId: string;
+          likesCount: number;
+          actorId: string;
+        };
+        setFeed((prev) =>
+          prev.map((item) =>
+            item.id === feedItemId ? { ...item, likesCount } : item
+          )
+        );
+      })
+      .on("broadcast", { event: "new-comment" }, (event) => {
+        const { feedItemId, comment, totalComments } = event.payload as {
+          feedItemId: string;
+          comment: CommentData;
+          totalComments: number;
+        };
+        setFeed((prev) =>
+          prev.map((item) => {
+            if (item.id === feedItemId) {
+              const currentComments = item.comments || [];
+              const exists = currentComments.some((c) => c.id === comment.id);
+              return {
+                ...item,
+                commentsCount: totalComments,
+                comments: exists ? currentComments : [...currentComments, comment],
+              };
+            }
+            return item;
+          })
+        );
+      })
+      .on("broadcast", { event: "share-update" }, (event) => {
+        const { feedItemId, sharesCount } = event.payload as {
+          feedItemId: string;
+          sharesCount: number;
+        };
+        setFeed((prev) =>
+          prev.map((item) =>
+            item.id === feedItemId ? { ...item, sharesCount } : item
+          )
+        );
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setIsRealtimeActive(true);
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Post Submission
   async function handleCreatePost(e: React.FormEvent) {
     e.preventDefault();
     if (!newPostText.trim()) return;
@@ -140,8 +223,8 @@ export default function FeedSection({
       if (!res.ok) throw new Error(result.error || "Failed to post");
 
       setNewPostText("");
-      setSuccessMessage("Update shared with your alumni network!");
-      await fetchFeed(filter);
+      setSuccessMessage("Update shared live with your alumni network!");
+      await fetchFeed(filter, true);
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error creating post");
@@ -150,19 +233,121 @@ export default function FeedSection({
     }
   }
 
-  function toggleLike(postId: string) {
-    const isLiked = !!likedPosts[postId];
-    setLikedPosts((prev) => ({ ...prev, [postId]: !isLiked }));
-    setPostLikes((prev) => ({
-      ...prev,
-      [postId]: (prev[postId] || 0) + (isLiked ? -1 : 1),
-    }));
+  // Like Toggle Handler with Optimistic UI & Supabase sync
+  async function toggleLike(postId: string) {
+    // Optimistic update
+    setFeed((prev) =>
+      prev.map((item) => {
+        if (item.id === postId) {
+          const nextHasLiked = !item.hasLiked;
+          return {
+            ...item,
+            hasLiked: nextHasLiked,
+            likesCount: item.likesCount + (nextHasLiked ? 1 : -1),
+          };
+        }
+        return item;
+      })
+    );
+
+    try {
+      const res = await fetch(`/api/feed/${postId}/like`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFeed((prev) =>
+          prev.map((item) =>
+            item.id === postId
+              ? { ...item, hasLiked: data.hasLiked, likesCount: data.likesCount }
+              : item
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Error toggling like:", err);
+    }
+  }
+
+  // Add Comment Handler
+  async function handleAddComment(postId: string) {
+    const text = commentInputs[postId]?.trim();
+    if (!text) return;
+
+    setSubmittingComment((prev) => ({ ...prev, [postId]: true }));
+
+    try {
+      const res = await fetch(`/api/feed/${postId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to post comment");
+
+      // Clear input
+      setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
+
+      // Optimistically append comment
+      setFeed((prev) =>
+        prev.map((item) => {
+          if (item.id === postId) {
+            const comments = item.comments || [];
+            return {
+              ...item,
+              commentsCount: data.totalComments,
+              comments: [...comments, data.comment],
+            };
+          }
+          return item;
+        })
+      );
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error posting comment");
+    } finally {
+      setSubmittingComment((prev) => ({ ...prev, [postId]: false }));
+    }
+  }
+
+  // Handle Share Action
+  async function handleShareAction(post: FeedItemData, platform: "LINK_COPY" | "WHATSAPP") {
+    try {
+      await fetch(`/api/feed/${post.id}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform }),
+      });
+
+      // Increment local count
+      setFeed((prev) =>
+        prev.map((item) =>
+          item.id === post.id ? { ...item, sharesCount: item.sharesCount + 1 } : item
+        )
+      );
+
+      const postUrl = typeof window !== "undefined" ? `${window.location.origin}/?post=${post.id}` : "";
+
+      if (platform === "LINK_COPY") {
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(postUrl);
+          setCopiedLink(true);
+          setTimeout(() => setCopiedLink(false), 3000);
+        }
+      } else if (platform === "WHATSAPP") {
+        const text = encodeURIComponent(
+          `Check out this alumni update from ${post.actor.name} on our Campus Network:\n\n"${post.metadata.text || ""}"\n\nJoin the discussion: ${postUrl}`
+        );
+        window.open(`https://api.whatsapp.com/send?text=${text}`, "_blank");
+      }
+    } catch (err) {
+      console.error("Error sharing:", err);
+    }
   }
 
   return (
     <div className="space-y-4">
-      {/* Feed Category Filter Header */}
-      <div className="flex items-center justify-between">
+      {/* Feed Category Filter Header & Live Realtime Badge */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
           {(["ALL", "BATCH", "JOBS", "MENTORSHIP"] as const).map((tab) => {
             const label =
@@ -190,6 +375,19 @@ export default function FeedSection({
               </motion.button>
             );
           })}
+        </div>
+
+        {/* Live Supabase Realtime Indicator */}
+        <div className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200 rounded-full text-[11px] font-semibold text-slate-600 shadow-xs shrink-0">
+          <span className="relative flex h-2 w-2">
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+              isRealtimeActive ? "bg-emerald-400" : "bg-amber-400"
+            }`}></span>
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${
+              isRealtimeActive ? "bg-emerald-500" : "bg-amber-500"
+            }`}></span>
+          </span>
+          <span>{isRealtimeActive ? "Supabase Realtime Live" : "Connecting..."}</span>
         </div>
       </div>
 
@@ -271,26 +469,25 @@ export default function FeedSection({
       {loading ? (
         <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center flex flex-col items-center gap-2">
           <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
-          <p className="text-xs text-slate-500 font-medium">Loading network feed...</p>
+          <p className="text-xs text-slate-500 font-medium">Loading live alumni network feed...</p>
         </div>
       ) : feed.length === 0 ? (
         <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center">
           <p className="text-xs text-slate-500">No feed items found for this filter.</p>
         </div>
       ) : (
-        <div className="space-y-3.5">
+        <div className="space-y-4">
           {feed.map((item, index) => {
-            const isLiked = !!likedPosts[item.id];
-            const likesCount = postLikes[item.id] ?? (item.metadata.likes || 0);
+            const isCommentsOpen = openCommentsPostId === item.id;
+            const commentsList = item.comments || [];
 
             return (
               <motion.article
                 key={item.id}
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: index * 0.04 }}
-                whileHover={{ y: -1 }}
-                className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:border-slate-300 hover:shadow-md transition space-y-3"
+                transition={{ duration: 0.3, delay: Math.min(index * 0.03, 0.3) }}
+                className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:border-slate-300 transition space-y-3"
               >
                 {/* Author Info Header */}
                 <div className="flex items-start justify-between gap-3">
@@ -337,7 +534,7 @@ export default function FeedSection({
                   {item.metadata.text}
                 </p>
 
-                {/* Rich Metadata Cards (e.g. Job details or Topics or Reunion Event) */}
+                {/* Rich Metadata Cards */}
                 {item.type === "EVENT_CREATED" && (
                   <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
@@ -408,55 +605,236 @@ export default function FeedSection({
                   </div>
                 )}
 
-                {/* Post Footer Action Bar (LinkedIn-style) */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                    <span>{likesCount} {likesCount === 1 ? "like" : "likes"}</span>
+                {/* Counts Bar */}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-slate-600">{item.likesCount}</span>
+                    <span>{item.likesCount === 1 ? "like" : "likes"}</span>
                     <span>•</span>
-                    <span>{item.metadata.commentsCount || 0} comments</span>
+                    <button
+                      onClick={() =>
+                        setOpenCommentsPostId(isCommentsOpen ? null : item.id)
+                      }
+                      className="hover:text-blue-600 transition underline-offset-2 hover:underline"
+                    >
+                      <span className="font-semibold text-slate-600">{item.commentsCount}</span>{" "}
+                      {item.commentsCount === 1 ? "comment" : "comments"}
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <motion.button
-                      whileTap={{ scale: 0.88 }}
-                      onClick={() => toggleLike(item.id)}
-                      className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl transition ${
-                        isLiked
-                          ? "bg-blue-50 text-blue-600"
-                          : "text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      <ThumbsUp className={`w-3.5 h-3.5 ${isLiked ? "fill-blue-600" : ""}`} />
-                      <span>{isLiked ? "Liked" : "Like"}</span>
-                    </motion.button>
-
-                    <button
-                      onClick={() => alert("Comments feature opening soon!")}
-                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl text-slate-600 hover:bg-slate-100 transition"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      <span>Comment</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        if (navigator.clipboard) {
-                          navigator.clipboard.writeText(window.location.href);
-                          alert("Link copied to clipboard!");
-                        }
-                      }}
-                      className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl text-slate-600 hover:bg-slate-100 transition"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                      <span>Share</span>
-                    </button>
+                    <span className="font-semibold text-slate-600">{item.sharesCount}</span>
+                    <span>{item.sharesCount === 1 ? "share" : "shares"}</span>
                   </div>
                 </div>
+
+                {/* Action Bar (Like, Comment, Share) */}
+                <div className="pt-1.5 flex items-center justify-between gap-1">
+                  <motion.button
+                    whileTap={{ scale: 0.88 }}
+                    onClick={() => toggleLike(item.id)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl transition ${
+                      item.hasLiked
+                        ? "bg-blue-50 text-blue-600 border border-blue-100"
+                        : "text-slate-600 hover:bg-slate-50 border border-transparent"
+                    }`}
+                  >
+                    <ThumbsUp
+                      className={`w-4 h-4 ${item.hasLiked ? "fill-blue-600 text-blue-600" : ""}`}
+                    />
+                    <span>{item.hasLiked ? "Liked" : "Like"}</span>
+                  </motion.button>
+
+                  <button
+                    onClick={() =>
+                      setOpenCommentsPostId(isCommentsOpen ? null : item.id)
+                    }
+                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl transition ${
+                      isCommentsOpen
+                        ? "bg-slate-100 text-slate-900 font-extrabold"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Comment</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShareModalPost(item)}
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl text-slate-600 hover:bg-slate-50 transition"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    <span>Share</span>
+                  </button>
+                </div>
+
+                {/* Inline Real-Time Comments Section */}
+                <AnimatePresence>
+                  {isCommentsOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden pt-3 border-t border-slate-100 space-y-3"
+                    >
+                      {/* Comment Input */}
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
+                          {currentUserName.charAt(0)}
+                        </div>
+                        <div className="flex-1 flex items-center gap-1.5 bg-slate-100 rounded-2xl px-3 py-1.5 border border-slate-200/60 focus-within:border-blue-400 focus-within:bg-white transition">
+                          <input
+                            type="text"
+                            value={commentInputs[item.id] || ""}
+                            onChange={(e) =>
+                              setCommentInputs((prev) => ({
+                                ...prev,
+                                [item.id]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleAddComment(item.id);
+                              }
+                            }}
+                            placeholder="Write a comment..."
+                            className="w-full text-xs bg-transparent focus:outline-none text-slate-800 placeholder:text-slate-400"
+                          />
+                          <button
+                            disabled={
+                              submittingComment[item.id] ||
+                              !commentInputs[item.id]?.trim()
+                            }
+                            onClick={() => handleAddComment(item.id)}
+                            className="p-1 text-blue-600 hover:text-blue-700 disabled:opacity-40 transition shrink-0"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Comments List */}
+                      {commentsList.length === 0 ? (
+                        <p className="text-[11px] text-slate-400 italic text-center py-2">
+                          No comments yet. Be the first to start the conversation!
+                        </p>
+                      ) : (
+                        <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                          {commentsList.map((comm) => (
+                            <div
+                              key={comm.id}
+                              className="flex items-start gap-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-100"
+                            >
+                              <div className="h-7 w-7 rounded-xl bg-slate-800 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
+                                {comm.user.name.charAt(0)}
+                              </div>
+                              <div className="flex-1 space-y-0.5">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-bold text-slate-900">
+                                      {comm.user.name}
+                                    </span>
+                                    {comm.user.verificationStatus === "VERIFIED" && (
+                                      <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                                    )}
+                                    <span className="text-[10px] text-slate-400">
+                                      &apos;{comm.user.batchYear.toString().slice(-2)}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400">
+                                    {calculateTimeAgo(comm.createdAt)}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed">
+                                  {comm.content}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.article>
             );
           })}
         </div>
       )}
+
+      {/* Share Modal */}
+      <AnimatePresence>
+        {shareModalPost && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-sm rounded-3xl border border-slate-200 p-6 shadow-xl space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <Share2 className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">Share Alumni Update</h3>
+                </div>
+                <button
+                  onClick={() => {
+                    setShareModalPost(null);
+                    setCopiedLink(false);
+                  }}
+                  className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Share this post by <strong>{shareModalPost.actor.name}</strong> with your fellow alumni and study groups.
+              </p>
+
+              <div className="space-y-2 pt-1">
+                {/* 1-Tap Copy Link */}
+                <button
+                  onClick={() => handleShareAction(shareModalPost, "LINK_COPY")}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-xs font-bold text-slate-800 transition"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Copy className="w-4 h-4 text-slate-600" />
+                    <span>{copiedLink ? "Link Copied to Clipboard!" : "Copy Post Link"}</span>
+                  </div>
+                  {copiedLink && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                </button>
+
+                {/* WhatsApp Share */}
+                <button
+                  onClick={() => handleShareAction(shareModalPost, "WHATSAPP")}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold text-emerald-800 transition"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <MessageCircle className="w-4 h-4 text-emerald-600" />
+                    <span>Share to WhatsApp Group</span>
+                  </div>
+                  <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+                </button>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShareModalPost(null);
+                  setCopiedLink(false);
+                }}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+              >
+                Done
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

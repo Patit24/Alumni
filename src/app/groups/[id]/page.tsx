@@ -19,6 +19,7 @@ import {
   Radio,
   Sparkles,
 } from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
 
 interface Member {
   id: string;
@@ -139,10 +140,38 @@ export default function GroupChatRoomPage({
       }
     }
     load();
+
+    // Supabase Realtime Subscription for live instant messages
+    const supabase = createClient();
+    const channel = supabase.channel(`campus-group:${groupId}`, {
+      config: { broadcast: { self: true } },
+    });
+
+    channel
+      .on("broadcast", { event: "new-chat-message" }, (event) => {
+        const newMsg = event.payload as Message;
+        setData((prev) => {
+          if (!prev) return prev;
+          if (prev.messages.some((m) => m.id === newMsg.id)) return prev;
+          return {
+            ...prev,
+            messages: [...prev.messages, newMsg],
+          };
+        });
+      })
+      .subscribe();
+
+    // Background interval poll (every 4s) to ensure full synchronization
+    const interval = setInterval(() => {
+      fetchRoomData();
+    }, 4000);
+
     return () => {
       ignore = true;
+      clearInterval(interval);
+      supabase.removeChannel(channel);
     };
-  }, [groupId]);
+  }, [groupId, fetchRoomData]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
