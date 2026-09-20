@@ -184,162 +184,82 @@ export default async function HomePage() {
           </div>
         </div>
 
-        {/* Phase Modules Navigation Grid */}
+        {/* Mobile App Native Quick Actions Bar */}
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Community Hub
+          <div className="flex items-center justify-between mb-2.5">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Campus Hub
             </h3>
-            <span className="text-[11px] text-blue-600 font-medium">Phase 1 Active</span>
+            <span className="text-[11px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-full">
+              Class of {user.batchYear}
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <Link
-              href="/directory"
-              className="p-4 rounded-2xl bg-white border border-blue-200/80 hover:border-blue-400 hover:shadow-md transition shadow-sm group block"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold group-hover:bg-blue-600 group-hover:text-white transition">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition">Alumni Directory</h4>
-                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Phase 2 Active
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition" />
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Filter and discover batchmates from {user.institution.name} by company, city, and batch.
-              </p>
-            </Link>
-
-            <Link
-              href="/verification"
-              className="p-4 rounded-2xl bg-white border border-emerald-200/80 hover:border-emerald-400 hover:shadow-md transition shadow-sm group block"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold group-hover:bg-emerald-600 group-hover:text-white transition">
-                    <UserCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-emerald-600 transition">Passive Verification</h4>
-                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Phase 3 Active
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition" />
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Vouch for your Class of {user.batchYear} batchmates to give them verified access.
-              </p>
-            </Link>
-
-            <Link
-              href="/mentorship"
-              className="p-4 rounded-2xl bg-white border border-indigo-200/80 hover:border-indigo-400 hover:shadow-md transition shadow-sm group block"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold group-hover:bg-indigo-600 group-hover:text-white transition">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition">Mentorship Network</h4>
-                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Phase 5 Active
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition" />
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Request guidance from seniors or mark yourself available to help juniors.
-              </p>
-            </Link>
-
-            <Link
-              href="/jobs"
-              className="p-4 rounded-2xl bg-white border border-purple-200/80 hover:border-purple-400 hover:shadow-md transition shadow-sm group block"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold group-hover:bg-purple-600 group-hover:text-white transition">
-                    <Briefcase className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-purple-600 transition">Jobs & Referrals</h4>
-                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Phase 6 Active
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition" />
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Post hiring opportunities and ask alumni for internal employee referrals.
-              </p>
-            </Link>
-
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-3">
             <Link
               href="/groups"
-              className="p-4 rounded-2xl bg-white border border-pink-200/80 hover:border-pink-400 hover:shadow-md transition shadow-sm group block"
+              className="p-3 rounded-2xl bg-white border border-pink-100 hover:border-pink-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center font-bold group-hover:bg-pink-600 group-hover:text-white transition">
-                    <Music className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-pink-600 transition">
-                      Batch Groups & Music
-                    </h4>
-                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Chat & Music Active
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-pink-600 group-hover:translate-x-0.5 transition" />
+              <div className="h-10 w-10 rounded-2xl bg-pink-50 text-pink-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+                <Music className="w-5 h-5" />
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Create groups with people from your batch or university. Chat in real-time or play music directly from your mobile!
-              </p>
+              <span className="text-[11px] font-bold text-slate-800 leading-tight">Groups</span>
+              <span className="text-[9px] text-slate-400 mt-0.5">Chat & Music</span>
+            </Link>
+
+            <Link
+              href="/directory"
+              className="p-3 rounded-2xl bg-white border border-blue-100 hover:border-blue-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+            >
+              <div className="h-10 w-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+                <Users className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-800 leading-tight">Directory</span>
+              <span className="text-[9px] text-slate-400 mt-0.5">Batchmates</span>
             </Link>
 
             <Link
               href="/reunions"
-              className="p-4 rounded-2xl bg-white border border-amber-200/80 hover:border-amber-400 hover:shadow-md transition shadow-sm group block"
+              className="p-3 rounded-2xl bg-white border border-amber-100 hover:border-amber-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold group-hover:bg-amber-600 group-hover:text-white transition">
-                    <PartyPopper className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-amber-600 transition">
-                      Reunions & Get-Togethers
-                    </h4>
-                    <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Plan & RSVP Active
-                    </p>
-                  </div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 group-hover:translate-x-0.5 transition" />
+              <div className="h-10 w-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+                <PartyPopper className="w-5 h-5" />
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Plan reunions with buddies, set dates & places, view attendee lists, and celebrate offline with 1-tap RSVPs!
-              </p>
+              <span className="text-[11px] font-bold text-slate-800 leading-tight">Reunions</span>
+              <span className="text-[9px] text-slate-400 mt-0.5">Plan & Meet</span>
+            </Link>
+
+            <Link
+              href="/jobs"
+              className="p-3 rounded-2xl bg-white border border-purple-100 hover:border-purple-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+            >
+              <div className="h-10 w-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+                <Briefcase className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-800 leading-tight">Jobs</span>
+              <span className="text-[9px] text-slate-400 mt-0.5">Referrals</span>
+            </Link>
+
+            <Link
+              href="/mentorship"
+              className="p-3 rounded-2xl bg-white border border-indigo-100 hover:border-indigo-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+            >
+              <div className="h-10 w-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-800 leading-tight">Mentors</span>
+              <span className="text-[9px] text-slate-400 mt-0.5">1-on-1 Help</span>
+            </Link>
+
+            <Link
+              href="/verification"
+              className="p-3 rounded-2xl bg-white border border-emerald-100 hover:border-emerald-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+            >
+              <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+                <UserCheck className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-800 leading-tight">Vouch</span>
+              <span className="text-[9px] text-slate-400 mt-0.5">Trust Batch</span>
             </Link>
           </div>
         </div>
