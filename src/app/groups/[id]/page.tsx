@@ -985,6 +985,11 @@ export default function GroupChatRoomPage({
               );
             }
 
+            const timeString = new Date(msg.createdAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+
             return (
               <div
                 key={msg.id}
@@ -996,6 +1001,7 @@ export default function GroupChatRoomPage({
                     <ShieldCheck className="w-3 h-3 text-emerald-600" />
                   )}
                   <span>• Class of {msg.sender.batchYear}</span>
+                  <span className="text-[10px] text-slate-400 ml-1">{timeString}</span>
                 </div>
 
                 <div
@@ -1005,7 +1011,7 @@ export default function GroupChatRoomPage({
                       : "bg-white text-slate-900 border border-slate-200/80 rounded-bl-xs"
                   }`}
                 >
-                  {msg.content}
+                  <p className="break-words">{msg.content}</p>
                 </div>
               </div>
             );
