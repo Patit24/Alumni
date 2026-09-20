@@ -53,42 +53,34 @@ export default function GroupsPage() {
   const [newGroupScope, setNewGroupScope] = useState<"SAME_BATCH" | "INSTITUTION">("SAME_BATCH");
   const [creating, setCreating] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchGroups = useCallback(async (scope: string) => {
     try {
       setLoading(true);
+      setErrorMessage(null);
       const res = await fetch(`/api/groups?scope=${scope}`);
-      if (!res.ok) throw new Error("Failed to load groups");
+      if (res.status === 401) {
+        window.location.href = "/auth";
+        return;
+      }
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Unable to load groups at this moment.");
+      }
       const json = await res.json();
       setData(json);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
+      setErrorMessage(err instanceof Error ? err.message : "Failed to load groups");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    let ignore = false;
-    async function load() {
-      try {
-        const res = await fetch(`/api/groups?scope=${scopeFilter}`);
-        if (!res.ok) throw new Error("Failed to load groups");
-        const json = await res.json();
-        if (!ignore) {
-          setData(json);
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error(err);
-        if (!ignore) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      ignore = true;
-    };
-  }, [scopeFilter]);
+    fetchGroups(scopeFilter);
+  }, [scopeFilter, fetchGroups]);
 
   async function handleCreateGroup(e: React.FormEvent) {
     e.preventDefault();
@@ -133,7 +125,35 @@ export default function GroupsPage() {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm max-w-sm w-full text-center space-y-3">
+          <div className="h-12 w-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto font-bold">
+            !
+          </div>
+          <h3 className="text-sm font-bold text-slate-800">Connection Issue</h3>
+          <p className="text-xs text-slate-500">
+            {errorMessage || "Unable to reach the groups server. Please check your session."}
+          </p>
+          <div className="pt-2 flex flex-col gap-2">
+            <button
+              onClick={() => fetchGroups(scopeFilter)}
+              className="w-full py-2 bg-pink-600 hover:bg-pink-700 text-white text-xs font-bold rounded-xl transition shadow-xs"
+            >
+              Retry
+            </button>
+            <Link
+              href="/"
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+            >
+              Return to Feed
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const filteredGroups = data.groups.filter((g) =>
     search ? g.name.toLowerCase().includes(search.toLowerCase()) || g.description?.toLowerCase().includes(search.toLowerCase()) : true
