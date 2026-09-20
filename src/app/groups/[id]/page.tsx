@@ -33,6 +33,7 @@ import {
   Sliders,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+import { setNativeScreenshotAllowed } from "@/lib/native-security";
 
 interface Member {
   id: string;
@@ -318,12 +319,15 @@ export default function GroupChatRoomPage({
 
     if (!group.allowScreenshot) {
       document.body.classList.add("screenshot-blocked");
+      setNativeScreenshotAllowed(false);
     } else {
       document.body.classList.remove("screenshot-blocked");
+      setNativeScreenshotAllowed(true);
     }
 
     return () => {
       document.body.classList.remove("screenshot-blocked");
+      setNativeScreenshotAllowed(true);
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyDown, true);
       window.removeEventListener("blur", handleVisibilityOrBlur);
