@@ -99,14 +99,10 @@ export default function AuthPage() {
       setDevCode("123456");
       setOtp("123456");
       setStep("otp");
-      sessionStorage.setItem("alumni_auth_step", "otp");
-      sessionStorage.setItem("alumni_auth_phone", phone);
     } catch {
       setDevCode("123456");
       setOtp("123456");
       setStep("otp");
-      sessionStorage.setItem("alumni_auth_step", "otp");
-      sessionStorage.setItem("alumni_auth_phone", phone);
     } finally {
       setLoading(false);
     }
@@ -133,15 +129,12 @@ export default function AuthPage() {
 
       if (!data.isNewUser) {
         // Returning user - session cookie is set!
-        sessionStorage.removeItem("alumni_auth_step");
         router.push("/");
         router.refresh();
       } else {
         // New user - proceed to profile onboarding
         setSignupToken(data.signupToken);
         setStep("onboarding");
-        sessionStorage.setItem("alumni_auth_step", "onboarding");
-        sessionStorage.setItem("alumni_auth_token", data.signupToken);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Verification failed");
@@ -166,7 +159,7 @@ export default function AuthPage() {
           signupToken,
           phone,
           name: trimmedName,
-          institutionId: isCustomInst ? null : selectedInstId,
+          institutionId: isCustomInst ? null : selectedInstId || null,
           institutionName: isCustomInst ? customInstName : instSearchQuery,
           newInstitutionName: isCustomInst ? customInstName : null,
           newInstitutionType: isCustomInst ? customInstType : null,
@@ -183,11 +176,7 @@ export default function AuthPage() {
         throw new Error(data.error || "Signup failed");
       }
 
-      // Success! Clear auth temporary state and do a full redirect to the dashboard
-      sessionStorage.removeItem("alumni_auth_step");
-      sessionStorage.removeItem("alumni_auth_token");
-      sessionStorage.removeItem("alumni_auth_phone");
-
+      // Success! Full redirect to the dashboard
       router.push("/");
       router.refresh();
     } catch (err: unknown) {
@@ -290,7 +279,6 @@ export default function AuthPage() {
                   type="button"
                   onClick={() => {
                     setStep("phone");
-                    sessionStorage.setItem("alumni_auth_step", "phone");
                   }}
                   className="text-xs text-blue-600 hover:underline"
                 >
@@ -362,7 +350,6 @@ export default function AuthPage() {
                 value={name}
                 onChange={(e) => {
                   setName(e.target.value);
-                  sessionStorage.setItem("alumni_auth_name", e.target.value);
                 }}
                 placeholder="e.g. Patitpaban Roy"
                 required
@@ -418,7 +405,6 @@ export default function AuthPage() {
                       value={instSearchQuery}
                       onChange={(e) => {
                         setInstSearchQuery(e.target.value);
-                        sessionStorage.setItem("alumni_auth_inst", e.target.value);
                       }}
                       placeholder="Search college or school..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 pl-9 pr-3.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white"
@@ -439,7 +425,6 @@ export default function AuthPage() {
                           onClick={() => {
                             setSelectedInstId(inst.id);
                             setInstSearchQuery(inst.name);
-                            sessionStorage.setItem("alumni_auth_inst", inst.name);
                           }}
                           className={`w-full text-left p-2 rounded-lg text-xs flex items-center justify-between transition ${
                             selectedInstId === inst.id || instSearchQuery.toLowerCase() === inst.name.toLowerCase()
