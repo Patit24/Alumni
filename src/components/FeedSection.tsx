@@ -20,6 +20,7 @@ import {
   Copy,
   ExternalLink,
   MessageCircle,
+  X,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
@@ -58,6 +59,7 @@ interface FeedItemData {
   };
   metadata: {
     text?: string;
+    imageUrl?: string | null;
     jobTitle?: string;
     company?: string;
     location?: string;
@@ -97,8 +99,11 @@ export default function FeedSection({
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"ALL" | "BATCH" | "JOBS" | "MENTORSHIP">("ALL");
   const [newPostText, setNewPostText] = useState("");
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [posting, setPosting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Active open comments section by post ID
   const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
@@ -112,6 +117,66 @@ export default function FeedSection({
   // Realtime Status
   const [isRealtimeActive, setIsRealtimeActive] = useState(false);
   const institutionIdRef = useRef<string | null>(null);
+
+  // Handle Photo Pick and Compression (data URL for instant display)
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select a valid image file (PNG, JPG, WebP).");
+      return;
+    }
+
+    setUploadingImage(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      // Compress with canvas if image is large
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 1200;
+        const MAX_HEIGHT = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          setSelectedImage(compressedDataUrl);
+        } else {
+          setSelectedImage(result);
+        }
+        setUploadingImage(false);
+      };
+      img.onerror = () => {
+        setSelectedImage(result);
+        setUploadingImage(false);
+      };
+      img.src = result;
+    };
+    reader.onerror = () => {
+      alert("Failed to read image file.");
+      setUploadingImage(false);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const fetchFeed = useCallback(async (selectedFilter: string, silent = false) => {
     try {
@@ -209,7 +274,7 @@ export default function FeedSection({
   // Post Submission
   async function handleCreatePost(e: React.FormEvent) {
     e.preventDefault();
-    if (!newPostText.trim()) return;
+    if (!newPostText.trim() && !selectedImage) return;
 
     try {
       setPosting(true);
@@ -217,12 +282,17 @@ export default function FeedSection({
       const res = await fetch("/api/feed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: newPostText, type: "POST" }),
+        body: JSON.stringify({
+          text: newPostText,
+          imageUrl: selectedImage,
+          type: "POST",
+        }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to post");
 
       setNewPostText("");
+      setSelectedImage(null);
       setSuccessMessage("Update shared live with your alumni network!");
       await fetchFeed(filter, true);
       setTimeout(() => setSuccessMessage(null), 4000);
@@ -427,11 +497,47 @@ export default function FeedSection({
           </form>
         </div>
 
+        {/* Selected Image Thumbnail Preview */}
+        {selectedImage && (
+          <div className="relative inline-block mt-2 rounded-2xl overflow-hidden border border-slate-200 shadow-xs max-w-xs">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={selectedImage}
+              alt="Upload preview"
+              className="max-h-48 w-auto object-cover rounded-2xl"
+            />
+            <button
+              type="button"
+              onClick={() => setSelectedImage(null)}
+              className="absolute top-2 right-2 bg-slate-900/80 hover:bg-slate-950 text-white rounded-full p-1 transition shadow-md"
+              title="Remove photo"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Hidden File Input for Image Upload */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handlePhotoSelect}
+          accept="image/*"
+          className="hidden"
+        />
+
         <div className="flex items-center justify-between pt-2 border-t border-slate-100">
           <div className="flex items-center gap-2 text-slate-400 text-xs">
-            <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer p-1 rounded-lg">
-              <ImageIcon className="w-4 h-4 text-emerald-500" /> Photo
-            </span>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1 hover:text-blue-600 cursor-pointer p-1 rounded-lg transition"
+            >
+              <ImageIcon className="w-4 h-4 text-emerald-500" />
+              <span className="font-medium text-slate-600 hover:text-blue-600">
+                {uploadingImage ? "Processing..." : selectedImage ? "Change Photo" : "Photo"}
+              </span>
+            </button>
             <Link
               href="/reunions"
               className="flex items-center gap-1 hover:text-amber-600 cursor-pointer p-1 rounded-lg"
@@ -456,7 +562,7 @@ export default function FeedSection({
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleCreatePost}
-            disabled={posting || !newPostText.trim()}
+            disabled={posting || (!newPostText.trim() && !selectedImage)}
             className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-sm"
           >
             <Send className="w-3.5 h-3.5" />
@@ -530,9 +636,23 @@ export default function FeedSection({
                 </div>
 
                 {/* Post Content */}
-                <p className="text-xs text-slate-800 leading-relaxed whitespace-pre-line">
-                  {item.metadata.text}
-                </p>
+                {item.metadata.text && (
+                  <p className="text-xs text-slate-800 leading-relaxed whitespace-pre-line">
+                    {item.metadata.text}
+                  </p>
+                )}
+
+                {/* Uploaded Post Photo */}
+                {item.metadata.imageUrl && (
+                  <div className="rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-50 max-h-[460px] flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.metadata.imageUrl}
+                      alt="Post visual"
+                      className="w-full h-auto max-h-[460px] object-cover rounded-2xl"
+                    />
+                  </div>
+                )}
 
                 {/* Rich Metadata Cards */}
                 {item.type === "EVENT_CREATED" && (

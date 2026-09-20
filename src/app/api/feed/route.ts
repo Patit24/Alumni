@@ -133,10 +133,10 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { text, type = "POST" } = body;
+    const { text, imageUrl, type = "POST" } = body;
 
-    if (!text || !text.trim()) {
-      return NextResponse.json({ error: "Post text is required" }, { status: 400 });
+    if ((!text || !text.trim()) && !imageUrl) {
+      return NextResponse.json({ error: "Post text or photo is required" }, { status: 400 });
     }
 
     const feedItem = await db.feedItem.create({
@@ -145,7 +145,8 @@ export async function POST(req: Request) {
         actorId: user.id,
         type,
         metadata: JSON.stringify({
-          text: text.trim(),
+          text: (text || "").trim(),
+          imageUrl: imageUrl || null,
           badge: type === "POST" ? "Alumni Update" : type,
         }),
       },
