@@ -47,6 +47,16 @@ export async function POST(req: Request) {
     // Dispatch SMS via carrier gateway
     const smsResult = await sendOtpSms(formatted10Digit, generatedOtp);
 
+    if (!smsResult.success) {
+      return NextResponse.json(
+        {
+          error: smsResult.error || "SMS carrier rejected the request. Please check Fast2SMS account status.",
+          provider: smsResult.provider,
+        },
+        { status: 400 }
+      );
+    }
+
     // Return production response without leaking OTP code
     return NextResponse.json({
       success: true,
