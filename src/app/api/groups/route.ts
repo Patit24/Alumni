@@ -27,6 +27,15 @@ export async function GET(req: Request) {
       where.scope = "INSTITUTION";
     }
 
+    // Secret groups are completely hidden from non-members; only members can track/see them
+    where.OR = [
+      { isSecretMode: false },
+      {
+        isSecretMode: true,
+        members: { some: { userId: user.id } },
+      },
+    ];
+
     const groups = await db.group.findMany({
       where,
       include: {
@@ -50,6 +59,8 @@ export async function GET(req: Request) {
       description: g.description,
       scope: g.scope,
       batchYear: g.batchYear,
+      isSecretMode: g.isSecretMode,
+      allowScreenshot: g.allowScreenshot,
       memberCount: g._count.members,
       messageCount: g._count.messages,
       isMember: g.members.length > 0,

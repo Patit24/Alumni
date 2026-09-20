@@ -43,8 +43,15 @@ export async function GET(
       return NextResponse.json({ error: "Group not found" }, { status: 404 });
     }
 
-    // Auto-join if same institution or batch
     const isMember = group.members.some((m) => m.userId === user.id);
+    const isAdmin = group.createdById === user.id || group.members.some((m) => m.userId === user.id && m.role === "ADMIN");
+
+    // If Secret Mode is enabled, non-members cannot see or auto-join
+    if (group.isSecretMode && !isMember) {
+      return NextResponse.json({ error: "This is a private secret conversation. Only invited members can view." }, { status: 403 });
+    }
+
+    // Auto-join only if standard public group and not secret
     if (!isMember) {
       await db.groupMember.create({
         data: {
@@ -55,8 +62,24 @@ export async function GET(
       });
     }
 
+    // 2-Day Auto-Vanish logic for Secret Conversation Mode
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const messageWhere: any = { groupId };
+    if (group.isSecretMode) {
+      const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+      messageWhere.createdAt = { gte: twoDaysAgo };
+
+      // Asynchronously purge expired older messages from the database
+      db.chatMessage.deleteMany({
+        where: {
+          groupId,
+          createdAt: { lt: twoDaysAgo },
+        },
+      }).catch((e) => console.error("Purge expired secret messages error:", e));
+    }
+
     const messages = await db.chatMessage.findMany({
-      where: { groupId },
+      where: messageWhere,
       include: {
         sender: {
           select: {
@@ -90,6 +113,7 @@ export async function GET(
       currentUser: {
         id: user.id,
         name: user.name,
+        isAdmin,
       },
       group: {
         id: group.id,
@@ -100,6 +124,9 @@ export async function GET(
         institutionName: group.institution.name,
         memberCount: group.members.length,
         members: group.members.map((m) => m.user),
+        isSecretMode: group.isSecretMode,
+        allowScreenshot: group.allowScreenshot,
+        createdById: group.createdById,
       },
       messages: parsedMessages,
     });

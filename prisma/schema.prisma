@@ -288,6 +288,10 @@ model Group {
   createdById   String
   createdBy     User          @relation("CreatedGroups", fields: [createdById], references: [id], onDelete: Cascade)
 
+  // Secret Conversation & Privacy Controls
+  isSecretMode    Boolean       @default(false)   // Only group members can view; 2-day auto vanish
+  allowScreenshot Boolean       @default(false)   // Admin controls whether members can take screenshots
+
   members       GroupMember[]
   messages      ChatMessage[]
 

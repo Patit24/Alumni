@@ -23,6 +23,14 @@ import {
   CheckCircle2,
   ExternalLink,
   Plus,
+  ShieldAlert,
+  Lock,
+  CameraOff,
+  Camera,
+  AlertTriangle,
+  Clock,
+  EyeOff,
+  Sliders,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
@@ -66,6 +74,7 @@ interface GroupData {
   currentUser: {
     id: string;
     name: string;
+    isAdmin: boolean;
   };
   group: {
     id: string;
@@ -76,6 +85,9 @@ interface GroupData {
     institutionName: string;
     memberCount: number;
     members: Member[];
+    isSecretMode: boolean;
+    allowScreenshot: boolean;
+    createdById: string;
   };
   messages: Message[];
 }
@@ -117,7 +129,6 @@ export default function GroupChatRoomPage({
   const [currentArtist, setCurrentArtist] = useState<string>("Alumni Chill Radio");
   const [audioProgress, setAudioProgress] = useState(0);
   const [showMusicDock, setShowMusicDock] = useState(true);
-  const [showMembers, setShowMembers] = useState(false);
 
   // Modal States
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -142,6 +153,15 @@ export default function GroupChatRoomPage({
   const [showStreamingModal, setShowStreamingModal] = useState(false);
   const [streamService, setStreamService] = useState<"SPOTIFY" | "GAANA" | "APPLE_MUSIC">("SPOTIFY");
   const [streamUrl, setStreamUrl] = useState("");
+
+  // Privacy & Anti-Screenshot States
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [updatingSecurity, setUpdatingSecurity] = useState(false);
+  const [isPrivacyShieldActive, setIsPrivacyShieldActive] = useState(false);
+  const [liveScreenshotAlert, setLiveScreenshotAlert] = useState<{
+    culpritName: string;
+    timestamp: string;
+  } | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -178,7 +198,7 @@ export default function GroupChatRoomPage({
     }
     load();
 
-    // Supabase Realtime Subscription for live instant messages
+    // Supabase Realtime Subscription for live instant messages & screenshot alerts
     const supabase = createClient();
     const channel = supabase.channel(`campus-group:${groupId}`, {
       config: { broadcast: { self: true } },
@@ -196,9 +216,30 @@ export default function GroupChatRoomPage({
           };
         });
       })
+      .on("broadcast", { event: "screenshot-alert" }, (event) => {
+        const payload = event.payload as { culpritName: string; timestamp: string };
+        setLiveScreenshotAlert(payload);
+        setTimeout(() => {
+          setLiveScreenshotAlert(null);
+        }, 8000);
+      })
+      .on("broadcast", { event: "group-security-update" }, (event) => {
+        const payload = event.payload as { isSecretMode: boolean; allowScreenshot: boolean };
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            group: {
+              ...prev.group,
+              isSecretMode: payload.isSecretMode,
+              allowScreenshot: payload.allowScreenshot,
+            },
+          };
+        });
+      })
       .subscribe();
 
-    // Background interval poll (every 4s) to ensure full synchronization
+    // Background interval poll (every 4s) to ensure full synchronization and 2-day vanishing purge
     const interval = setInterval(() => {
       fetchRoomData();
     }, 4000);
@@ -209,6 +250,62 @@ export default function GroupChatRoomPage({
       supabase.removeChannel(channel);
     };
   }, [groupId, fetchRoomData]);
+
+  // Anti-Screenshot & Screen Capture Protection Listeners
+  useEffect(() => {
+    if (!data) return;
+    const { group, currentUser } = data;
+
+    // Report screenshot attempt to server and group
+    const reportScreenshotAttempt = async () => {
+      try {
+        await fetch(`/api/groups/${groupId}/security`, {
+          method: "POST",
+        });
+      } catch (err) {
+        console.error("Failed to report screenshot:", err);
+      }
+    };
+
+    // Keyboard listener for screenshot shortcuts (PrintScreen, Cmd+Shift+3/4/5, Snipping tool)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isPrintScreen = e.key === "PrintScreen" || e.code === "PrintScreen";
+      const isMacScreenshot = e.metaKey && e.shiftKey && ["3", "4", "5", "$"].includes(e.key);
+      const isWindowsSnip = e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "s";
+
+      if (isPrintScreen || isMacScreenshot || isWindowsSnip) {
+        if (!group.allowScreenshot) {
+          // Trigger instant blackout shield to protect chat content
+          setIsPrivacyShieldActive(true);
+          setTimeout(() => setIsPrivacyShieldActive(false), 2500);
+        }
+
+        // Notify entire group of screenshot action
+        reportScreenshotAttempt();
+      }
+    };
+
+    // On blur / focus loss during secret conversation, blur sensitive chat to avoid window screen recorders
+    const handleWindowBlur = () => {
+      if (group.isSecretMode && !group.allowScreenshot) {
+        setIsPrivacyShieldActive(true);
+      }
+    };
+
+    const handleWindowFocus = () => {
+      setIsPrivacyShieldActive(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [data, groupId]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -310,12 +407,42 @@ export default function GroupChatRoomPage({
     }
   }
 
+  // Admin toggles security settings (Secret Mode or Screenshot Permission)
+  async function handleUpdateSecurity(setting: { isSecretMode?: boolean; allowScreenshot?: boolean }) {
+    try {
+      setUpdatingSecurity(true);
+      const res = await fetch(`/api/groups/${groupId}/security`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(setting),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to update security");
+
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          group: {
+            ...prev.group,
+            ...json.group,
+          },
+        };
+      });
+      await fetchRoomData();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Security update error");
+    } finally {
+      setUpdatingSecurity(false);
+    }
+  }
+
   // Share Spotify / Gaana / Apple Music link
   async function handleShareStreamingTrack() {
     if (!streamUrl.trim()) return;
 
     let title = "Shared Track";
-    let artist = streamService === "SPOTIFY" ? "Spotify Music" : streamService === "GAANA" ? "Gaana.com" : "Apple Music";
+    const artist = streamService === "SPOTIFY" ? "Spotify Music" : streamService === "GAANA" ? "Gaana.com" : "Apple Music";
 
     if (streamService === "SPOTIFY") {
       title = "Spotify Track / Playlist";
@@ -466,13 +593,21 @@ export default function GroupChatRoomPage({
   if (!data) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <p className="text-xs text-slate-500">Group not found.</p>
+        <p className="text-xs text-slate-500">Group not found or restricted by Secret Mode.</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-between">
+    <div
+      className={`min-h-screen bg-slate-100 flex flex-col justify-between select-none ${
+        data.group.isSecretMode && !data.group.allowScreenshot ? "select-none" : ""
+      }`}
+      style={{
+        WebkitTouchCallout: "none",
+        userSelect: "none",
+      }}
+    >
       {/* Hidden audio file picker for mobile & PC */}
       <input
         type="file"
@@ -481,6 +616,47 @@ export default function GroupChatRoomPage({
         accept="audio/*"
         className="hidden"
       />
+
+      {/* Instant Privacy Blackout Shield (When screen capture is attempted or window loses focus) */}
+      <AnimatePresence>
+        {isPrivacyShieldActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center p-6 text-center text-white"
+          >
+            <div className="h-16 w-16 rounded-3xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mb-4 shadow-lg">
+              <CameraOff className="w-8 h-8" />
+            </div>
+            <h2 className="text-lg font-bold">Screenshot Protection Active</h2>
+            <p className="text-xs text-slate-400 mt-1 max-w-sm">
+              The group admin has restricted screenshots for this room. Chat content is shielded to protect member privacy.
+            </p>
+            <button
+              onClick={() => setIsPrivacyShieldActive(false)}
+              className="mt-6 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl transition border border-slate-700"
+            >
+              Resume Viewing
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Live Screenshot Alert Toast */}
+      <AnimatePresence>
+        {liveScreenshotAlert && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-40 bg-rose-600 text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 border border-rose-500"
+          >
+            <AlertTriangle className="w-4 h-4 text-white shrink-0 animate-bounce" />
+            <span>⚠️ {liveScreenshotAlert.culpritName} took a screenshot of this conversation!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Group Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 py-3 shadow-xs">
@@ -498,15 +674,22 @@ export default function GroupChatRoomPage({
             </div>
 
             <div>
-              <h1 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                {data.group.name}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h1 className="text-sm font-bold text-slate-900">{data.group.name}</h1>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
                   {data.group.scope === "SAME_BATCH"
                     ? `Class of ${data.group.batchYear}`
                     : "University Wide"}
                 </span>
-              </h1>
-              <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+
+                {data.group.isSecretMode && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-amber-300 flex items-center gap-1 border border-slate-700">
+                    <Lock className="w-2.5 h-2.5" /> Secret • 48h Vanish
+                  </span>
+                )}
+              </div>
+
+              <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                 <Users className="w-3.5 h-3.5 text-slate-400" />
                 <span>{data.group.memberCount} members</span>
                 <span>•</span>
@@ -516,6 +699,22 @@ export default function GroupChatRoomPage({
           </div>
 
           <div className="flex items-center gap-1.5">
+            {/* Admin Security / Privacy Settings Button */}
+            {data.currentUser.isAdmin && (
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowSecurityModal(true)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
+                  data.group.isSecretMode
+                    ? "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Security & Privacy</span>
+              </motion.button>
+            )}
+
             {/* Add Member Button */}
             <motion.button
               whileTap={{ scale: 0.95 }}
@@ -540,6 +739,21 @@ export default function GroupChatRoomPage({
             </button>
           </div>
         </div>
+
+        {/* Secret Mode Banner */}
+        {data.group.isSecretMode && (
+          <div className="max-w-4xl mx-auto mt-2 bg-slate-900 text-amber-300 px-3 py-1.5 rounded-xl text-[11px] font-medium flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>
+                <strong>Secret Conversation Active:</strong> Older messages vanish after 48 hours. Only group members can view.
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400">
+              Screenshots: {data.group.allowScreenshot ? "Permitted" : "Blocked & Audited"}
+            </span>
+          </div>
+        )}
       </header>
 
       {/* In-App Mobile & Streaming Music Player Bar */}
@@ -616,7 +830,7 @@ export default function GroupChatRoomPage({
         </div>
       )}
 
-      {/* Main Chat Stream */}
+      {/* Main Chat Stream with DRM protection */}
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-4xl w-full mx-auto space-y-3">
         {data.messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 space-y-2">
@@ -628,9 +842,16 @@ export default function GroupChatRoomPage({
             const isMe = msg.sender.id === data.currentUser.id;
 
             if (msg.type === "SYSTEM") {
+              const isAlert = msg.content.includes("SCREENSHOT ALERT");
               return (
                 <div key={msg.id} className="text-center my-3">
-                  <span className="text-[11px] bg-slate-200/80 text-slate-600 px-3 py-1 rounded-full font-medium shadow-2xs">
+                  <span
+                    className={`text-[11px] px-3 py-1 rounded-full font-medium shadow-2xs ${
+                      isAlert
+                        ? "bg-rose-100 text-rose-700 border border-rose-200 font-bold"
+                        : "bg-slate-200/80 text-slate-600"
+                    }`}
+                  >
                     {msg.content}
                   </span>
                 </div>
@@ -922,7 +1143,112 @@ export default function GroupChatRoomPage({
         )}
       </AnimatePresence>
 
-      {/* 2. Post Job In Group Modal */}
+      {/* 2. Admin Security & Privacy Settings Modal */}
+      <AnimatePresence>
+        {showSecurityModal && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-md rounded-3xl border border-slate-200 p-6 shadow-xl space-y-5"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-9 w-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                    <Sliders className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Group Privacy & Security</h3>
+                    <p className="text-[11px] text-slate-500">Admin Controls for {data.group.name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSecurityModal(false)}
+                  className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Secret Conversation Switch */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-slate-700" />
+                      <span className="text-xs font-bold text-slate-900">Secret Conversation Mode</span>
+                    </div>
+                    <button
+                      disabled={updatingSecurity}
+                      onClick={() =>
+                        handleUpdateSecurity({ isSecretMode: !data.group.isSecretMode })
+                      }
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        data.group.isSecretMode ? "bg-amber-500" : "bg-slate-300"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          data.group.isSecretMode ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    When enabled:
+                    <br />
+                    • <strong>2-Day Auto Vanishing:</strong> Chats older than 48 hours are automatically purged.
+                    <br />
+                    • <strong>Strict Privacy:</strong> Only members inside the group can view or track this conversation.
+                  </p>
+                </div>
+
+                {/* Screenshot Permission Switch */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Camera className="w-4 h-4 text-slate-700" />
+                      <span className="text-xs font-bold text-slate-900">Allow Screenshots</span>
+                    </div>
+                    <button
+                      disabled={updatingSecurity}
+                      onClick={() =>
+                        handleUpdateSecurity({ allowScreenshot: !data.group.allowScreenshot })
+                      }
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        data.group.allowScreenshot ? "bg-emerald-500" : "bg-slate-300"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          data.group.allowScreenshot ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    When <strong>OFF</strong> (default):
+                    <br />
+                    • Screen capture shortcuts are shielded with blackout overlays.
+                    <br />
+                    • If any member takes/attempts a screenshot, an audit alert will immediately announce <strong>who took the screenshot</strong> to the entire group.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowSecurityModal(false)}
+                className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition"
+              >
+                Done
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 3. Post Job In Group Modal */}
       <AnimatePresence>
         {showShareJobModal && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -994,7 +1320,7 @@ export default function GroupChatRoomPage({
         )}
       </AnimatePresence>
 
-      {/* 3. Offer Mentorship In Group Modal */}
+      {/* 4. Offer Mentorship In Group Modal */}
       <AnimatePresence>
         {showShareMentorshipModal && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -1046,7 +1372,7 @@ export default function GroupChatRoomPage({
         )}
       </AnimatePresence>
 
-      {/* 4. Spotify / Gaana / Apple Music Player Modal */}
+      {/* 5. Spotify / Gaana / Apple Music Player Modal */}
       <AnimatePresence>
         {showStreamingModal && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
