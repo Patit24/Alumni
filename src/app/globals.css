@@ -65,3 +65,37 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Hardened Anti-Screenshot & Screen Capture Protection */
+.screenshot-restricted {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* Obfuscate screen capture when active */
+.screenshot-shield-active {
+  filter: blur(28px) brightness(0.2) contrast(1.5) !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+@media print {
+  body.screenshot-blocked,
+  body.screenshot-blocked * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body.screenshot-blocked::before {
+    content: "Screen capture and printing are protected and prohibited in this secret alumni conversation.";
+    display: block !important;
+    font-size: 24px !important;
+    font-weight: bold !important;
+    color: red !important;
+    text-align: center !important;
+    padding: 100px 20px !important;
+  }
+}

@@ -267,17 +267,28 @@ export default function GroupChatRoomPage({
       }
     };
 
-    // Keyboard listener for screenshot shortcuts (PrintScreen, Cmd+Shift+3/4/5, Snipping tool)
+    // Keyboard listener for screenshot shortcuts (PrintScreen, Cmd+Shift+3/4/5, Snipping tool, Windows key combos)
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isPrintScreen = e.key === "PrintScreen" || e.code === "PrintScreen";
-      const isMacScreenshot = e.metaKey && e.shiftKey && ["3", "4", "5", "$"].includes(e.key);
-      const isWindowsSnip = e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "s";
+      const isPrintScreen =
+        e.key === "PrintScreen" ||
+        e.code === "PrintScreen" ||
+        e.key === "Snapshot";
+      const isMacScreenshot =
+        (e.metaKey || e.metaKey === true) &&
+        (e.shiftKey || e.shiftKey === true) &&
+        ["3", "4", "5", "6", "$", "%", "^"].includes(e.key);
+      const isWindowsSnip =
+        (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s";
 
       if (isPrintScreen || isMacScreenshot || isWindowsSnip) {
         if (!group.allowScreenshot) {
-          // Trigger instant blackout shield to protect chat content
+          // Trigger instant blackout shield immediately to protect chat content
           setIsPrivacyShieldActive(true);
-          setTimeout(() => setIsPrivacyShieldActive(false), 2500);
+          // Overwrite clipboard to prevent screenshot paste
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText("Screenshots are protected in this Alumni conversation.").catch(() => {});
+          }
+          setTimeout(() => setIsPrivacyShieldActive(false), 3000);
         }
 
         // Notify entire group of screenshot action
@@ -285,24 +296,38 @@ export default function GroupChatRoomPage({
       }
     };
 
-    // On blur / focus loss during secret conversation, blur sensitive chat to avoid window screen recorders
-    const handleWindowBlur = () => {
-      if (group.isSecretMode && !group.allowScreenshot) {
+    // On blur / visibility change / snippet tool trigger, shield sensitive chat
+    const handleVisibilityOrBlur = () => {
+      if (!group.allowScreenshot) {
         setIsPrivacyShieldActive(true);
       }
     };
 
     const handleWindowFocus = () => {
-      setIsPrivacyShieldActive(false);
+      // Delay unshield slightly to ensure snapshot tool has finished
+      setTimeout(() => {
+        setIsPrivacyShieldActive(false);
+      }, 500);
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keyup", handleKeyDown, true);
+    window.addEventListener("blur", handleVisibilityOrBlur);
+    document.addEventListener("visibilitychange", handleVisibilityOrBlur);
     window.addEventListener("focus", handleWindowFocus);
 
+    if (!group.allowScreenshot) {
+      document.body.classList.add("screenshot-blocked");
+    } else {
+      document.body.classList.remove("screenshot-blocked");
+    }
+
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("blur", handleWindowBlur);
+      document.body.classList.remove("screenshot-blocked");
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyDown, true);
+      window.removeEventListener("blur", handleVisibilityOrBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityOrBlur);
       window.removeEventListener("focus", handleWindowFocus);
     };
   }, [data, groupId]);
@@ -601,8 +626,8 @@ export default function GroupChatRoomPage({
   return (
     <div
       className={`min-h-screen bg-slate-100 flex flex-col justify-between select-none ${
-        data.group.isSecretMode && !data.group.allowScreenshot ? "select-none" : ""
-      }`}
+        !data.group.allowScreenshot ? "select-none screenshot-restricted" : ""
+      } ${isPrivacyShieldActive ? "screenshot-shield-active" : ""}`}
       style={{
         WebkitTouchCallout: "none",
         userSelect: "none",
