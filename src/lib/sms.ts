@@ -26,6 +26,7 @@ export async function sendOtpSms(phone: string, otpCode: string): Promise<SendSm
   // 1. FAST2SMS (India DLT / Quick OTP Route)
   if (process.env.FAST2SMS_API_KEY) {
     try {
+      // Primary: Fast2SMS Quick OTP route
       const res = await fetch("https://www.fast2sms.com/dev/bulkV2", {
         method: "POST",
         headers: {
@@ -41,9 +42,33 @@ export async function sendOtpSms(phone: string, otpCode: string): Promise<SendSm
 
       const data = await res.json();
       if (data.return) {
+        console.log(`[FAST2SMS] OTP sent successfully to +91 ${formatted10Digit}: req_id=${data.request_id}`);
         return { success: true, provider: "fast2sms", messageId: data.request_id };
       }
-      console.warn("Fast2SMS gateway returned notice:", data);
+
+      // Secondary fallback: Fast2SMS Quick transactional route
+      if (!data.return) {
+        console.warn("Fast2SMS OTP route notice, attempting quick transactional route:", data);
+        const qRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+          method: "POST",
+          headers: {
+            authorization: process.env.FAST2SMS_API_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            route: "q",
+            message: `Your Alumni verification code is ${otpCode}. Valid for 10 minutes.`,
+            language: "english",
+            numbers: formatted10Digit,
+          }),
+        });
+        const qData = await qRes.json();
+        if (qData.return) {
+          console.log(`[FAST2SMS] Sent via quick transactional route to +91 ${formatted10Digit}`);
+          return { success: true, provider: "fast2sms-q", messageId: qData.request_id };
+        }
+        console.warn("Fast2SMS fallback notice:", qData);
+      }
     } catch (err) {
       console.error("Fast2SMS delivery error:", err);
     }
