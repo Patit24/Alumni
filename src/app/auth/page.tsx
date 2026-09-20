@@ -8,8 +8,7 @@ import {
   Loader2,
   Sparkles,
   Search,
-  CheckCircle2,
-  KeyRound,
+  ShieldCheck,
 } from "lucide-react";
 
 interface Institution {
@@ -27,34 +26,44 @@ export default function AuthPage() {
   const [step, setStep] = useState<"phone" | "otp" | "onboarding">("phone");
 
   // Form fields
-  const [phone, setPhone] = useState("9868543657");
-  const [otp, setOtp] = useState("123456");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
   const [signupToken, setSignupToken] = useState("");
   const [isExistingUser, setIsExistingUser] = useState(false);
-  const [devCode, setDevCode] = useState<string>("123456");
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   // Onboarding fields
-  const [name, setName] = useState("Patitpaban Roy");
+  const [name, setName] = useState("");
   const [selectedInstId, setSelectedInstId] = useState("");
-  const [instSearchQuery, setInstSearchQuery] = useState("Brainware University");
+  const [instSearchQuery, setInstSearchQuery] = useState("");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [isCustomInst, setIsCustomInst] = useState(false);
-  const [customInstName, setCustomInstName] = useState("Brainware University");
+  const [customInstName, setCustomInstName] = useState("");
   const [customInstType, setCustomInstType] = useState("COLLEGE");
-  const [batchYear, setBatchYear] = useState("2026");
-  const [departmentName, setDepartmentName] = useState("MCA");
-  const [currentCompany, setCurrentCompany] = useState("PPR Global");
-  const [currentRole, setCurrentRole] = useState("Founder");
-  const [city, setCity] = useState("BASIRHAT");
+  const [batchYear, setBatchYear] = useState(new Date().getFullYear().toString());
+  const [departmentName, setDepartmentName] = useState("");
+  const [currentCompany, setCurrentCompany] = useState("");
+  const [currentRole, setCurrentRole] = useState("");
+  const [city, setCity] = useState("");
 
-  // Loading & error states
+  // Loading, success & error states
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
-  // Fetch institutions
+  // Resend OTP countdown timer
   useEffect(() => {
-    if (step !== "onboarding") return;
+    if (resendCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
+
+  // Fetch institutions for auto-complete
+  useEffect(() => {
+    if (step !== "onboarding" || !instSearchQuery.trim()) return;
     const timer = setTimeout(async () => {
       setSearchLoading(true);
       try {
@@ -62,7 +71,6 @@ export default function AuthPage() {
         const data = await res.json();
         if (data.institutions) {
           setInstitutions(data.institutions);
-          // auto-match institution if name matches
           const match = data.institutions.find(
             (i: Institution) => i.name.toLowerCase() === instSearchQuery.toLowerCase()
           );
@@ -77,11 +85,14 @@ export default function AuthPage() {
     return () => clearTimeout(timer);
   }, [instSearchQuery, step]);
 
-  // Step 1: Send OTP (Demo Mode)
+  // Step 1: Send Production OTP via SMS
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
-    if (!phone || phone.trim().length < 10) {
+    setInfoMessage(null);
+
+    const cleanPhone = phone.replace(/[^0-9]/g, "");
+    if (cleanPhone.length < 10) {
       setError("Please enter a valid 10-digit mobile number");
       return;
     }
@@ -91,35 +102,44 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone: cleanPhone }),
       });
       const data = await res.json();
 
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to dispatch verification OTP");
+      }
+
       setIsExistingUser(data?.isExistingUser || false);
-      setDevCode("123456");
-      setOtp("123456");
+      setOtp("");
       setStep("otp");
-    } catch {
-      setDevCode("123456");
-      setOtp("123456");
-      setStep("otp");
+      setResendCooldown(30); // 30s resend timer
+      setInfoMessage(`Verification code sent to +91 ${cleanPhone.slice(-10)}`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to send verification code. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Step 2: Verify OTP
+  // Step 2: Verify Production OTP
   const handleVerifyOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
-    const codeToVerify = otp || "123456";
+    setInfoMessage(null);
+
+    const trimmedOtp = otp.trim();
+    if (trimmedOtp.length !== 6) {
+      setError("Please enter the complete 6-digit OTP code");
+      return;
+    }
 
     setLoading(true);
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, code: codeToVerify }),
+        body: JSON.stringify({ phone, code: trimmedOtp }),
       });
       const data = await res.json();
 
@@ -128,7 +148,7 @@ export default function AuthPage() {
       }
 
       if (!data.isNewUser) {
-        // Returning user - session cookie is set!
+        // Returning user - session established
         router.push("/");
         router.refresh();
       } else {
@@ -137,7 +157,7 @@ export default function AuthPage() {
         setStep("onboarding");
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Verification failed");
+      setError(err instanceof Error ? err.message : "Invalid or expired OTP code.");
     } finally {
       setLoading(false);
     }
@@ -148,7 +168,11 @@ export default function AuthPage() {
     e.preventDefault();
     setError(null);
 
-    const trimmedName = name.trim() || "Alumni Member";
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Please enter your full name");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -163,8 +187,8 @@ export default function AuthPage() {
           institutionName: isCustomInst ? customInstName : instSearchQuery,
           newInstitutionName: isCustomInst ? customInstName : null,
           newInstitutionType: isCustomInst ? customInstType : null,
-          batchYear: parseInt(batchYear, 10) || 2026,
-          departmentName: departmentName.trim() || "MCA",
+          batchYear: parseInt(batchYear, 10) || new Date().getFullYear(),
+          departmentName: departmentName.trim() || null,
           currentCompany: currentCompany.trim() || null,
           currentRole: currentRole.trim() || null,
           city: city.trim() || null,
@@ -176,7 +200,7 @@ export default function AuthPage() {
         throw new Error(data.error || "Signup failed");
       }
 
-      // Success! Full redirect to the dashboard
+      // Success! Redirect to dashboard
       router.push("/");
       router.refresh();
     } catch (err: unknown) {
@@ -202,23 +226,21 @@ export default function AuthPage() {
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">Alumni Network</h1>
             <p className="text-xs text-slate-500">
-              {step === "phone" && "Sign in or create your alumni account"}
-              {step === "otp" && "Verify your phone number"}
+              {step === "phone" && "Sign in or register your alumni account"}
+              {step === "otp" && "SMS Verification"}
               {step === "onboarding" && "Complete your alumni profile"}
             </p>
           </div>
         </div>
 
-        {/* Demo Mode Notice */}
-        <div className="mb-4 p-3 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-start gap-2.5">
-          <KeyRound className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-          <div className="text-xs text-blue-900">
-            <span className="font-bold">Demo OTP Mode:</span> Real SMS verification will be integrated later. Demo OTP is{" "}
-            <code className="bg-blue-100 px-1.5 py-0.5 rounded font-mono font-bold text-blue-800">123456</code>.
+        {/* Info or Error Alerts */}
+        {infoMessage && (
+          <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs font-medium flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{infoMessage}</span>
           </div>
-        </div>
+        )}
 
-        {/* Error Alert */}
         {error && (
           <div className="mb-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-medium leading-relaxed">
             {error}
@@ -240,14 +262,15 @@ export default function AuthPage() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="9868543657"
+                  placeholder="9876543210"
+                  maxLength={10}
                   autoFocus
                   required
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-3 pl-14 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100"
                 />
               </div>
               <p className="text-[11px] text-slate-400 mt-1.5">
-                Enter any 10-digit number. Use Demo OTP <code className="font-semibold text-slate-600">123456</code> on next step.
+                We will send a 6-digit verification code to this mobile number.
               </p>
             </div>
 
@@ -260,7 +283,7 @@ export default function AuthPage() {
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <>
-                  Continue with Demo OTP <ArrowRight className="w-4 h-4" />
+                  Send Verification Code <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
@@ -273,12 +296,14 @@ export default function AuthPage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  {isExistingUser ? "Welcome back • Enter OTP" : "Enter 6-digit Demo OTP"}
+                  {isExistingUser ? "Welcome back • Enter OTP" : "Enter 6-digit SMS OTP"}
                 </label>
                 <button
                   type="button"
                   onClick={() => {
                     setStep("phone");
+                    setError(null);
+                    setInfoMessage(null);
                   }}
                   className="text-xs text-blue-600 hover:underline"
                 >
@@ -288,35 +313,33 @@ export default function AuthPage() {
               <input
                 type="text"
                 value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="123456"
+                onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                placeholder="• • • • • •"
                 maxLength={6}
                 autoFocus
                 required
-                className="w-full text-center tracking-widest text-lg font-bold rounded-xl border border-slate-200 bg-slate-50/50 py-3 px-4 text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100 font-mono"
+                className="w-full text-center tracking-widest text-xl font-bold rounded-xl border border-slate-200 bg-slate-50/50 py-3.5 px-4 text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100 font-mono"
               />
-            </div>
-
-            {/* Demo bypass helper */}
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-between">
-              <div className="text-xs text-amber-800">
-                <span className="font-semibold">Demo OTP:</span>{" "}
-                <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono font-bold">
-                  {devCode}
-                </code>
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                <span>Didn&apos;t receive the code?</span>
+                {resendCooldown > 0 ? (
+                  <span className="text-slate-400 font-medium">Resend in {resendCooldown}s</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleSendOtp()}
+                    disabled={loading}
+                    className="font-semibold text-blue-600 hover:underline disabled:opacity-50"
+                  >
+                    Resend OTP
+                  </button>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => setOtp("123456")}
-                className="text-[11px] font-semibold text-amber-900 bg-amber-200/70 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition"
-              >
-                Auto-fill
-              </button>
             </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || otp.length < 6}
               className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
             >
               {loading ? (
@@ -336,7 +359,7 @@ export default function AuthPage() {
             <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
               <p className="text-xs text-blue-800">
-                Alumni profile for <strong>+91 {phone}</strong>
+                Verified mobile: <strong>+91 {phone}</strong>
               </p>
             </div>
 
@@ -348,9 +371,7 @@ export default function AuthPage() {
               <input
                 type="text"
                 value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                }}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Patitpaban Roy"
                 required
                 className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white"
@@ -403,9 +424,7 @@ export default function AuthPage() {
                     <input
                       type="text"
                       value={instSearchQuery}
-                      onChange={(e) => {
-                        setInstSearchQuery(e.target.value);
-                      }}
+                      onChange={(e) => setInstSearchQuery(e.target.value)}
                       placeholder="Search college or school..."
                       className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 pl-9 pr-3.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white"
                     />
@@ -433,9 +452,9 @@ export default function AuthPage() {
                           }`}
                         >
                           <span className="truncate">{inst.name}</span>
-                          {(selectedInstId === inst.id || instSearchQuery.toLowerCase() === inst.name.toLowerCase()) && (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          )}
+                          <span className="text-[10px] text-slate-400 shrink-0 ml-2">
+                            {inst.type === "COLLEGE" ? "College" : "School"}
+                          </span>
                         </button>
                       ))
                     )}
@@ -444,7 +463,7 @@ export default function AuthPage() {
               )}
             </div>
 
-            {/* Batch & Department */}
+            {/* Batch Year & Department */}
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">

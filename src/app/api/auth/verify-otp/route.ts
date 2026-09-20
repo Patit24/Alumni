@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { createSessionToken, AUTH_COOKIE } from "@/lib/auth";
 import { SignJWT } from "jose";
 
+export const dynamic = "force-dynamic";
+
 const JWT_SECRET = new TextEncoder().encode(
   process.env.AUTH_SECRET || "alumni-network-super-secret-jwt-key-minimum-32-characters"
 );
@@ -13,58 +15,59 @@ export async function POST(req: Request) {
     const { phone, code } = await req.json();
 
     if (!phone || !code) {
-      return NextResponse.json({ error: "Phone number and OTP code are required" }, { status: 400 });
+      return NextResponse.json({ error: "Phone number and 6-digit OTP are required" }, { status: 400 });
     }
 
-    const cleanPhone = phone.replace(/[^0-9+]/g, "");
+    const cleanPhone = phone.replace(/[^0-9]/g, "");
+    const formatted10Digit = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
     const trimmedCode = code.toString().trim();
 
-    // Accept demo OTP "123456" unconditionally
-    const isDemoCode = trimmedCode === "123456";
-
-    let validOtp = false;
-    let existingUser = null;
-
-    try {
-      const dbOtp = await db.otpCode.findFirst({
-        where: {
-          phone: cleanPhone,
-          code: trimmedCode,
-          consumed: false,
-          expiresAt: { gt: new Date() },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-
-      if (dbOtp) {
-        validOtp = true;
-        await db.otpCode.update({
-          where: { id: dbOtp.id },
-          data: { consumed: true },
-        });
-      }
-
-      existingUser = await db.user.findUnique({
-        where: { phone: cleanPhone },
-        include: {
-          institution: true,
-          department: true,
-          batch: true,
-        },
-      });
-    } catch (dbErr) {
-      console.warn("DB notice in verify-otp:", dbErr);
+    if (trimmedCode.length !== 6) {
+      return NextResponse.json({ error: "Please enter the complete 6-digit OTP" }, { status: 400 });
     }
 
-    if (!validOtp && !isDemoCode) {
+    // Strict Database verification: Find active, unconsumed, unexpired OTP code
+    const dbOtp = await db.otpCode.findFirst({
+      where: {
+        phone: formatted10Digit,
+        code: trimmedCode,
+        consumed: false,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!dbOtp) {
       return NextResponse.json(
-        { error: "Invalid OTP code. Please use demo OTP: 123456" },
+        { error: "Invalid or expired OTP code. Please request a new OTP." },
         { status: 400 }
       );
     }
 
+    // Immediately mark OTP as consumed to prevent replay attacks
+    await db.otpCode.update({
+      where: { id: dbOtp.id },
+      data: { consumed: true },
+    });
+
+    // Invalidate any other pending OTPs for this phone
+    await db.otpCode.updateMany({
+      where: { phone: formatted10Digit, consumed: false },
+      data: { consumed: true },
+    });
+
+    // Lookup user by verified phone
+    const existingUser = await db.user.findUnique({
+      where: { phone: formatted10Digit },
+      include: {
+        institution: true,
+        department: true,
+        batch: true,
+      },
+    });
+
     if (existingUser) {
-      // Returning user: create session and set cookie
+      // Returning user: create authenticated session and set HTTP-only cookie
       const sessionToken = await createSessionToken({
         userId: existingUser.id,
         phone: existingUser.phone,
@@ -80,21 +83,21 @@ export async function POST(req: Request) {
       });
     }
 
-    // New user: create a signup token ensuring phone is verified
-    const signupToken = await new SignJWT({ phone: cleanPhone, purpose: "signup" })
+    // New user: generate signed cryptographically secure signup token
+    const signupToken = await new SignJWT({ phone: formatted10Digit, purpose: "signup" })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
-      .setExpirationTime("7d")
+      .setExpirationTime("2h")
       .sign(JWT_SECRET);
 
     return NextResponse.json({
       success: true,
       isNewUser: true,
-      phone: cleanPhone,
+      phone: formatted10Digit,
       signupToken,
     });
   } catch (error) {
     console.error("verify-otp error:", error);
-    return NextResponse.json({ error: "Failed to verify OTP" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to verify OTP. Please try again." }, { status: 500 });
   }
 }

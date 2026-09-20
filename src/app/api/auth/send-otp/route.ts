@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { sendOtpSms } from "@/lib/sms";
+import crypto from "crypto";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
@@ -9,56 +13,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Valid phone number is required" }, { status: 400 });
     }
 
-    const cleanPhone = phone.replace(/[^0-9+]/g, "");
-    if (cleanPhone.length < 10) {
-      return NextResponse.json({ error: "Phone number must be at least 10 digits" }, { status: 400 });
+    const cleanPhone = phone.replace(/[^0-9]/g, "");
+    const formatted10Digit = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
+
+    if (formatted10Digit.length < 10) {
+      return NextResponse.json({ error: "Please enter a valid 10-digit mobile number" }, { status: 400 });
     }
 
-    const demoCode = "123456";
-    let isExistingUser = false;
+    // Generate secure cryptographically random 6-digit OTP
+    const generatedOtp = crypto.randomInt(100000, 999999).toString();
 
-    try {
-      // Check if user already exists
-      const existingUser = await db.user.findUnique({
-        where: { phone: cleanPhone },
-      });
-      isExistingUser = !!existingUser;
+    // Check if user already exists
+    const existingUser = await db.user.findUnique({
+      where: { phone: formatted10Digit },
+    });
 
-      // Expire old codes for this phone
-      await db.otpCode.updateMany({
-        where: { phone: cleanPhone, consumed: false },
-        data: { consumed: true },
-      });
+    // Invalidate prior unused OTPs for this phone number
+    await db.otpCode.updateMany({
+      where: { phone: formatted10Digit, consumed: false },
+      data: { consumed: true },
+    });
 
-      // Create fresh OTP record valid for 10 minutes
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-      await db.otpCode.create({
-        data: {
-          phone: cleanPhone,
-          code: demoCode,
-          expiresAt,
-        },
-      });
-    } catch (dbErr) {
-      console.warn("DB notice in send-otp (falling back to memory demo OTP):", dbErr);
-    }
+    // Store in database with 10-minute expiry
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await db.otpCode.create({
+      data: {
+        phone: formatted10Digit,
+        code: generatedOtp,
+        expiresAt,
+      },
+    });
 
+    // Dispatch SMS via carrier gateway
+    const smsResult = await sendOtpSms(formatted10Digit, generatedOtp);
+
+    // Return production response without leaking OTP code
     return NextResponse.json({
       success: true,
-      phone: cleanPhone,
-      isExistingUser,
-      devCode: demoCode,
-      demoOtp: demoCode,
-      message: `Demo OTP sent: ${demoCode}`,
+      phone: formatted10Digit,
+      isExistingUser: !!existingUser,
+      provider: smsResult.provider,
+      message: `OTP sent successfully to +91 ${formatted10Digit}`,
     });
   } catch (error) {
-    console.error("send-otp error:", error);
-    // Even in case of unexpected error, allow demo flow to continue
-    return NextResponse.json({
-      success: true,
-      devCode: "123456",
-      demoOtp: "123456",
-      message: "Demo OTP is 123456",
-    });
+    console.error("send-otp production error:", error);
+    return NextResponse.json(
+      { error: "Failed to send verification OTP. Please check your network and try again." },
+      { status: 500 }
+    );
   }
 }
