@@ -274,11 +274,11 @@ export default function GroupChatRoomPage({
         e.code === "PrintScreen" ||
         e.key === "Snapshot";
       const isMacScreenshot =
-        (e.metaKey || e.metaKey === true) &&
-        (e.shiftKey || e.shiftKey === true) &&
+        Boolean(e.metaKey) &&
+        Boolean(e.shiftKey) &&
         ["3", "4", "5", "6", "$", "%", "^"].includes(e.key);
       const isWindowsSnip =
-        (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "s";
+        Boolean(e.ctrlKey || e.metaKey) && Boolean(e.shiftKey) && e.key.toLowerCase() === "s";
 
       if (isPrintScreen || isMacScreenshot || isWindowsSnip) {
         if (!group.allowScreenshot) {
