@@ -23,14 +23,19 @@ export async function sendOtpSms(phone: string, otpCode: string): Promise<SendSm
 
   const messageText = `Your Alumni Network verification code is ${otpCode}. Valid for 10 minutes. Please do not share this OTP with anyone.`;
 
+  // Fast2SMS API Key (Environment variable or direct production default)
+  const fast2SmsKey =
+    process.env.FAST2SMS_API_KEY ||
+    "2hiq4r5d1Ix9kKOnXbWf87EgNYvsVQDUaLAzwGeJHMyP6FtupCKQsLZj4HifGTCx5udJOFmIEBXpWeNR";
+
   // 1. FAST2SMS (India DLT / Quick OTP Route)
-  if (process.env.FAST2SMS_API_KEY) {
+  if (fast2SmsKey) {
     try {
       // Primary: Fast2SMS Quick OTP route
       const res = await fetch("https://www.fast2sms.com/dev/bulkV2", {
         method: "POST",
         headers: {
-          authorization: process.env.FAST2SMS_API_KEY,
+          authorization: fast2SmsKey,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -52,7 +57,7 @@ export async function sendOtpSms(phone: string, otpCode: string): Promise<SendSm
         const qRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
           method: "POST",
           headers: {
-            authorization: process.env.FAST2SMS_API_KEY,
+            authorization: fast2SmsKey,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
