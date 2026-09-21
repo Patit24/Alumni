@@ -65,11 +65,11 @@ export default async function HomePage() {
             href="/auth"
             className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 px-6 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-700 active:scale-[0.99]"
           >
-            Get Started with Phone Number <ArrowRight className="w-4 h-4" />
+            Get Started with Google / Email <ArrowRight className="w-4 h-4" />
           </Link>
 
           <p className="text-xs text-slate-400 mt-4">
-            No passwords required • Instant phone OTP sign-in
+            No passwords required • Instant Gmail OTP & One-Click Sign-in
           </p>
         </div>
       </main>
