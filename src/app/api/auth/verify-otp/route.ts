@@ -3,12 +3,19 @@ import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { createSessionToken, AUTH_COOKIE } from "@/lib/auth";
 import { SignJWT } from "jose";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.AUTH_SECRET || "alumni-network-super-secret-jwt-key-minimum-32-characters"
 );
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://tinoesrmhzgelxiykcgq.supabase.co";
+const supabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "sb_publishable_DtrGzEbOc2n4oeilkvpuCQ_tj6jRqyX";
 
 export async function POST(req: Request) {
   try {
@@ -20,43 +27,30 @@ export async function POST(req: Request) {
 
     const cleanPhone = phone.replace(/[^0-9]/g, "");
     const formatted10Digit = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
+    const fullE164 = `+91${formatted10Digit}`;
     const trimmedCode = code.toString().trim();
 
     if (trimmedCode.length !== 6) {
       return NextResponse.json({ error: "Please enter the complete 6-digit OTP" }, { status: 400 });
     }
 
-    // Strict Database verification: Find active, unconsumed, unexpired OTP code
-    const dbOtp = await db.otpCode.findFirst({
-      where: {
-        phone: formatted10Digit,
-        code: trimmedCode,
-        consumed: false,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: "desc" },
+    // Verify OTP code via Supabase Twilio provider
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      phone: fullE164,
+      token: trimmedCode,
+      type: "sms",
     });
 
-    if (!dbOtp) {
+    if (verifyError) {
+      console.error("Supabase OTP verify error:", verifyError);
       return NextResponse.json(
-        { error: "Invalid or expired OTP code. Please request a new OTP." },
+        { error: verifyError.message || "Invalid or expired OTP code" },
         { status: 400 }
       );
     }
 
-    // Immediately mark OTP as consumed to prevent replay attacks
-    await db.otpCode.update({
-      where: { id: dbOtp.id },
-      data: { consumed: true },
-    });
-
-    // Invalidate any other pending OTPs for this phone
-    await db.otpCode.updateMany({
-      where: { phone: formatted10Digit, consumed: false },
-      data: { consumed: true },
-    });
-
-    // Lookup user by verified phone
+    // Lookup user in central database by verified phone number
     const existingUser = await db.user.findUnique({
       where: { phone: formatted10Digit },
       include: {
@@ -67,7 +61,7 @@ export async function POST(req: Request) {
     });
 
     if (existingUser) {
-      // Returning user: create authenticated session and set HTTP-only cookie
+      // Returning user: create session and set HTTP-only cookie
       const sessionToken = await createSessionToken({
         userId: existingUser.id,
         phone: existingUser.phone,
@@ -83,7 +77,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // New user: generate signed cryptographically secure signup token
+    // New user: create a signed JWT token ensuring phone is verified
     const signupToken = await new SignJWT({ phone: formatted10Digit, purpose: "signup" })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()

@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sendOtpSms } from "@/lib/sms";
-import crypto from "crypto";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://tinoesrmhzgelxiykcgq.supabase.co";
+const supabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "sb_publishable_DtrGzEbOc2n4oeilkvpuCQ_tj6jRqyX";
 
 export async function POST(req: Request) {
   try {
@@ -15,60 +20,45 @@ export async function POST(req: Request) {
 
     const cleanPhone = phone.replace(/[^0-9]/g, "");
     const formatted10Digit = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
+    const fullE164 = `+91${formatted10Digit}`;
 
     if (formatted10Digit.length < 10) {
       return NextResponse.json({ error: "Please enter a valid 10-digit mobile number" }, { status: 400 });
     }
 
-    // Generate secure cryptographically random 6-digit OTP
-    const generatedOtp = crypto.randomInt(100000, 999999).toString();
-
-    // Check if user already exists
+    // Check if user already exists in SQLite DB
     const existingUser = await db.user.findUnique({
       where: { phone: formatted10Digit },
     });
 
-    // Invalidate prior unused OTPs for this phone number
-    await db.otpCode.updateMany({
-      where: { phone: formatted10Digit, consumed: false },
-      data: { consumed: true },
+    // Dispatch OTP directly via Supabase Auth connected to Twilio
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { error: supabaseError } = await supabase.auth.signInWithOtp({
+      phone: fullE164,
     });
 
-    // Store in database with 10-minute expiry
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await db.otpCode.create({
-      data: {
-        phone: formatted10Digit,
-        code: generatedOtp,
-        expiresAt,
-      },
-    });
-
-    // Dispatch SMS via carrier gateway
-    const smsResult = await sendOtpSms(formatted10Digit, generatedOtp);
-
-    if (!smsResult.success) {
+    if (supabaseError) {
+      console.error("Supabase Twilio OTP error:", supabaseError);
       return NextResponse.json(
         {
-          error: smsResult.error || "SMS carrier rejected the request. Please check Fast2SMS account status.",
-          provider: smsResult.provider,
+          error: supabaseError.message || "Failed to send SMS via Twilio",
+          code: supabaseError.code,
         },
         { status: 400 }
       );
     }
 
-    // Return production response without leaking OTP code
     return NextResponse.json({
       success: true,
       phone: formatted10Digit,
       isExistingUser: !!existingUser,
-      provider: smsResult.provider,
-      message: `OTP sent successfully to +91 ${formatted10Digit}`,
+      provider: "supabase-twilio",
+      message: `OTP sent successfully via Twilio to +91 ${formatted10Digit}`,
     });
   } catch (error) {
-    console.error("send-otp production error:", error);
+    console.error("send-otp error:", error);
     return NextResponse.json(
-      { error: "Failed to send verification OTP. Please check your network and try again." },
+      { error: "Failed to send verification code. Please check your network and try again." },
       { status: 500 }
     );
   }
