@@ -1,0 +1,367 @@
+/**
+ * IndexedDB Secure Client Vault for E2EE Private Messaging & Call Logs.
+ * Operates 100% on the client device. Plaintext messages and private keys
+ * are NEVER sent or stored on the server.
+ */
+
+import {
+  generateDeviceKeyPair,
+  exportPrivateKey,
+  importPrivateKey,
+  importPeerPublicKey,
+  generateSafetyNumber,
+} from "./crypto";
+
+const DB_NAME = "alumni_e2ee_vault_v1";
+const DB_VERSION = 1;
+
+export interface VaultMessage {
+  id: string;
+  peerId: string;
+  senderId: string;
+  text: string;
+  type: "TEXT" | "EMOJI" | "SIGNALING";
+  replyToId?: string;
+  replySnippet?: string;
+  status: "SENDING" | "SENT" | "DELIVERED" | "READ";
+  createdAt: number;
+  expiresAt?: number; // For disappearing messages (timestamp ms)
+  disappearingSeconds?: number;
+}
+
+export interface VaultCallLog {
+  id: string;
+  peerId: string;
+  peerName: string;
+  callType: "VOICE" | "VIDEO";
+  direction: "INCOMING" | "OUTGOING";
+  status: "COMPLETED" | "MISSED" | "DECLINED" | "FAILED";
+  durationSeconds: number;
+  timestamp: number;
+}
+
+export interface StoredContact {
+  userId: string;
+  name: string;
+  deviceId: string;
+  publicKeySpki: string;
+  safetyNumber: string;
+  updatedAt: number;
+}
+
+let dbInstance: IDBDatabase | null = null;
+
+function openDB(): Promise<IDBDatabase> {
+  if (dbInstance) return Promise.resolve(dbInstance);
+
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || !window.indexedDB) {
+      return reject(new Error("IndexedDB is not supported in this environment"));
+    }
+
+    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+
+      // Identity keys store
+      if (!db.objectStoreNames.contains("identity_keys")) {
+        db.createObjectStore("identity_keys", { keyPath: "id" });
+      }
+
+      // Contacts & Peer Public Keys store
+      if (!db.objectStoreNames.contains("contacts")) {
+        db.createObjectStore("contacts", { keyPath: "userId" });
+      }
+
+      // Local Decrypted Messages store
+      if (!db.objectStoreNames.contains("messages")) {
+        const msgStore = db.createObjectStore("messages", { keyPath: "id" });
+        msgStore.createIndex("peerId", "peerId", { unique: false });
+        msgStore.createIndex("createdAt", "createdAt", { unique: false });
+        msgStore.createIndex("expiresAt", "expiresAt", { unique: false });
+      }
+
+      // Local Call Logs store
+      if (!db.objectStoreNames.contains("call_logs")) {
+        const callStore = db.createObjectStore("call_logs", { keyPath: "id" });
+        callStore.createIndex("timestamp", "timestamp", { unique: false });
+      }
+    };
+
+    request.onsuccess = () => {
+      dbInstance = request.result;
+      resolve(dbInstance);
+    };
+
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Generates or retrieves the device's persistent E2EE identity keys
+ */
+export async function getOrCreateDeviceIdentity(userId: string): Promise<{
+  deviceId: string;
+  publicKeySpki: string;
+  privateKey: CryptoKey;
+  publicKey: CryptoKey;
+}> {
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("identity_keys", "readwrite");
+    const store = tx.objectStore("identity_keys");
+    const getReq = store.get("local_device_key");
+
+    getReq.onsuccess = async () => {
+      if (getReq.result) {
+        const { deviceId, publicKeySpki, privateKeyPkcs8 } = getReq.result;
+        try {
+          const privateKey = await importPrivateKey(privateKeyPkcs8);
+          const publicKey = await importPeerPublicKey(publicKeySpki);
+          return resolve({ deviceId, publicKeySpki, privateKey, publicKey });
+        } catch (e) {
+          console.warn("Failed to import existing key, generating new one:", e);
+        }
+      }
+
+      // Generate fresh device key pair
+      try {
+        const pair = await generateDeviceKeyPair();
+        const privateKeyPkcs8 = await exportPrivateKey(pair.privateKey);
+        const deviceId = `dev_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
+
+        store.put({
+          id: "local_device_key",
+          userId,
+          deviceId,
+          publicKeySpki: pair.publicKeyBase64,
+          privateKeyPkcs8,
+          createdAt: Date.now(),
+        });
+
+        resolve({
+          deviceId,
+          publicKeySpki: pair.publicKeyBase64,
+          privateKey: pair.privateKey,
+          publicKey: pair.publicKey,
+        });
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    getReq.onerror = () => reject(getReq.error);
+  });
+}
+
+/**
+ * Cache contact public key and calculate safety verification number
+ */
+export async function saveContactPublicKey(
+  userId: string,
+  name: string,
+  deviceId: string,
+  publicKeySpki: string,
+  myPublicKeySpki: string
+): Promise<StoredContact> {
+  const db = await openDB();
+  const safetyNumber = await generateSafetyNumber(myPublicKeySpki, publicKeySpki);
+
+  const contact: StoredContact = {
+    userId,
+    name,
+    deviceId,
+    publicKeySpki,
+    safetyNumber,
+    updatedAt: Date.now(),
+  };
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("contacts", "readwrite");
+    const store = tx.objectStore("contacts");
+    const req = store.put(contact);
+    req.onsuccess = () => resolve(contact);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getContact(userId: string): Promise<StoredContact | null> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("contacts", "readonly");
+    const store = tx.objectStore("contacts");
+    const req = store.get(userId);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Saves a decrypted message to the local vault
+ */
+export async function saveLocalMessage(msg: VaultMessage): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("messages", "readwrite");
+    const store = tx.objectStore("messages");
+    const req = store.put(msg);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Fetches messages for a specific 1-to-1 conversation, automatically purging expired disappearing messages
+ */
+export async function getLocalMessages(peerId: string): Promise<VaultMessage[]> {
+  const db = await openDB();
+  const now = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("messages", "readwrite");
+    const store = tx.objectStore("messages");
+    const index = store.index("peerId");
+    const req = index.getAll(peerId);
+
+    req.onsuccess = () => {
+      const allMsgs = (req.result as VaultMessage[]) || [];
+      const validMsgs: VaultMessage[] = [];
+
+      for (const m of allMsgs) {
+        if (m.expiresAt && m.expiresAt <= now) {
+          // Auto-purge expired message from local disk
+          store.delete(m.id);
+        } else {
+          validMsgs.push(m);
+        }
+      }
+
+      validMsgs.sort((a, b) => a.createdAt - b.createdAt);
+      resolve(validMsgs);
+    };
+
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Updates message delivery or read receipt status
+ */
+export async function updateMessageStatus(
+  msgId: string,
+  status: "SENT" | "DELIVERED" | "READ"
+): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("messages", "readwrite");
+    const store = tx.objectStore("messages");
+    const getReq = store.get(msgId);
+
+    getReq.onsuccess = () => {
+      if (getReq.result) {
+        const msg = getReq.result as VaultMessage;
+        msg.status = status;
+        store.put(msg);
+      }
+      resolve();
+    };
+    getReq.onerror = () => reject(getReq.error);
+  });
+}
+
+/**
+ * Deletes a single message locally
+ */
+export async function deleteLocalMessage(msgId: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("messages", "readwrite");
+    const store = tx.objectStore("messages");
+    const req = store.delete(msgId);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Clears an entire 1-to-1 conversation history locally
+ */
+export async function clearLocalConversation(peerId: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("messages", "readwrite");
+    const store = tx.objectStore("messages");
+    const index = store.index("peerId");
+    const req = index.openCursor(peerId);
+
+    req.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest).result as IDBCursorWithValue;
+      if (cursor) {
+        store.delete(cursor.primaryKey);
+        cursor.continue();
+      } else {
+        resolve();
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Local search across decrypted messages
+ */
+export async function searchLocalMessages(peerId: string, query: string): Promise<VaultMessage[]> {
+  const msgs = await getLocalMessages(peerId);
+  const q = query.toLowerCase().trim();
+  if (!q) return msgs;
+  return msgs.filter((m) => m.text.toLowerCase().includes(q));
+}
+
+/**
+ * Saves a WebRTC voice/video call log locally
+ */
+export async function saveCallLog(call: VaultCallLog): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("call_logs", "readwrite");
+    const store = tx.objectStore("call_logs");
+    const req = store.put(call);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Retrieves all local call history
+ */
+export async function getCallLogs(): Promise<VaultCallLog[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("call_logs", "readonly");
+    const store = tx.objectStore("call_logs");
+    const req = store.getAll();
+
+    req.onsuccess = () => {
+      const logs = (req.result as VaultCallLog[]) || [];
+      logs.sort((a, b) => b.timestamp - a.timestamp);
+      resolve(logs);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Clears all call logs locally
+ */
+export async function clearCallLogs(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("call_logs", "readwrite");
+    const store = tx.objectStore("call_logs");
+    const req = store.clear();
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}

@@ -113,6 +113,10 @@ model User {
   vouchesGiven        VerificationVouch[]   @relation("VouchesGiven")
   vouchesReceived     VerificationVouch[]   @relation("VouchesReceived")
 
+  // E2EE Devices & Privacy
+  devices             UserDevice[]
+  privacySettings     UserPrivacySettings?
+
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 }
@@ -323,5 +327,69 @@ model ChatMessage {
   metadata  String?  // JSON for shared track info or player state
 
   createdAt DateTime @default(now())
+}
+
+// Cryptographic device registration for E2EE public keys
+model UserDevice {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId     String    @unique
+  deviceName   String    // e.g. "Safari on iPhone", "Chrome on Mac"
+  publicKey    String    // SPKI Base64 representation of ECDH public key
+  lastActiveAt DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Ephemeral encrypted message queue (Zero plaintext, auto-purged upon delivery or expiry)
+model EncryptedMessageQueue {
+  id                String    @id @default(cuid())
+  senderId          String
+  senderDeviceId    String
+  recipientId       String
+  recipientDeviceId String?
+  encryptedPayload  String    // Ciphertext + IV + Auth tag (Base64 JSON)
+  messageType       String    @default("TEXT") // "TEXT", "SIGNALING", "RECEIPT"
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+
+  @@index([recipientId, expiresAt])
+}
+
+// User communication privacy settings
+model UserPrivacySettings {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readReceipts         Boolean  @default(true)
+  typingIndicators     Boolean  @default(true)
+  onlineStatus         Boolean  @default(true)
+  lastSeen             Boolean  @default(false)
+  allowCallsFrom       String   @default("EVERYONE") // "EVERYONE", "VERIFIED_ONLY", "BATCH_ONLY"
+  disappearingDefault  Int      @default(0) // 0 = off, seconds: 30, 60, 3600, 86400, 604800
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// Blocked users
+model UserBlock {
+  id         String   @id @default(cuid())
+  blockerId  String
+  blockedId  String
+  createdAt  DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+}
+
+// User abuse report
+model UserReport {
+  id          String   @id @default(cuid())
+  reporterId  String
+  reportedId  String
+  reason      String
+  createdAt   DateTime @default(now())
 }
 

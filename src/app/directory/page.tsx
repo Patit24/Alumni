@@ -15,6 +15,8 @@ import {
   ChevronRight,
   Filter,
   Loader2,
+  MessageSquare,
+  Lock,
 } from "lucide-react";
 
 interface AlumniUser {
@@ -380,8 +382,25 @@ export default function DirectoryPage() {
                       </div>
                     </div>
 
-                    <div className="p-2 rounded-xl text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition shrink-0">
-                      <ChevronRight className="w-5 h-5" />
+                    <div className="flex items-center gap-2 shrink-0">
+                      {!isCurrentUser && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.location.href = `/messages/${person.id}`;
+                          }}
+                          className="h-8 px-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 flex items-center gap-1 text-[11px] font-bold transition"
+                          title="Send Encrypted Message"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Message</span>
+                        </button>
+                      )}
+                      <div className="p-2 rounded-xl text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition">
+                        <ChevronRight className="w-5 h-5" />
+                      </div>
                     </div>
                   </div>
                 </Link>

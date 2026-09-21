@@ -2,22 +2,26 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, Briefcase, Sparkles, MessageCircle } from "lucide-react";
+import { Home, Users, Briefcase, Sparkles, MessageCircle, MessageSquareText } from "lucide-react";
 
 export default function MobileBottomNav() {
   const pathname = usePathname();
 
-  // Hide on auth or group chat room view for max chat height
-  if (pathname.startsWith("/auth") || pathname.match(/^\/groups\/[^/]+$/)) {
+  // Hide on auth, group chat, or 1-to-1 direct chat view for max chat height
+  if (
+    pathname.startsWith("/auth") ||
+    pathname.match(/^\/groups\/[^/]+$/) ||
+    pathname.match(/^\/messages\/[^/]+$/)
+  ) {
     return null;
   }
 
   const navItems = [
     { href: "/", label: "Feed", icon: Home },
+    { href: "/messages", label: "Messages", icon: MessageSquareText },
     { href: "/groups", label: "Groups", icon: MessageCircle },
     { href: "/directory", label: "Alumni", icon: Users },
     { href: "/jobs", label: "Jobs", icon: Briefcase },
-    { href: "/mentorship", label: "Mentors", icon: Sparkles },
   ];
 
   return (

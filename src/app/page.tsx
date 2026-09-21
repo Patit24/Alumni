@@ -13,6 +13,7 @@ import {
   UserCheck,
   Music,
   PartyPopper,
+  Lock,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
@@ -124,7 +125,17 @@ export default async function HomePage(props: {
                 {isVerified ? "Verified Member" : "Unverified"}
               </span>
             </div>
-            <LogoutButton />
+            <div className="flex items-center gap-2">
+              <Link
+                href="/messages"
+                className="h-9 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 flex items-center gap-1.5 text-xs font-bold transition shadow-2xs"
+                title="Private E2EE Chat & Calls"
+              >
+                <Lock className="w-3.5 h-3.5 text-blue-600" />
+                <span className="hidden sm:inline">Messages</span>
+              </Link>
+              <LogoutButton />
+            </div>
           </div>
         </div>
       </header>
@@ -208,7 +219,18 @@ export default async function HomePage(props: {
             </span>
           </div>
 
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 sm:gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2 sm:gap-3">
+            <Link
+              href="/messages"
+              className="p-3 rounded-2xl bg-white border border-emerald-100 hover:border-emerald-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+            >
+              <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+                <Lock className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-800 leading-tight">Private Chat</span>
+              <span className="text-[9px] text-slate-400 mt-0.5">Calls & E2EE</span>
+            </Link>
+
             <Link
               href="/groups"
               className="p-3 rounded-2xl bg-white border border-pink-100 hover:border-pink-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
