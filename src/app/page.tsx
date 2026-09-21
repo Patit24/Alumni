@@ -21,19 +21,17 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+export default async function HomePage(props: {
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  const resolvedParams = await searchParams;
-  const code = resolvedParams?.code;
+  const user = await getCurrentUser();
 
-  if (typeof code === "string" && code) {
+  const searchParams = props.searchParams ? await props.searchParams : {};
+  const code = searchParams?.code;
+
+  if (typeof code === "string" && code && !user) {
     redirect(`/api/auth/callback?code=${encodeURIComponent(code)}`);
   }
-
-  const user = await getCurrentUser();
 
   if (!user) {
     // Unauthenticated Welcome Landing

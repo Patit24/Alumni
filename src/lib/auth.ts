@@ -39,10 +39,16 @@ export async function getCurrentUser() {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-    if (!token) return null;
+    if (!token) {
+      console.log("[getCurrentUser] No session token found in cookieStore");
+      return null;
+    }
 
     const payload = await verifySessionToken(token);
-    if (!payload?.userId) return null;
+    if (!payload?.userId) {
+      console.log("[getCurrentUser] Token payload invalid or missing userId");
+      return null;
+    }
 
     const user = await db.user.findUnique({
       where: { id: payload.userId },
@@ -52,6 +58,11 @@ export async function getCurrentUser() {
         batch: true,
       },
     });
+
+    if (!user) {
+      console.log("[getCurrentUser] User not found in db for id:", payload.userId);
+      return null;
+    }
 
     return user;
   } catch (error) {
