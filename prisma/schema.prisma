@@ -63,6 +63,7 @@ model User {
   id                 String       @id @default(cuid())
   phone              String?      @unique
   email              String?      @unique
+  username           String?      @unique
   name               String
   avatarUrl          String?
   role               String       @default("USER") // "USER", "INSTITUTION_ADMIN", "SUPER_ADMIN"

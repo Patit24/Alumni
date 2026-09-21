@@ -12,6 +12,7 @@ export interface SessionPayload {
   userId: string;
   phone?: string | null;
   email?: string | null;
+  username?: string | null;
   name?: string | null;
   role?: string | null;
   verificationStatus?: string | null;
@@ -40,6 +41,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       userId: (payload.userId as string) || (payload.sub as string) || "",
       phone: (payload.phone as string) || null,
       email: (payload.email as string) || null,
+      username: (payload.username as string) || null,
       name: (payload.name as string) || null,
       role: (payload.role as string) || null,
       verificationStatus: (payload.verificationStatus as string) || null,

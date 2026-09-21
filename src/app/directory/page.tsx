@@ -22,6 +22,7 @@ import {
 interface AlumniUser {
   id: string;
   name: string;
+  username?: string | null;
   phone: string;
   verificationStatus: string;
   batchYear: number;
@@ -138,7 +139,7 @@ export default function DirectoryPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name, company, role, or city..."
+            placeholder="Search by @username, name, company, role, or city..."
             className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none shadow-sm transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
           />
         </div>
@@ -326,6 +327,11 @@ export default function DirectoryPage() {
                           <h2 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition">
                             {person.name}
                           </h2>
+                          {person.username && (
+                            <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                              @{person.username}
+                            </span>
+                          )}
                           {isCurrentUser && (
                             <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
                               You

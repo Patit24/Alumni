@@ -170,13 +170,32 @@ export async function POST(req: Request) {
       },
     });
 
+    // Helper to generate unique @username automatically
+    async function generateUniqueUsername(rawName: string, year: number): Promise<string> {
+      let base = rawName.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (!base) base = "alumni";
+      let candidate = base;
+      let counter = 1;
+      while (true) {
+        const existing = await db.user.findUnique({ where: { username: candidate } });
+        if (!existing) return candidate;
+        candidate = `${base}${year || counter}`;
+        counter++;
+        if (counter > 20) {
+          candidate = `${base}${Math.floor(1000 + Math.random() * 9000)}`;
+        }
+      }
+    }
+
     let user;
     if (existingUser) {
+      const generatedUsername = existingUser.username || (await generateUniqueUsername(name, yearInt));
       // Update existing user with latest profile details
       user = await db.user.update({
         where: { id: existingUser.id },
         data: {
           name: name.trim(),
+          username: generatedUsername,
           email: verifiedEmail || existingUser.email,
           phone: verifiedPhone || existingUser.phone,
           institutionId: resolvedInstId,
@@ -195,11 +214,13 @@ export async function POST(req: Request) {
         },
       });
     } else {
-      // Create new user
+      const generatedUsername = await generateUniqueUsername(name, yearInt);
+      // Create new user with auto-generated unique username
       user = await db.user.create({
         data: {
           email: verifiedEmail,
           phone: verifiedPhone,
+          username: generatedUsername,
           name: name.trim(),
           role: isFoundingMember ? "INSTITUTION_ADMIN" : "USER",
           verificationStatus: "UNVERIFIED",

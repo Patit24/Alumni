@@ -43,8 +43,10 @@ export async function GET(req: Request) {
 
     // 5. Search query
     if (q) {
+      const cleanQ = q.startsWith("@") ? q.slice(1) : q;
       where.OR = [
         { name: { contains: q } },
+        { username: { contains: cleanQ } },
         { currentCompany: { contains: q } },
         { currentRole: { contains: q } },
         { city: { contains: q } },
@@ -53,7 +55,23 @@ export async function GET(req: Request) {
 
     const alumni = await db.user.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        phone: true,
+        email: true,
+        avatarUrl: true,
+        role: true,
+        verificationStatus: true,
+        batchYear: true,
+        currentCompany: true,
+        currentRole: true,
+        city: true,
+        linkedinUrl: true,
+        isOpenToMentor: true,
+        mentorTopics: true,
+        isPhoneVisible: true,
         institution: {
           select: { id: true, name: true, city: true },
         },
