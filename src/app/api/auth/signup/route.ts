@@ -245,13 +245,17 @@ export async function POST(req: Request) {
       phone: user.phone,
     });
 
-    const cookieStore = await cookies();
-    cookieStore.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
-
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       user,
     });
+
+    response.cookies.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+
+    const cookieStore = await cookies();
+    cookieStore.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+
+    return response;
   } catch (error) {
     console.error("signup error:", (error as Error)?.stack || error);
     return NextResponse.json(

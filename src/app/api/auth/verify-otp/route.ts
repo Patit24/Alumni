@@ -66,14 +66,18 @@ export async function POST(req: Request) {
         phone: existingUser.phone,
       });
 
-      const cookieStore = await cookies();
-      cookieStore.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
-
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         isNewUser: false,
         user: existingUser,
       });
+
+      response.cookies.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+
+      const cookieStore = await cookies();
+      cookieStore.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+
+      return response;
     }
 
     // New user: create a signed JWT token ensuring email is verified
