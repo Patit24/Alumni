@@ -186,9 +186,8 @@ export default function AuthPage() {
       }
 
       if (!data.isNewUser) {
-        // Returning user - session established
-        router.push("/");
-        router.refresh();
+        // Returning user - session established, perform hard redirect to home
+        window.location.href = "/";
       } else {
         // New user - proceed to profile onboarding
         setSignupToken(data.signupToken);
@@ -239,9 +238,8 @@ export default function AuthPage() {
         throw new Error(data.error || "Signup failed");
       }
 
-      // Success! Redirect to dashboard
-      router.push("/");
-      router.refresh();
+      // Success! Hard reload to dashboard so Next.js server component reads the new session cookie
+      window.location.href = "/";
     } catch (err: unknown) {
       console.error("Signup error details:", err);
       setError(err instanceof Error ? err.message : "Signup failed. Please try again.");
