@@ -22,6 +22,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const {
       signupToken,
+      email,
       phone,
       name,
       institutionId,
@@ -43,12 +44,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Resolve verified phone number
+    // 1. Resolve verified email or phone number
+    let verifiedEmail: string | null = null;
     let verifiedPhone: string | null = null;
 
     if (signupToken) {
       try {
         const { payload } = await jwtVerify(signupToken, JWT_SECRET);
+        if (payload.email) {
+          verifiedEmail = (payload.email as string).trim().toLowerCase();
+        }
         if (payload.phone) {
           verifiedPhone = payload.phone as string;
         }
@@ -57,14 +62,17 @@ export async function POST(req: Request) {
       }
     }
 
-    // Fallback to phone passed in request body
+    // Fallback from request body
+    if (!verifiedEmail && email) {
+      verifiedEmail = email.trim().toLowerCase();
+    }
     if (!verifiedPhone && phone) {
       verifiedPhone = phone.replace(/[^0-9+]/g, "");
     }
 
-    if (!verifiedPhone || verifiedPhone.length < 10) {
+    if (!verifiedEmail && !verifiedPhone) {
       return NextResponse.json(
-        { error: "Valid verified phone number is required" },
+        { error: "A verified email address or phone number is required" },
         { status: 400 }
       );
     }
@@ -153,8 +161,13 @@ export async function POST(req: Request) {
     }
 
     // 5. Create or Update User (Upsert)
-    const existingUser = await db.user.findUnique({
-      where: { phone: verifiedPhone },
+    const existingUser = await db.user.findFirst({
+      where: {
+        OR: [
+          ...(verifiedEmail ? [{ email: verifiedEmail }] : []),
+          ...(verifiedPhone ? [{ phone: verifiedPhone }] : []),
+        ],
+      },
     });
 
     let user;
@@ -164,6 +177,8 @@ export async function POST(req: Request) {
         where: { id: existingUser.id },
         data: {
           name: name.trim(),
+          email: verifiedEmail || existingUser.email,
+          phone: verifiedPhone || existingUser.phone,
           institutionId: resolvedInstId,
           departmentId: resolvedDeptId,
           batchId: batch.id,
@@ -183,6 +198,7 @@ export async function POST(req: Request) {
       // Create new user
       user = await db.user.create({
         data: {
+          email: verifiedEmail,
           phone: verifiedPhone,
           name: name.trim(),
           role: isFoundingMember ? "INSTITUTION_ADMIN" : "USER",
@@ -225,6 +241,7 @@ export async function POST(req: Request) {
     // 6. Set Session Cookie
     const sessionToken = await createSessionToken({
       userId: user.id,
+      email: user.email,
       phone: user.phone,
     });
 

@@ -19,40 +19,38 @@ const supabaseKey =
 
 export async function POST(req: Request) {
   try {
-    const { phone, code } = await req.json();
+    const { email, code } = await req.json();
 
-    if (!phone || !code) {
-      return NextResponse.json({ error: "Phone number and 6-digit OTP are required" }, { status: 400 });
+    if (!email || !code) {
+      return NextResponse.json({ error: "Email address and 6-digit OTP code are required" }, { status: 400 });
     }
 
-    const cleanPhone = phone.replace(/[^0-9]/g, "");
-    const formatted10Digit = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
-    const fullE164 = `+91${formatted10Digit}`;
+    const cleanEmail = email.trim().toLowerCase();
     const trimmedCode = code.toString().trim();
 
     if (trimmedCode.length !== 6) {
-      return NextResponse.json({ error: "Please enter the complete 6-digit OTP" }, { status: 400 });
+      return NextResponse.json({ error: "Please enter the complete 6-digit verification code" }, { status: 400 });
     }
 
-    // Verify OTP code via Supabase Twilio provider
+    // Verify 6-digit code via Supabase Email Auth
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { error: verifyError } = await supabase.auth.verifyOtp({
-      phone: fullE164,
+      email: cleanEmail,
       token: trimmedCode,
-      type: "sms",
+      type: "email",
     });
 
     if (verifyError) {
       console.error("Supabase OTP verify error:", verifyError);
       return NextResponse.json(
-        { error: verifyError.message || "Invalid or expired OTP code" },
+        { error: verifyError.message || "Invalid or expired verification code. Please check your Gmail inbox." },
         { status: 400 }
       );
     }
 
-    // Lookup user in central database by verified phone number
-    const existingUser = await db.user.findUnique({
-      where: { phone: formatted10Digit },
+    // Lookup user in central database by verified email
+    const existingUser = await db.user.findFirst({
+      where: { email: cleanEmail },
       include: {
         institution: true,
         department: true,
@@ -64,6 +62,7 @@ export async function POST(req: Request) {
       // Returning user: create session and set HTTP-only cookie
       const sessionToken = await createSessionToken({
         userId: existingUser.id,
+        email: existingUser.email,
         phone: existingUser.phone,
       });
 
@@ -77,8 +76,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // New user: create a signed JWT token ensuring phone is verified
-    const signupToken = await new SignJWT({ phone: formatted10Digit, purpose: "signup" })
+    // New user: create a signed JWT token ensuring email is verified
+    const signupToken = await new SignJWT({ email: cleanEmail, purpose: "signup" })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime("2h")
@@ -87,11 +86,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       isNewUser: true,
-      phone: formatted10Digit,
+      email: cleanEmail,
       signupToken,
     });
   } catch (error) {
     console.error("verify-otp error:", error);
-    return NextResponse.json({ error: "Failed to verify OTP. Please try again." }, { status: 500 });
+    return NextResponse.json({ error: "Failed to verify code. Please try again." }, { status: 500 });
   }
 }

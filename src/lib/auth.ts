@@ -10,7 +10,8 @@ const SESSION_COOKIE_NAME = "alumni_session";
 
 export interface SessionPayload {
   userId: string;
-  phone: string;
+  phone?: string | null;
+  email?: string | null;
 }
 
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
@@ -26,7 +27,8 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
     const { payload } = await jwtVerify(token, JWT_SECRET);
     return {
       userId: payload.userId as string,
-      phone: payload.phone as string,
+      phone: (payload.phone as string) || null,
+      email: (payload.email as string) || null,
     };
   } catch {
     return null;

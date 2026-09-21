@@ -8,8 +8,10 @@ import {
   Loader2,
   Sparkles,
   Search,
-  ShieldCheck,
+  MailCheck,
+  Mail,
 } from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
 
 interface Institution {
   id: string;
@@ -22,11 +24,11 @@ interface Institution {
 
 export default function AuthPage() {
   const router = useRouter();
-  // Multi-step state: "phone" | "otp" | "onboarding"
-  const [step, setStep] = useState<"phone" | "otp" | "onboarding">("phone");
+  // Multi-step state: "email" | "otp" | "onboarding"
+  const [step, setStep] = useState<"email" | "otp" | "onboarding">("email");
 
   // Form fields
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [signupToken, setSignupToken] = useState("");
   const [isExistingUser, setIsExistingUser] = useState(false);
@@ -34,6 +36,7 @@ export default function AuthPage() {
 
   // Onboarding fields
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [selectedInstId, setSelectedInstId] = useState("");
   const [instSearchQuery, setInstSearchQuery] = useState("");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
@@ -49,6 +52,7 @@ export default function AuthPage() {
   // Loading, success & error states
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
@@ -85,15 +89,49 @@ export default function AuthPage() {
     return () => clearTimeout(timer);
   }, [instSearchQuery, step]);
 
-  // Step 1: Send Production OTP via SMS
+  // Check for OAuth return parameters (e.g. from Google Sign-In)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const verifiedEmail = params.get("verifiedEmail");
+    const prefillName = params.get("name");
+
+    if (verifiedEmail) {
+      setEmail(verifiedEmail);
+      if (prefillName) setName(prefillName);
+      setStep("onboarding");
+    }
+  }, []);
+
+  // One-Click Google Sign-In via Supabase OAuth
+  const handleGoogleSignIn = async () => {
+    try {
+      setGoogleLoading(true);
+      setError(null);
+      const supabase = createClient();
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${origin}/api/auth/callback`,
+        },
+      });
+      if (oauthError) throw oauthError;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Google Sign-In failed. Please try Email OTP.");
+      setGoogleLoading(false);
+    }
+  };
+
+  // Step 1: Send 6-digit OTP to Gmail / Email
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
     setInfoMessage(null);
 
-    const cleanPhone = phone.replace(/[^0-9]/g, "");
-    if (cleanPhone.length < 10) {
-      setError("Please enter a valid 10-digit mobile number");
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@") || !cleanEmail.includes(".")) {
+      setError("Please enter a valid email address (e.g. you@gmail.com)");
       return;
     }
 
@@ -102,19 +140,19 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanPhone }),
+        body: JSON.stringify({ email: cleanEmail }),
       });
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to dispatch verification OTP");
+        throw new Error(data.error || "Failed to dispatch verification code");
       }
 
       setIsExistingUser(data?.isExistingUser || false);
       setOtp("");
       setStep("otp");
       setResendCooldown(30); // 30s resend timer
-      setInfoMessage(`Verification code sent to +91 ${cleanPhone.slice(-10)}`);
+      setInfoMessage(`We've sent a 6-digit code to ${cleanEmail}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send verification code. Please try again.");
     } finally {
@@ -122,7 +160,7 @@ export default function AuthPage() {
     }
   };
 
-  // Step 2: Verify Production OTP
+  // Step 2: Verify 6-digit Code
   const handleVerifyOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
@@ -130,7 +168,7 @@ export default function AuthPage() {
 
     const trimmedOtp = otp.trim();
     if (trimmedOtp.length !== 6) {
-      setError("Please enter the complete 6-digit OTP code");
+      setError("Please enter the complete 6-digit code from your email");
       return;
     }
 
@@ -139,7 +177,7 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, code: trimmedOtp }),
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: trimmedOtp }),
       });
       const data = await res.json();
 
@@ -157,7 +195,7 @@ export default function AuthPage() {
         setStep("onboarding");
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Invalid or expired OTP code.");
+      setError(err instanceof Error ? err.message : "Invalid or expired verification code.");
     } finally {
       setLoading(false);
     }
@@ -181,7 +219,8 @@ export default function AuthPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           signupToken,
-          phone,
+          email: email.trim().toLowerCase(),
+          phone: phone.trim() || null,
           name: trimmedName,
           institutionId: isCustomInst ? null : selectedInstId || null,
           institutionName: isCustomInst ? customInstName : instSearchQuery,
@@ -226,8 +265,8 @@ export default function AuthPage() {
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">Alumni Network</h1>
             <p className="text-xs text-slate-500">
-              {step === "phone" && "Sign in or register your alumni account"}
-              {step === "otp" && "SMS Verification"}
+              {step === "email" && "Sign in or register your alumni account"}
+              {step === "otp" && "Check your Gmail inbox for code"}
               {step === "onboarding" && "Complete your alumni profile"}
             </p>
           </div>
@@ -236,7 +275,7 @@ export default function AuthPage() {
         {/* Info or Error Alerts */}
         {infoMessage && (
           <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs font-medium flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <MailCheck className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{infoMessage}</span>
           </div>
         )}
@@ -247,67 +286,105 @@ export default function AuthPage() {
           </div>
         )}
 
-        {/* STEP 1: Phone Entry */}
-        {step === "phone" && (
-          <form onSubmit={handleSendOtp} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                Mobile Phone Number
-              </label>
-              <div className="relative flex items-center">
-                <span className="absolute left-3.5 text-sm font-semibold text-slate-500 select-none">
-                  +91
-                </span>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="9876543210"
-                  maxLength={10}
-                  autoFocus
-                  required
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-3 pl-14 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">
-                We will send a 6-digit verification code to this mobile number.
-              </p>
+        {/* STEP 1: Email Entry & Google Sign-In */}
+        {step === "email" && (
+          <div className="space-y-4">
+            {/* Google One-Click Button */}
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={googleLoading || loading}
+              className="w-full flex items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white py-3 px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.99] disabled:opacity-50"
+            >
+              {googleLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+              ) : (
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.14z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                  />
+                </svg>
+              )}
+              Continue with Google
+            </button>
+
+            <div className="relative flex items-center justify-center">
+              <div className="border-t border-slate-200 w-full" />
+              <span className="bg-white px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Or with Email OTP
+              </span>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  Send Verification Code <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
+            <form onSubmit={handleSendOtp} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                  Email Address / Gmail
+                </label>
+                <div className="relative flex items-center">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="patitpabanroy2002@gmail.com"
+                    autoFocus
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-3 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5">
+                  Free 6-digit code will be sent to your Gmail inbox.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    Send 6-Digit Code <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
         )}
 
-        {/* STEP 2: OTP Verification */}
+        {/* STEP 2: 6-Digit Email OTP Verification */}
         {step === "otp" && (
           <form onSubmit={handleVerifyOtp} className="space-y-4">
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  {isExistingUser ? "Welcome back • Enter OTP" : "Enter 6-digit SMS OTP"}
+                  {isExistingUser ? "Welcome back • Enter Code" : "Enter 6-digit Code from Gmail"}
                 </label>
                 <button
                   type="button"
                   onClick={() => {
-                    setStep("phone");
+                    setStep("email");
                     setError(null);
                     setInfoMessage(null);
                   }}
                   className="text-xs text-blue-600 hover:underline"
                 >
-                  Change number
+                  Change email
                 </button>
               </div>
               <input
@@ -321,7 +398,7 @@ export default function AuthPage() {
                 className="w-full text-center tracking-widest text-xl font-bold rounded-xl border border-slate-200 bg-slate-50/50 py-3.5 px-4 text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100 font-mono"
               />
               <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                <span>Didn&apos;t receive the code?</span>
+                <span>Check spam if not in inbox</span>
                 {resendCooldown > 0 ? (
                   <span className="text-slate-400 font-medium">Resend in {resendCooldown}s</span>
                 ) : (
@@ -331,7 +408,7 @@ export default function AuthPage() {
                     disabled={loading}
                     className="font-semibold text-blue-600 hover:underline disabled:opacity-50"
                   >
-                    Resend OTP
+                    Resend Code
                   </button>
                 )}
               </div>
@@ -346,7 +423,7 @@ export default function AuthPage() {
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <>
-                  Verify & Continue <ArrowRight className="w-4 h-4" />
+                  Verify & Enter <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
@@ -359,7 +436,7 @@ export default function AuthPage() {
             <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
               <p className="text-xs text-blue-800">
-                Verified mobile: <strong>+91 {phone}</strong>
+                Verified email: <strong>{email}</strong>
               </p>
             </div>
 
@@ -374,6 +451,20 @@ export default function AuthPage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Patitpaban Roy"
                 required
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white"
+              />
+            </div>
+
+            {/* Optional Phone */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                Mobile Number (Optional)
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. 9734019005"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white"
               />
             </div>

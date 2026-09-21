@@ -12,36 +12,33 @@ const supabaseKey =
 
 export async function POST(req: Request) {
   try {
-    const { phone } = await req.json();
+    const { email } = await req.json();
 
-    if (!phone || typeof phone !== "string") {
-      return NextResponse.json({ error: "Valid phone number is required" }, { status: 400 });
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return NextResponse.json({ error: "Please enter a valid email address (e.g. yourname@gmail.com)" }, { status: 400 });
     }
 
-    const cleanPhone = phone.replace(/[^0-9]/g, "");
-    const formatted10Digit = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
-    const fullE164 = `+91${formatted10Digit}`;
+    const cleanEmail = email.trim().toLowerCase();
 
-    if (formatted10Digit.length < 10) {
-      return NextResponse.json({ error: "Please enter a valid 10-digit mobile number" }, { status: 400 });
-    }
-
-    // Check if user already exists in SQLite DB
-    const existingUser = await db.user.findUnique({
-      where: { phone: formatted10Digit },
+    // Check if user already exists in SQLite DB by email
+    const existingUser = await db.user.findFirst({
+      where: { email: cleanEmail },
     });
 
-    // Dispatch OTP directly via Supabase Auth connected to Twilio
+    // Dispatch 6-digit OTP directly to Gmail / Email inbox via Supabase
     const supabase = createClient(supabaseUrl, supabaseKey);
     const { error: supabaseError } = await supabase.auth.signInWithOtp({
-      phone: fullE164,
+      email: cleanEmail,
+      options: {
+        shouldCreateUser: true,
+      },
     });
 
     if (supabaseError) {
-      console.error("Supabase Twilio OTP error:", supabaseError);
+      console.error("Supabase Email OTP error:", supabaseError);
       return NextResponse.json(
         {
-          error: supabaseError.message || "Failed to send SMS via Twilio",
+          error: supabaseError.message || "Failed to dispatch OTP to your email.",
           code: supabaseError.code,
         },
         { status: 400 }
@@ -50,15 +47,15 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      phone: formatted10Digit,
+      email: cleanEmail,
       isExistingUser: !!existingUser,
-      provider: "supabase-twilio",
-      message: `OTP sent successfully via Twilio to +91 ${formatted10Digit}`,
+      provider: "supabase-email",
+      message: `6-digit verification code sent to ${cleanEmail}`,
     });
   } catch (error) {
     console.error("send-otp error:", error);
     return NextResponse.json(
-      { error: "Failed to send verification code. Please check your network and try again." },
+      { error: "Failed to send verification code. Please check your internet connection." },
       { status: 500 }
     );
   }
