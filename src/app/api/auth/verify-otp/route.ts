@@ -64,6 +64,16 @@ export async function POST(req: Request) {
         userId: existingUser.id,
         email: existingUser.email,
         phone: existingUser.phone,
+        name: existingUser.name,
+        role: existingUser.role,
+        verificationStatus: existingUser.verificationStatus,
+        institutionId: existingUser.institutionId,
+        institutionName: existingUser.institution?.name,
+        batchYear: existingUser.batchYear,
+        departmentName: existingUser.department?.name,
+        currentCompany: existingUser.currentCompany,
+        currentRole: existingUser.currentRole,
+        city: existingUser.city,
       });
 
       const response = NextResponse.json({

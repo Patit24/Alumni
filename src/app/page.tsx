@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
+import ClientAuthRedirect from "@/components/ClientAuthRedirect";
 
 import { redirect } from "next/navigation";
 
@@ -37,6 +38,7 @@ export default async function HomePage(props: {
     // Unauthenticated Welcome Landing
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-6 bg-slate-50">
+        <ClientAuthRedirect />
         <div className="w-full max-w-lg bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 sm:p-10 text-center">
           <div className="mx-auto h-16 w-16 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/25 mb-6">
             <GraduationCap className="w-8 h-8" />

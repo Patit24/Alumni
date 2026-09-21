@@ -7,6 +7,13 @@ const supabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export const updateSession = async (request: NextRequest) => {
+  const allCookies = request.cookies.getAll();
+  const hasSupabaseCookie = allCookies.some((c) => c.name.startsWith("sb-"));
+
+  if (!hasSupabaseCookie) {
+    return NextResponse.next();
+  }
+
   // Create an unmodified response
   const supabaseResponse = NextResponse.next({
     request: {

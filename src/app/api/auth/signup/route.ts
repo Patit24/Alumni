@@ -243,6 +243,16 @@ export async function POST(req: Request) {
       userId: user.id,
       email: user.email,
       phone: user.phone,
+      name: user.name,
+      role: user.role,
+      verificationStatus: user.verificationStatus,
+      institutionId: user.institutionId,
+      institutionName: user.institution?.name,
+      batchYear: user.batchYear,
+      departmentName: user.department?.name,
+      currentCompany: user.currentCompany,
+      currentRole: user.currentRole,
+      city: user.city,
     });
 
     const response = NextResponse.json({

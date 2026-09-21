@@ -52,6 +52,11 @@ export async function GET(req: Request) {
       // Check if user already exists
       const existingUser = await db.user.findFirst({
         where: { email: userEmail },
+        include: {
+          institution: true,
+          department: true,
+          batch: true,
+        },
       });
 
       if (existingUser) {
@@ -60,10 +65,21 @@ export async function GET(req: Request) {
           userId: existingUser.id,
           email: existingUser.email,
           phone: existingUser.phone,
+          name: existingUser.name,
+          role: existingUser.role,
+          verificationStatus: existingUser.verificationStatus,
+          institutionId: existingUser.institutionId,
+          institutionName: existingUser.institution?.name,
+          batchYear: existingUser.batchYear,
+          departmentName: existingUser.department?.name,
+          currentCompany: existingUser.currentCompany,
+          currentRole: existingUser.currentRole,
+          city: existingUser.city,
         });
 
-        cookieStore.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
-        return NextResponse.redirect(`${origin}/`);
+        const redirectResponse = NextResponse.redirect(`${origin}/`);
+        redirectResponse.cookies.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+        return redirectResponse;
       } else {
         // Redirect to onboarding with verified email
         console.log("[OAUTH-CALLBACK] New user, redirecting to onboarding for:", userEmail);

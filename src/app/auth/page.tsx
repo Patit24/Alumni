@@ -89,7 +89,7 @@ export default function AuthPage() {
     return () => clearTimeout(timer);
   }, [instSearchQuery, step]);
 
-  // Check for OAuth return parameters (e.g. from Google Sign-In)
+  // Check if user is already authenticated or returning with OAuth params
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -100,6 +100,16 @@ export default function AuthPage() {
       setEmail(verifiedEmail);
       if (prefillName) setName(prefillName);
       setStep("onboarding");
+    } else {
+      // If already authenticated, redirect straight to dashboard
+      fetch("/api/auth/me")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.authenticated) {
+            window.location.href = "/";
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
@@ -237,6 +247,12 @@ export default function AuthPage() {
       if (!res.ok) {
         throw new Error(data.error || "Signup failed");
       }
+
+      try {
+        if (data.user) {
+          localStorage.setItem("alumni_user", JSON.stringify(data.user));
+        }
+      } catch {}
 
       // Success! Hard reload to dashboard so Next.js server component reads the new session cookie
       window.location.href = "/";
