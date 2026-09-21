@@ -17,9 +17,22 @@ import {
 import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
 
+import { redirect } from "next/navigation";
+
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const resolvedParams = await searchParams;
+  const code = resolvedParams?.code;
+
+  if (typeof code === "string" && code) {
+    redirect(`/api/auth/callback?code=${encodeURIComponent(code)}`);
+  }
+
   const user = await getCurrentUser();
 
   if (!user) {

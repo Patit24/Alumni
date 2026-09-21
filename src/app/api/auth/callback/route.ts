@@ -36,7 +36,14 @@ export async function GET(req: Request) {
       }
     );
 
+    console.log("[OAUTH-CALLBACK] Received code:", code);
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (error) {
+      console.error("[OAUTH-CALLBACK] exchangeCodeForSession error:", error);
+    } else {
+      console.log("[OAUTH-CALLBACK] Session exchange success! User email:", data?.user?.email);
+    }
 
     if (!error && data?.user?.email) {
       const userEmail = data.user.email.toLowerCase().trim();
@@ -48,6 +55,7 @@ export async function GET(req: Request) {
       });
 
       if (existingUser) {
+        console.log("[OAUTH-CALLBACK] Existing user found, logging in:", existingUser.id);
         const sessionToken = await createSessionToken({
           userId: existingUser.id,
           email: existingUser.email,
@@ -58,10 +66,12 @@ export async function GET(req: Request) {
         return NextResponse.redirect(`${origin}/`);
       } else {
         // Redirect to onboarding with verified email
+        console.log("[OAUTH-CALLBACK] New user, redirecting to onboarding for:", userEmail);
         return NextResponse.redirect(`${origin}/auth?verifiedEmail=${encodeURIComponent(userEmail)}&name=${encodeURIComponent(userName)}`);
       }
     }
   }
 
+  console.log("[OAUTH-CALLBACK] Fallback redirecting to /auth");
   return NextResponse.redirect(`${origin}/auth`);
 }
