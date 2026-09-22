@@ -7,11 +7,11 @@ import { Home, Users, Briefcase, Sparkles, MessageCircle, MessageSquareText } fr
 export default function MobileBottomNav() {
   const pathname = usePathname();
 
-  // Hide on auth, group chat, or 1-to-1 direct chat view for max chat height
+  // Hide on auth, group chat, or messages section for maximum chat immersion
   if (
     pathname.startsWith("/auth") ||
     pathname.match(/^\/groups\/[^/]+$/) ||
-    pathname.match(/^\/messages\/[^/]+$/)
+    pathname.startsWith("/messages")
   ) {
     return null;
   }

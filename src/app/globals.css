@@ -21,10 +21,16 @@ body {
 
 /* Mobile App Native Feel & Safe Areas */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 12px);
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
 }
 .pt-safe {
+  padding-top: max(8px, env(safe-area-inset-top, 0px));
+}
+.safe-top-inset {
   padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-bottom-inset {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Mobile App Smooth Touch Scrolling */
@@ -38,11 +44,34 @@ input, textarea, select {
 }
 
 /* Custom Glassmorphism & Micro-animations */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.glass-header {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+}
+
+.glass-composer {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-top: 1px solid rgba(226, 232, 240, 0.7);
+  box-shadow: 0 -4px 20px -2px rgba(15, 23, 42, 0.04);
+}
+
 .glass-card {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
 }
 
 .glass-card-dark {

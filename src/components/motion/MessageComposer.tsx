@@ -135,7 +135,7 @@ export default function MessageComposer({
   ];
 
   return (
-    <footer className="sticky bottom-0 z-20 bg-white/95 backdrop-blur-xl border-t border-slate-200/80 p-2 sm:p-3 space-y-2">
+    <footer className="sticky bottom-0 z-20 glass-composer bg-white/85 backdrop-blur-2xl border-t border-white/60 p-2 sm:p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2">
       {/* Replying-To Preview Banner */}
       <AnimatePresence>
         {replyingTo && (
@@ -146,16 +146,16 @@ export default function MessageComposer({
             transition={MOTION_SPRINGS.snappy}
             className="flex items-center justify-between p-2.5 bg-blue-50/90 rounded-2xl border border-blue-200/70 text-xs"
           >
-            <div className="flex items-center gap-2 overflow-hidden">
+            <div className="flex items-center gap-2 overflow-hidden min-w-0">
               <div className="w-1 h-7 bg-blue-600 rounded-full shrink-0" />
-              <div className="truncate">
+              <div className="truncate min-w-0">
                 <p className="font-bold text-blue-900 text-[11px]">Replying to message</p>
                 <p className="text-slate-600 text-[11px] truncate">{replyingTo.text}</p>
               </div>
             </div>
             <button
               onClick={onCancelReply}
-              className="p-1.5 rounded-full hover:bg-blue-100 text-slate-500 transition"
+              className="p-1.5 rounded-full hover:bg-blue-100 text-slate-500 transition shrink-0"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -171,7 +171,7 @@ export default function MessageComposer({
             animate={{ opacity: 1, y: 0, height: "auto" }}
             exit={{ opacity: 0, y: 8, height: 0 }}
             transition={MOTION_SPRINGS.snappy}
-            className="p-2 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center gap-1.5 overflow-x-auto text-[11px] font-semibold text-slate-700"
+            className="p-2 bg-slate-50/95 backdrop-blur-md rounded-2xl border border-slate-200/80 flex items-center gap-1.5 overflow-x-auto text-[11px] font-semibold text-slate-700 shadow-sm"
           >
             <span className="text-slate-400 shrink-0 text-[10px] uppercase font-bold pl-1">
               Privacy Mode:
@@ -213,7 +213,7 @@ export default function MessageComposer({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 15 }}
             transition={MOTION_SPRINGS.snappy}
-            className="p-3 bg-white/95 backdrop-blur-xl rounded-3xl border border-slate-200 shadow-xl grid grid-cols-5 gap-2 text-center"
+            className="p-3 bg-white/95 backdrop-blur-xl rounded-3xl border border-white/60 shadow-xl grid grid-cols-5 gap-2 text-center"
           >
             {attachments.map((item, idx) => {
               const Icon = item.icon;
@@ -243,7 +243,7 @@ export default function MessageComposer({
       </AnimatePresence>
 
       {/* Main Composer Bar */}
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-1.5 sm:gap-2 w-full max-w-full">
         {/* Privacy Selector Toggle Button */}
         <motion.button
           type="button"
@@ -252,10 +252,10 @@ export default function MessageComposer({
             triggerHaptic("light");
             setShowPrivacyPicker(!showPrivacyPicker);
           }}
-          className={`h-10 w-10 rounded-2xl flex items-center justify-center transition shrink-0 ${
+          className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition shrink-0 ${
             privacyMode !== "NORMAL"
               ? "bg-amber-100 text-amber-800 font-bold border border-amber-300"
-              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              : "bg-slate-100/90 text-slate-600 hover:bg-slate-200"
           }`}
           title="Change Disappearing / View-Once Setting"
         >
@@ -272,7 +272,7 @@ export default function MessageComposer({
             triggerHaptic("light");
             setShowAttachments(!showAttachments);
           }}
-          className="h-10 w-10 rounded-2xl bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition shrink-0"
+          className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl bg-slate-100/90 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition shrink-0"
         >
           <Plus className="w-4 h-4" />
         </motion.button>
@@ -282,11 +282,11 @@ export default function MessageComposer({
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="flex-1 h-10 px-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-xs text-rose-600 font-bold"
+            className="flex-1 min-w-0 h-9 sm:h-10 px-3 sm:px-4 bg-rose-50 border border-rose-200 rounded-xl sm:rounded-2xl flex items-center justify-between text-xs text-rose-600 font-bold"
           >
-            <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-rose-600 animate-ping" />
-              <span>
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-rose-600 animate-ping shrink-0" />
+              <span className="text-[11px]">
                 {Math.floor(recordingSeconds / 60)}:
                 {String(recordingSeconds % 60).padStart(2, "0")}
               </span>
@@ -304,12 +304,12 @@ export default function MessageComposer({
               ))}
             </div>
 
-            <div className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
-              <span>← Slide to cancel</span>
+            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
+              <span>← Cancel</span>
             </div>
           </motion.div>
         ) : (
-          <div className="flex-1 relative">
+          <div className="flex-1 min-w-0 relative">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -321,9 +321,9 @@ export default function MessageComposer({
                   handleSubmit();
                 }
               }}
-              placeholder={disabled ? "Chat request pending..." : "End-to-End Encrypted Message..."}
+              placeholder={disabled ? "Chat request pending..." : "Encrypted message..."}
               disabled={disabled}
-              className="w-full bg-slate-100 text-slate-900 placeholder:text-slate-400 text-xs sm:text-sm rounded-2xl px-4 py-2.5 border border-slate-200/80 focus:outline-hidden focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none max-h-32 min-h-[40px] leading-relaxed"
+              className="w-full bg-slate-100/90 focus:bg-white text-slate-900 placeholder:text-slate-400 text-xs sm:text-sm rounded-xl sm:rounded-2xl px-3.5 py-2 sm:py-2.5 border border-slate-200/80 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none max-h-32 min-h-[38px] leading-relaxed"
             />
           </div>
         )}
@@ -335,7 +335,7 @@ export default function MessageComposer({
             transition={MOTION_SPRINGS.snappy}
             onClick={() => handleSubmit()}
             disabled={disabled}
-            className="h-10 w-10 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-md shadow-blue-500/25 shrink-0 transition"
+            className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-md shadow-blue-500/25 shrink-0 transition"
           >
             <Send className="w-4 h-4 ml-0.5" />
           </motion.button>
@@ -354,12 +354,12 @@ export default function MessageComposer({
               onMouseDown={handleMicPressStart}
               onTouchEnd={handleMicSimpleRelease}
               onMouseUp={handleMicSimpleRelease}
-              whileTap={{ scale: 1.25 }}
+              whileTap={{ scale: 1.2 }}
               transition={MOTION_SPRINGS.bouncy}
-              className={`h-10 w-10 rounded-2xl flex items-center justify-center transition shadow-2xs ${
+              className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition shadow-2xs ${
                 isRecording
                   ? "bg-rose-600 text-white shadow-lg shadow-rose-500/30 ring-4 ring-rose-200"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  : "bg-slate-100/90 text-slate-700 hover:bg-slate-200"
               }`}
             >
               <Mic className="w-4 h-4" />

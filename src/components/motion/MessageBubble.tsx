@@ -121,11 +121,11 @@ export default function MessageBubble({
             triggerHaptic("medium");
             setShowMenu(true);
           }}
-          className={`relative max-w-[82%] sm:max-w-[70%] rounded-2xl px-3.5 py-2 text-xs shadow-2xs transition-shadow ${
+          className={`relative max-w-[85%] sm:max-w-[72%] rounded-2xl px-3.5 py-2.5 text-xs transition-all ${
             isMe
-              ? "bg-blue-600 text-white rounded-br-xs"
-              : "bg-white text-slate-900 border border-slate-200/80 rounded-bl-xs"
-          } ${showMenu ? "ring-2 ring-blue-400/80 shadow-md" : ""}`}
+              ? "bg-gradient-to-br from-blue-600 via-blue-600 to-indigo-600 text-white rounded-br-xs shadow-sm shadow-blue-500/15 border border-blue-400/20"
+              : "bg-white/85 backdrop-blur-md text-slate-900 border border-white/70 shadow-xs rounded-bl-xs"
+          } ${showMenu ? "ring-2 ring-blue-500/40 shadow-lg scale-[1.02]" : ""}`}
         >
           {/* View-Once Content or Standard Text */}
           {isViewOnce && !isMe ? (
