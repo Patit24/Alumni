@@ -21,12 +21,25 @@ import {
 type MessageReceivedCallback = (msg: VaultMessage) => void;
 type StatusUpdatedCallback = (msgId: string, status: "DELIVERED" | "READ") => void;
 type TypingCallback = (peerId: string, isTyping: boolean) => void;
+export type ConnectionRequestCallback = (payload: {
+  requestId: string;
+  senderId: string;
+  senderName: string;
+  senderUsername?: string | null;
+  createdAt: string;
+}) => void;
+export type ConnectionAcceptedCallback = (payload: {
+  peerId: string;
+  peerName: string;
+  peerUsername?: string | null;
+}) => void;
 
 class RealtimeSignalingService {
   private currentUserId: string | null = null;
   private currentUserName: string | null = null;
   private localPrivateKey: CryptoKey | null = null;
   private channel: ReturnType<ReturnType<typeof createClient>["channel"]> | null = null;
+  private peerChannels = new Map<string, ReturnType<ReturnType<typeof createClient>["channel"]>>();
 
   // Key Cache: peerId -> shared CryptoKey
   private sharedKeys = new Map<string, CryptoKey>();
@@ -35,6 +48,20 @@ class RealtimeSignalingService {
   private onMessageReceivedCbs = new Set<MessageReceivedCallback>();
   private onStatusUpdatedCbs = new Set<StatusUpdatedCallback>();
   private onTypingCbs = new Set<TypingCallback>();
+  private onConnectionRequestCbs = new Set<ConnectionRequestCallback>();
+  private onConnectionAcceptedCbs = new Set<ConnectionAcceptedCallback>();
+
+  private getPeerChannel(peerId: string) {
+    if (!this.peerChannels.has(peerId)) {
+      const supabase = createClient();
+      const ch = supabase.channel(`p2p-signal:${peerId}`, {
+        config: { broadcast: { ack: true } },
+      });
+      ch.subscribe();
+      this.peerChannels.set(peerId, ch);
+    }
+    return this.peerChannels.get(peerId)!;
+  }
 
   init(userId: string, userName: string, localPrivateKey: CryptoKey) {
     if (this.currentUserId === userId && this.channel) return;
@@ -68,8 +95,9 @@ class RealtimeSignalingService {
       };
 
       try {
-        const decryptedText = await this.decryptFromPeer(senderId, encryptedPayload);
-        let parsedData: { text: string; replyToId?: string; replySnippet?: string; disappearingSeconds?: number } = {
+        const payloadObj = typeof encryptedPayload === "string" ? JSON.parse(encryptedPayload) : encryptedPayload;
+        const decryptedText = await this.decryptFromPeer(senderId, payloadObj);
+        let parsedData: { id?: string; text: string; replyToId?: string; replySnippet?: string; disappearingSeconds?: number } = {
           text: decryptedText,
         };
 
@@ -83,11 +111,12 @@ class RealtimeSignalingService {
           ? Date.now() + parsedData.disappearingSeconds * 1000
           : undefined;
 
+        const msgId = parsedData.id || queueId || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const vaultMsg: VaultMessage = {
-          id: queueId || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          id: msgId,
           peerId: senderId,
           senderId,
-          text: parsedData.text,
+          text: parsedData.text || decryptedText,
           type: messageType === "EMOJI" ? "EMOJI" : "TEXT",
           replyToId: parsedData.replyToId,
           replySnippet: parsedData.replySnippet,
@@ -101,17 +130,19 @@ class RealtimeSignalingService {
         await saveLocalMessage(vaultMsg);
 
         // Acknowledge delivery to server & purge temporary encrypted queue entry
-        if (queueId) {
-          fetch("/api/messages/ack", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messageIds: [queueId],
-              senderId,
-              status: "DELIVERED",
-            }),
-          }).catch(() => {});
-        }
+        fetch("/api/messages/ack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messageIds: [msgId],
+            queueIds: queueId ? [queueId] : [],
+            senderId,
+            status: "DELIVERED",
+          }),
+        }).catch(() => {});
+
+        // Direct peer channel delivery receipt
+        this.sendMessageStatus(senderId, [msgId], "DELIVERED");
 
         this.onMessageReceivedCbs.forEach((cb) => cb(vaultMsg));
       } catch (err) {
@@ -181,6 +212,28 @@ class RealtimeSignalingService {
       }
     });
 
+    // 5. Incoming Connection Request via Realtime Broadcast
+    this.channel.on("broadcast", { event: "connection-request" }, (event) => {
+      const payload = event.payload as {
+        requestId: string;
+        senderId: string;
+        senderName: string;
+        senderUsername?: string | null;
+        createdAt: string;
+      };
+      this.onConnectionRequestCbs.forEach((cb) => cb(payload));
+    });
+
+    // 6. Incoming Connection Accepted Event
+    this.channel.on("broadcast", { event: "connection-accepted" }, (event) => {
+      const payload = event.payload as {
+        peerId: string;
+        peerName: string;
+        peerUsername?: string | null;
+      };
+      this.onConnectionAcceptedCbs.forEach((cb) => cb(payload));
+    });
+
     // Setup WebRTC manager outbound signaling callback
     webrtcManager.setCallbacks({
       onStateChange: (_state, _session) => {
@@ -204,8 +257,7 @@ class RealtimeSignalingService {
   // Send WebRTC signal to peer's private channel
   async sendSignalToPeer(peerId: string, signalMsg: WebRTCSignalingMessage) {
     try {
-      const supabase = createClient();
-      const peerChannel = supabase.channel(`p2p-signal:${peerId}`);
+      const peerChannel = this.getPeerChannel(peerId);
       await peerChannel.send({
         type: "broadcast",
         event: "webrtc-signal",
@@ -220,8 +272,7 @@ class RealtimeSignalingService {
   sendTypingStatus(peerId: string, isTyping: boolean) {
     if (!this.currentUserId) return;
     try {
-      const supabase = createClient();
-      const peerChannel = supabase.channel(`p2p-signal:${peerId}`);
+      const peerChannel = this.getPeerChannel(peerId);
       peerChannel.send({
         type: "broadcast",
         event: "typing",
@@ -236,8 +287,7 @@ class RealtimeSignalingService {
   sendMessageStatus(peerId: string, messageIds: string[], status: "DELIVERED" | "READ") {
     if (!this.currentUserId || !messageIds.length) return;
     try {
-      const supabase = createClient();
-      const peerChannel = supabase.channel(`p2p-signal:${peerId}`);
+      const peerChannel = this.getPeerChannel(peerId);
       peerChannel.send({
         type: "broadcast",
         event: "message-status",
@@ -277,7 +327,8 @@ class RealtimeSignalingService {
       const data = await res.json();
       if (!data.messages || data.messages.length === 0) return;
 
-      const acknowledgedIds: string[] = [];
+      const acknowledgedQueueIds: string[] = [];
+      const acknowledgedMsgIds: string[] = [];
 
       for (const item of data.messages) {
         try {
@@ -286,9 +337,7 @@ class RealtimeSignalingService {
             : item.encryptedPayload;
 
           const decryptedText = await this.decryptFromPeer(item.senderId, payload);
-          let parsedData: { text: string; replyToId?: string; replySnippet?: string; disappearingSeconds?: number } = {
-            text: decryptedText,
-          };
+          let parsedData: any = { text: decryptedText };
 
           try {
             parsedData = JSON.parse(decryptedText);
@@ -300,11 +349,12 @@ class RealtimeSignalingService {
             ? Date.now() + parsedData.disappearingSeconds * 1000
             : undefined;
 
+          const msgId = parsedData.id || item.id;
           const vaultMsg: VaultMessage = {
-            id: item.id,
+            id: msgId,
             peerId: item.senderId,
             senderId: item.senderId,
-            text: parsedData.text,
+            text: parsedData.text || decryptedText,
             type: item.messageType === "EMOJI" ? "EMOJI" : "TEXT",
             replyToId: parsedData.replyToId,
             replySnippet: parsedData.replySnippet,
@@ -315,7 +365,9 @@ class RealtimeSignalingService {
           };
 
           await saveLocalMessage(vaultMsg);
-          acknowledgedIds.push(item.id);
+          acknowledgedQueueIds.push(item.id);
+          acknowledgedMsgIds.push(msgId);
+          this.sendMessageStatus(item.senderId, [msgId], "DELIVERED");
           this.onMessageReceivedCbs.forEach((cb) => cb(vaultMsg));
         } catch (e) {
           console.error("Failed to decrypt queued message:", e);
@@ -323,12 +375,16 @@ class RealtimeSignalingService {
       }
 
       // Purge delivered messages from server
-      if (acknowledgedIds.length > 0) {
+      if (acknowledgedQueueIds.length > 0) {
         await fetch("/api/messages/ack", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messageIds: acknowledgedIds }),
-        });
+          body: JSON.stringify({
+            messageIds: acknowledgedMsgIds,
+            queueIds: acknowledgedQueueIds,
+            status: "DELIVERED",
+          }),
+        }).catch(() => {});
       }
     } catch (err) {
       console.warn("Drain pending queue error:", err);
@@ -348,6 +404,16 @@ class RealtimeSignalingService {
   onTyping(cb: TypingCallback) {
     this.onTypingCbs.add(cb);
     return () => this.onTypingCbs.delete(cb);
+  }
+
+  onConnectionRequest(cb: ConnectionRequestCallback) {
+    this.onConnectionRequestCbs.add(cb);
+    return () => this.onConnectionRequestCbs.delete(cb);
+  }
+
+  onConnectionAccepted(cb: ConnectionAcceptedCallback) {
+    this.onConnectionAcceptedCbs.add(cb);
+    return () => this.onConnectionAcceptedCbs.delete(cb);
   }
 }
 

@@ -17,13 +17,18 @@ import {
   Loader2,
   MessageSquare,
   Lock,
+  UserPlus,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
+import { addLocalConnectedPeer } from "@/lib/e2ee/vault";
 
 interface AlumniUser {
   id: string;
   name: string;
   username?: string | null;
   phone: string;
+  avatarUrl?: string | null;
   verificationStatus: string;
   batchYear: number;
   currentCompany: string | null;
@@ -57,6 +62,71 @@ export default function DirectoryPage() {
   const [selectedDept, setSelectedDept] = useState("all");
 
   const [loading, setLoading] = useState(true);
+  const [statusMap, setStatusMap] = useState<Record<string, "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">>({});
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  // Fetch true relationship status from server
+  const fetchConnectionStatuses = () => {
+    fetch("/api/contacts/requests")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.statusMap) {
+          setStatusMap(data.statusMap);
+        }
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchConnectionStatuses();
+    window.addEventListener("connection-requests-updated", fetchConnectionStatuses);
+    return () => window.removeEventListener("connection-requests-updated", fetchConnectionStatuses);
+  }, []);
+
+  const handleConnect = async (e: React.MouseEvent, targetUserId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActionLoadingId(targetUserId);
+    try {
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId, action: "REQUEST" }),
+      });
+      const data = await res.json();
+      if (data.status === "ACCEPTED") {
+        setStatusMap((prev) => ({ ...prev, [targetUserId]: "CONNECTED" }));
+        addLocalConnectedPeer(targetUserId);
+      } else if (data.status === "PENDING") {
+        setStatusMap((prev) => ({ ...prev, [targetUserId]: "PENDING_OUTGOING" }));
+      }
+    } catch (err) {
+      console.error("Connect request error:", err);
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleAccept = async (e: React.MouseEvent, targetUserId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActionLoadingId(targetUserId);
+    try {
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId, action: "ACCEPT" }),
+      });
+      if (res.ok) {
+        setStatusMap((prev) => ({ ...prev, [targetUserId]: "CONNECTED" }));
+        addLocalConnectedPeer(targetUserId);
+      }
+    } catch (err) {
+      console.error("Accept error:", err);
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
 
   // Fetch Directory Data
   useEffect(() => {
@@ -318,8 +388,17 @@ export default function DirectoryPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3.5">
                       {/* Avatar Circle */}
-                      <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0 group-hover:scale-105 transition-transform">
-                        {person.name.charAt(0).toUpperCase()}
+                      <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0 group-hover:scale-105 transition-transform overflow-hidden">
+                        {person.avatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={person.avatarUrl}
+                            alt={person.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          person.name.charAt(0).toUpperCase()
+                        )}
                       </div>
 
                       <div className="space-y-1">
@@ -390,19 +469,61 @@ export default function DirectoryPage() {
 
                     <div className="flex items-center gap-2 shrink-0">
                       {!isCurrentUser && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            window.location.href = `/messages/${person.id}`;
-                          }}
-                          className="h-8 px-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 flex items-center gap-1 text-[11px] font-bold transition"
-                          title="Send Encrypted Message"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Message</span>
-                        </button>
+                        <>
+                          {statusMap[person.id] === "CONNECTED" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                window.location.href = `/messages/${person.id}`;
+                              }}
+                              className="h-8 px-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 flex items-center gap-1 text-[11px] font-bold transition shadow-2xs"
+                              title="Send Encrypted Message"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Message</span>
+                            </button>
+                          ) : statusMap[person.id] === "PENDING_INCOMING" ? (
+                            <button
+                              type="button"
+                              disabled={actionLoadingId === person.id}
+                              onClick={(e) => handleAccept(e, person.id)}
+                              className="h-8 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-[11px] font-bold transition shadow-xs active:scale-95 disabled:opacity-50"
+                              title="Accept Connection Request"
+                            >
+                              {actionLoadingId === person.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              )}
+                              <span>Accept</span>
+                            </button>
+                          ) : statusMap[person.id] === "PENDING_OUTGOING" ? (
+                            <span
+                              className="h-8 px-2.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200/80 flex items-center gap-1 text-[11px] font-semibold"
+                              title="Request Pending"
+                            >
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="hidden sm:inline">Requested</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={actionLoadingId === person.id}
+                              onClick={(e) => handleConnect(e, person.id)}
+                              className="h-8 px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/60 flex items-center gap-1 text-[11px] font-bold transition shadow-2xs active:scale-95 disabled:opacity-50"
+                              title="Connect for Encrypted Chat"
+                            >
+                              {actionLoadingId === person.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                              )}
+                              <span>Connect</span>
+                            </button>
+                          )}
+                        </>
                       )}
                       <div className="p-2 rounded-xl text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition">
                         <ChevronRight className="w-5 h-5" />

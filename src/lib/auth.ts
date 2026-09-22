@@ -20,6 +20,7 @@ export interface SessionPayload {
   institutionName?: string | null;
   batchYear?: number | null;
   departmentName?: string | null;
+  course?: string | null;
   currentCompany?: string | null;
   currentRole?: string | null;
   city?: string | null;
@@ -29,7 +30,16 @@ export interface SessionPayload {
 }
 
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
-  return new SignJWT({ ...payload })
+  // Strip huge base64 images from JWT to guarantee cookie is well under 4KB limit
+  const cleanPayload = { ...payload };
+  if (typeof cleanPayload.avatarUrl === "string" && (cleanPayload.avatarUrl.length > 300 || cleanPayload.avatarUrl.startsWith("data:"))) {
+    delete cleanPayload.avatarUrl;
+  }
+  if (typeof cleanPayload.coverUrl === "string" && (cleanPayload.coverUrl.length > 300 || cleanPayload.coverUrl.startsWith("data:"))) {
+    delete cleanPayload.coverUrl;
+  }
+
+  return new SignJWT(cleanPayload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("30d")
@@ -51,6 +61,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       institutionName: (payload.institutionName as string) || null,
       batchYear: typeof payload.batchYear === "number" ? payload.batchYear : payload.batchYear ? parseInt(String(payload.batchYear), 10) : null,
       departmentName: (payload.departmentName as string) || null,
+      course: (payload.course as string) || null,
       currentCompany: (payload.currentCompany as string) || null,
       currentRole: (payload.currentRole as string) || null,
       city: (payload.city as string) || null,
@@ -169,6 +180,8 @@ export async function getCurrentUser() {
           institutionId: inst.id,
           batchId: batch.id,
           batchYear,
+          avatarUrl: payload.avatarUrl || undefined,
+          coverUrl: payload.coverUrl || undefined,
         },
         create: {
           id: targetUserId,
@@ -176,6 +189,8 @@ export async function getCurrentUser() {
           username: payload.username || null,
           phone: payload.phone || null,
           name: userName,
+          avatarUrl: payload.avatarUrl || null,
+          coverUrl: payload.coverUrl || null,
           role: payload.role || "USER",
           verificationStatus: payload.verificationStatus || "UNVERIFIED",
           institutionId: inst.id,
@@ -203,7 +218,8 @@ export async function getCurrentUser() {
         username: payload.username || null,
         phone: payload.phone || null,
         name: userName,
-        avatarUrl: null,
+        avatarUrl: payload.avatarUrl || null,
+        coverUrl: payload.coverUrl || null,
         role: payload.role || "USER",
         verificationStatus: payload.verificationStatus || "UNVERIFIED",
         verifiedAt: null,

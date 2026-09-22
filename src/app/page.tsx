@@ -10,7 +10,6 @@ import {
   ArrowRight,
   MapPin,
   Building,
-  UserCheck,
   Music,
   PartyPopper,
   Lock,
@@ -21,6 +20,7 @@ import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
 import ClientAuthRedirect from "@/components/ClientAuthRedirect";
 import AlumniPassportCard from "@/components/AlumniPassportCard";
+import InstitutionDiscoverySection from "@/components/InstitutionDiscoverySection";
 
 import { redirect } from "next/navigation";
 
@@ -153,10 +153,18 @@ export default async function HomePage(props: {
 
             <Link
               href={`/profile/${user.id}`}
-              className="h-9 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 text-xs font-semibold transition shrink-0"
+              className="h-9 px-2.5 sm:px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-2 text-xs font-semibold transition shrink-0"
               title="My Profile"
             >
-              <span className="hidden sm:inline">Profile</span>
+              <div className="h-6 w-6 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
+                {user.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                ) : (
+                  user.name.charAt(0).toUpperCase()
+                )}
+              </div>
+              <span className="hidden sm:inline font-medium">Profile</span>
             </Link>
 
             <LogoutButton />
@@ -169,33 +177,11 @@ export default async function HomePage(props: {
         {/* Alumni Identity Passport Card */}
         <AlumniPassportCard user={user as any} />
 
-        {/* Verification Banner (if unverified) */}
-        {!isVerified && (
-          <div className="rounded-3xl bg-amber-50 border border-amber-200/80 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3.5">
-              <div className="h-10 w-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                <ShieldAlert className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-bold text-amber-900">Your Account is Unverified</h2>
-                  <span className="text-[10px] font-semibold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
-                    Action Required
-                  </span>
-                </div>
-                <p className="text-xs text-amber-800 mt-1 leading-relaxed max-w-xl">
-                  To protect privacy and unlock direct referral posting and mentorship, any verified batchmate from your <strong>Class of {user.batchYear}</strong> can vouch for you with one tap.
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/verification"
-              className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shadow-xs"
-            >
-              Get Verified →
-            </Link>
-          </div>
-        )}
+        {/* People from User's College / University / School Discovery Section */}
+        <InstitutionDiscoverySection
+          institutionId={user.institutionId}
+          initialInstitutionName={user.institution?.name}
+        />
 
         {/* Campus Hub: Interactive Feature Grid */}
         <section className="space-y-3">
@@ -305,21 +291,7 @@ export default async function HomePage(props: {
               </div>
             </Link>
 
-            {/* Peer Verification Vouch */}
-            <Link
-              href="/verification"
-              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-emerald-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
-            >
-              <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <UserCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-600 transition">
-                  Batch Vouching
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Verify Batchmates</p>
-              </div>
-            </Link>
+
           </div>
         </section>
 
@@ -331,6 +303,7 @@ export default async function HomePage(props: {
             currentUserCompany={user.currentCompany}
             currentUserVerified={isVerified}
             batchYear={user.batchYear}
+            currentUserAvatar={user.avatarUrl}
           />
         </section>
       </main>

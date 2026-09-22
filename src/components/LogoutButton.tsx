@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, Loader2 } from "lucide-react";
+import { clearUserLocalVault } from "@/lib/e2ee/vault";
 
 export default function LogoutButton() {
   const router = useRouter();
@@ -11,6 +12,13 @@ export default function LogoutButton() {
   const handleLogout = async () => {
     setLoading(true);
     try {
+      clearUserLocalVault();
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.clear();
+          localStorage.removeItem("alumni_connected_peer_ids");
+        } catch {}
+      }
       await fetch("/api/auth/logout", { method: "POST" });
       router.push("/");
       router.refresh();

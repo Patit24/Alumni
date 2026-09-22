@@ -1,32 +1,17 @@
-import { createClient } from "@supabase/supabase-js";
+import { sendRealtimeBroadcast } from "./realtime-broadcast";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://tinoesrmhzgelxiykcgq.supabase.co";
-const supabaseKey =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "sb_publishable_DtrGzEbOc2n4oeilkvpuCQ_tj6jRqyX";
-
-let serverSupabase: ReturnType<typeof createClient> | null = null;
-
-function getServerSupabase() {
-  if (!serverSupabase) {
-    serverSupabase = createClient(supabaseUrl, supabaseKey);
-  }
-  return serverSupabase;
-}
-
-export async function broadcastFeedEvent(institutionId: string, event: string, payload: unknown) {
+export async function broadcastFeedEvent(institutionId: string | null | undefined, event: string, payload: unknown) {
   try {
-    const supabase = getServerSupabase();
-    const channel = supabase.channel(`campus-feed:${institutionId}`);
+    const payloadObj = (typeof payload === "object" && payload !== null ? payload : { data: payload }) as Record<string, unknown>;
     
-    await channel.send({
-      type: "broadcast",
-      event,
-      payload,
-    });
+    // Broadcast to global feed channel (active in FeedSection)
+    sendRealtimeBroadcast("campus-feed-global", event, payloadObj).catch(() => {});
+
+    // Also broadcast to specific institution channel
+    if (institutionId) {
+      sendRealtimeBroadcast(`campus-feed:${institutionId}`, event, payloadObj).catch(() => {});
+    }
   } catch (err) {
-    // Non-blocking broadcast
-    console.warn("Supabase Realtime broadcast warning:", err);
+    console.warn("Supabase Realtime feed broadcast warning:", err);
   }
 }

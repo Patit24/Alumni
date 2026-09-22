@@ -1,0 +1,125 @@
+import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
+import { db } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // 1. Incoming pending requests to me
+    const incoming = await db.connectionRequest.findMany({
+      where: {
+        receiverId: user.id,
+        status: "PENDING",
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatarUrl: true,
+            currentRole: true,
+            currentCompany: true,
+            batchYear: true,
+            verificationStatus: true,
+            institution: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // 2. Outgoing pending requests from me
+    const outgoing = await db.connectionRequest.findMany({
+      where: {
+        senderId: user.id,
+        status: "PENDING",
+      },
+      include: {
+        receiver: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatarUrl: true,
+            currentRole: true,
+            currentCompany: true,
+            batchYear: true,
+            verificationStatus: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // 3. All accepted / connected relationships
+    const connectedTrusts = await db.contactTrust.findMany({
+      where: {
+        userId: user.id,
+        trustLevel: { in: ["CONNECTED", "TRUSTED"] },
+      },
+      select: { contactId: true, trustLevel: true },
+    });
+
+    // Build status lookup map for fast UI status binding
+    const statusMap: Record<string, "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED"> = {};
+
+    for (const ct of connectedTrusts) {
+      statusMap[ct.contactId] = "CONNECTED";
+    }
+
+    for (const req of incoming) {
+      if (!statusMap[req.senderId] || statusMap[req.senderId] === "NONE") {
+        statusMap[req.senderId] = "PENDING_INCOMING";
+      }
+    }
+
+    for (const req of outgoing) {
+      if (!statusMap[req.receiverId] || statusMap[req.receiverId] === "NONE") {
+        statusMap[req.receiverId] = "PENDING_OUTGOING";
+      }
+    }
+
+    // Check mutual connections if targetUserId is provided
+    const { searchParams } = new URL(req.url);
+    const targetUserId = searchParams.get("targetUserId");
+    let mutualCount = 0;
+    if (targetUserId) {
+      const targetTrusts = await db.contactTrust.findMany({
+        where: { userId: targetUserId, trustLevel: { in: ["CONNECTED", "TRUSTED"] } },
+        select: { contactId: true },
+      });
+      const targetConnected = new Set(targetTrusts.map((t) => t.contactId));
+      for (const ct of connectedTrusts) {
+        if (targetConnected.has(ct.contactId)) mutualCount++;
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      incoming: incoming.map((r) => ({
+        id: r.id,
+        createdAt: r.createdAt,
+        user: r.sender,
+      })),
+      outgoing: outgoing.map((r) => ({
+        id: r.id,
+        createdAt: r.createdAt,
+        user: r.receiver,
+      })),
+      connectedPeerIds: connectedTrusts.map((c) => c.contactId),
+      statusMap,
+      mutualCount,
+      unreadRequestsCount: incoming.length,
+    });
+  } catch (error) {
+    console.error("Fetch connection requests error:", error);
+    return NextResponse.json({ error: "Failed to fetch connection requests" }, { status: 500 });
+  }
+}

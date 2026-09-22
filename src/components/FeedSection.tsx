@@ -53,6 +53,7 @@ interface FeedItemData {
   actor: {
     id: string;
     name: string;
+    avatarUrl?: string | null;
     currentRole: string | null;
     currentCompany: string | null;
     batchYear: number;
@@ -78,6 +79,7 @@ interface FeedSectionProps {
   currentUserVerified: boolean;
   batchYear: number;
   institutionId?: string;
+  currentUserAvatar?: string | null;
 }
 
 const FEED_CACHE_KEY = "alumni_local_feed_cache_v2";
@@ -100,6 +102,31 @@ function saveLocalFeedPost(post: FeedItemData) {
     localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(updated));
   } catch (e) {
     console.warn("Could not save post to local cache:", e);
+  }
+}
+
+function updateLocalFeedPost(postId: string, updater: (post: FeedItemData) => FeedItemData) {
+  if (typeof window === "undefined") return;
+  try {
+    const existing = getLocalFeedPosts();
+    const updated = existing.map((p) => (p.id === postId ? updater(p) : p));
+    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.warn("Could not update post in local cache:", e);
+  }
+}
+
+function syncLocalFeedPosts(posts: FeedItemData[]) {
+  if (typeof window === "undefined" || !posts.length) return;
+  try {
+    const localPosts = getLocalFeedPosts();
+    const map = new Map<string, FeedItemData>();
+    localPosts.forEach((p) => map.set(p.id, p));
+    posts.forEach((p) => map.set(p.id, p));
+    const merged = Array.from(map.values()).slice(0, 50);
+    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(merged));
+  } catch (e) {
+    console.warn("Could not sync local feed posts:", e);
   }
 }
 
@@ -130,6 +157,7 @@ function calculateTimeAgo(isoString: string) {
 export default function FeedSection({
   currentUserName,
   batchYear,
+  currentUserAvatar: initialAvatar,
 }: FeedSectionProps) {
   const [feed, setFeed] = useState<FeedItemData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,6 +165,22 @@ export default function FeedSection({
   const [newPostText, setNewPostText] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(initialAvatar || null);
+
+  useEffect(() => {
+    if (initialAvatar) setCurrentUserAvatar(initialAvatar);
+  }, [initialAvatar]);
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleProfileUpdate = (e: any) => {
+      if (e.detail?.avatarUrl !== undefined) {
+        setCurrentUserAvatar(e.detail.avatarUrl);
+      }
+    };
+    window.addEventListener("profile-updated", handleProfileUpdate);
+    return () => window.removeEventListener("profile-updated", handleProfileUpdate);
+  }, []);
   const [posting, setPosting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -222,6 +266,10 @@ export default function FeedSection({
       const serverPosts: FeedItemData[] = json.feed || [];
       const localPosts = getLocalFeedPosts();
 
+      if (serverPosts.length > 0) {
+        syncLocalFeedPosts(serverPosts);
+      }
+
       // Merge server posts with local posts so that user-created posts and photos NEVER vanish
       const map = new Map<string, FeedItemData>();
       // First insert server posts
@@ -269,6 +317,7 @@ export default function FeedSection({
     channel
       .on("broadcast", { event: "new-post" }, (event) => {
         const newPost = event.payload as FeedItemData;
+        saveLocalFeedPost(newPost);
         setFeed((prev) => {
           if (prev.some((p) => p.id === newPost.id)) return prev;
           return [newPost, ...prev];
@@ -280,6 +329,7 @@ export default function FeedSection({
           likesCount: number;
           actorId: string;
         };
+        updateLocalFeedPost(feedItemId, (p) => ({ ...p, likesCount }));
         setFeed((prev) =>
           prev.map((item) =>
             item.id === feedItemId ? { ...item, likesCount } : item
@@ -292,6 +342,15 @@ export default function FeedSection({
           comment: CommentData;
           totalComments: number;
         };
+        updateLocalFeedPost(feedItemId, (p) => {
+          const currentComments = p.comments || [];
+          const exists = currentComments.some((c) => c.id === comment.id);
+          return {
+            ...p,
+            commentsCount: totalComments,
+            comments: exists ? currentComments : [...currentComments, comment],
+          };
+        });
         setFeed((prev) =>
           prev.map((item) => {
             if (item.id === feedItemId) {
@@ -312,6 +371,7 @@ export default function FeedSection({
           feedItemId: string;
           sharesCount: number;
         };
+        updateLocalFeedPost(feedItemId, (p) => ({ ...p, sharesCount }));
         setFeed((prev) =>
           prev.map((item) =>
             item.id === feedItemId ? { ...item, sharesCount } : item
@@ -388,20 +448,30 @@ export default function FeedSection({
 
   // Like Toggle Handler with Optimistic UI & Supabase sync
   async function toggleLike(postId: string) {
-    // Optimistic update
+    const currentPost = feed.find((p) => p.id === postId);
+    const nextHasLiked = currentPost ? !currentPost.hasLiked : true;
+    const nextCount = currentPost ? Math.max(0, currentPost.likesCount + (nextHasLiked ? 1 : -1)) : 1;
+
+    // Optimistically update React state
     setFeed((prev) =>
       prev.map((item) => {
         if (item.id === postId) {
-          const nextHasLiked = !item.hasLiked;
           return {
             ...item,
             hasLiked: nextHasLiked,
-            likesCount: item.likesCount + (nextHasLiked ? 1 : -1),
+            likesCount: nextCount,
           };
         }
         return item;
       })
     );
+
+    // Optimistically update local storage cache so it persists on refresh
+    updateLocalFeedPost(postId, (p) => ({
+      ...p,
+      hasLiked: nextHasLiked,
+      likesCount: nextCount,
+    }));
 
     try {
       const res = await fetch(`/api/feed/${postId}/like`, {
@@ -409,6 +479,11 @@ export default function FeedSection({
       });
       const data = await res.json();
       if (res.ok) {
+        updateLocalFeedPost(postId, (p) => ({
+          ...p,
+          hasLiked: data.hasLiked,
+          likesCount: data.likesCount,
+        }));
         setFeed((prev) =>
           prev.map((item) =>
             item.id === postId
@@ -441,7 +516,7 @@ export default function FeedSection({
       // Clear input
       setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
 
-      // Optimistically append comment
+      // Optimistically append comment to React state
       setFeed((prev) =>
         prev.map((item) => {
           if (item.id === postId) {
@@ -455,6 +530,16 @@ export default function FeedSection({
           return item;
         })
       );
+
+      // Persist comment to local storage cache so it never vanishes on refresh
+      updateLocalFeedPost(postId, (p) => {
+        const comments = p.comments || [];
+        return {
+          ...p,
+          commentsCount: data.totalComments,
+          comments: [...comments, data.comment],
+        };
+      });
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error posting comment");
     } finally {
@@ -566,8 +651,17 @@ export default function FeedSection({
         className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-3"
       >
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs shadow-blue-500/20">
-            {currentUserName.charAt(0)}
+          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs shadow-blue-500/20 overflow-hidden">
+            {currentUserAvatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={currentUserAvatar}
+                alt={currentUserName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              currentUserName.charAt(0)
+            )}
           </div>
           <form onSubmit={handleCreatePost} className="flex-1 min-w-0">
             <input
@@ -703,8 +797,17 @@ export default function FeedSection({
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <Link href={`/profile/${item.actor.id}`} className="shrink-0">
-                      <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-xs hover:opacity-90 transition">
-                        {item.actor.name.charAt(0)}
+                      <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-xs hover:opacity-90 transition overflow-hidden">
+                        {item.actor.avatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.actor.avatarUrl}
+                            alt={item.actor.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          item.actor.name.charAt(0)
+                        )}
                       </div>
                     </Link>
                     <div className="min-w-0">
@@ -917,8 +1020,17 @@ export default function FeedSection({
                     >
                       {/* Comment Input */}
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
-                          {currentUserName.charAt(0)}
+                        <div className="h-8 w-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
+                          {currentUserAvatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={currentUserAvatar}
+                              alt={currentUserName}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            currentUserName.charAt(0)
+                          )}
                         </div>
                         <div className="flex-1 flex items-center gap-1.5 bg-slate-100 rounded-2xl px-3 py-1.5 border border-slate-200/60 focus-within:border-blue-400 focus-within:bg-white transition">
                           <input
@@ -964,8 +1076,17 @@ export default function FeedSection({
                               key={comm.id}
                               className="flex items-start gap-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-100"
                             >
-                              <div className="h-7 w-7 rounded-xl bg-slate-800 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
-                                {comm.user.name.charAt(0)}
+                              <div className="h-7 w-7 rounded-xl bg-slate-800 text-white flex items-center justify-center text-[11px] font-bold shrink-0 overflow-hidden">
+                                {comm.user.avatarUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={comm.user.avatarUrl}
+                                    alt={comm.user.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  comm.user.name.charAt(0)
+                                )}
                               </div>
                               <div className="flex-1 space-y-0.5">
                                 <div className="flex items-center justify-between">

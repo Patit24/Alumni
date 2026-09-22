@@ -22,6 +22,8 @@ import {
   AlertTriangle,
   BellOff,
   Scan,
+  School,
+  GraduationCap,
 } from "lucide-react";
 
 interface PrivacySettings {
@@ -36,6 +38,10 @@ interface PrivacySettings {
   screenshotAlert?: boolean;
   contactDiscoveryEnabled?: boolean;
   presenceVisibility?: string;
+  showInstitution?: boolean;
+  allowInstitutionDiscovery?: boolean;
+  showCourse?: boolean;
+  showGraduationYear?: boolean;
 }
 
 interface BlockedUser {
@@ -59,6 +65,10 @@ export default function PrivacySettingsPage() {
     screenshotAlert: true,
     contactDiscoveryEnabled: true,
     presenceVisibility: "LIMITED",
+    showInstitution: true,
+    allowInstitutionDiscovery: true,
+    showCourse: true,
+    showGraduationYear: true,
   });
   const [currentUsername, setCurrentUsername] = useState<string>("");
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
@@ -267,6 +277,78 @@ export default function PrivacySettingsPage() {
               type="checkbox"
               checked={settings.contactDiscoveryEnabled ?? true}
               onChange={(e) => updateSetting("contactDiscoveryEnabled", e.target.checked)}
+              className="h-5 w-5 rounded-md text-blue-600 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* SECTION: School / College Discovery & Academic Privacy */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+          <div className="p-4 bg-slate-50/50">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <School className="w-4 h-4 text-blue-600" /> Institution & Academic Discovery
+            </h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Manage how your school or university is displayed and whether peers can discover your profile
+            </p>
+          </div>
+
+          <div className="p-4 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold text-slate-900">Institution Discovery</p>
+              <p className="text-[11px] text-slate-500">
+                Allow people from your school or university to find and connect with you under &quot;People from your Institution&quot;
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.allowInstitutionDiscovery ?? true}
+              onChange={(e) => updateSetting("allowInstitutionDiscovery", e.target.checked)}
+              className="h-5 w-5 rounded-md text-blue-600 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="p-4 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold text-slate-900">Show Institution on Profile</p>
+              <p className="text-[11px] text-slate-500">
+                Display your selected school or university publicly on your profile
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.showInstitution ?? true}
+              onChange={(e) => updateSetting("showInstitution", e.target.checked)}
+              className="h-5 w-5 rounded-md text-blue-600 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="p-4 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold text-slate-900">Show Course / Degree</p>
+              <p className="text-[11px] text-slate-500">
+                Display your course or degree (e.g. BCA, B.Tech) on your profile card
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.showCourse ?? true}
+              onChange={(e) => updateSetting("showCourse", e.target.checked)}
+              className="h-5 w-5 rounded-md text-blue-600 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="p-4 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <p className="text-xs font-bold text-slate-900">Show Graduation Year</p>
+              <p className="text-[11px] text-slate-500">
+                Display your class or graduation year on your profile
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.showGraduationYear ?? true}
+              onChange={(e) => updateSetting("showGraduationYear", e.target.checked)}
               className="h-5 w-5 rounded-md text-blue-600 focus:ring-blue-500"
             />
           </div>

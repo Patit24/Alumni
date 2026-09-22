@@ -36,6 +36,7 @@ import {
   getLocalConnectedPeerIds,
   addLocalConnectedPeer,
   getLatestMessagesPerPeer,
+  setActiveVaultUser,
   VaultMessage,
 } from "@/lib/e2ee/vault";
 import QRCodeModal from "@/components/QRCodeModal";
@@ -54,6 +55,7 @@ interface AlumniContact {
   name: string;
   username?: string | null;
   phone?: string | null;
+  avatarUrl?: string | null;
   currentRole: string | null;
   currentCompany: string | null;
   batchYear: number;
@@ -107,6 +109,8 @@ export default function MessagesHubPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
+  const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
 
   // Modals
   const [showNewChatModal, setShowNewChatModal] = useState(false);
@@ -135,13 +139,33 @@ export default function MessagesHubPage() {
     async function loadData() {
       try {
         setLoading(true);
-        const [dirRes, calls, meRes, lockRes, vaultPeers, latestMap] = await Promise.all([
+
+        // 1. Authenticate and resolve current user ID first
+        const meRes = await fetch("/api/auth/me").catch(() => null);
+        let currentUserId: string | null = null;
+        if (meRes && meRes.ok) {
+          const meData = await meRes.json();
+          if (meData?.user) {
+            currentUserId = meData.user.id;
+            setActiveVaultUser(currentUserId);
+            setCurrentUserProfile({
+              id: meData.user.id,
+              name: meData.user.name || "Alumni Member",
+              username: meData.user.username || `@${(meData.user.name || "alumni").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+              batchYear: meData.user.batchYear || new Date().getFullYear(),
+              institutionName: meData.user.institutionName || "Brainware University",
+            });
+          }
+        }
+
+        // 2. Fetch scoped data in parallel
+        const [dirRes, calls, lockRes, vaultPeers, latestMap, reqsRes] = await Promise.all([
           fetch("/api/directory?limit=100&batchScope=all&institutionScope=all").catch(() => null),
-          getCallLogs().catch(() => []),
-          fetch("/api/auth/me").catch(() => null),
+          getCallLogs(currentUserId || undefined).catch(() => []),
           fetch("/api/privacy/lock").catch(() => null),
-          getVaultConnectedPeerIds().catch(() => []),
-          getLatestMessagesPerPeer().catch(() => new Map()),
+          getVaultConnectedPeerIds(currentUserId || undefined).catch(() => []),
+          getLatestMessagesPerPeer(currentUserId || undefined).catch(() => new Map()),
+          fetch("/api/contacts/requests").catch(() => null),
         ]);
 
         if (lockRes && lockRes.ok) {
@@ -152,7 +176,9 @@ export default function MessagesHubPage() {
         if (dirRes && dirRes.ok) {
           const dirData = await dirRes.json();
           setContacts(dirData.alumni || dirData.users || []);
-          if (dirData.currentUser) {
+          if (!currentUserId && dirData.currentUser) {
+            currentUserId = dirData.currentUser.id;
+            setActiveVaultUser(currentUserId);
             setCurrentUserProfile({
               id: dirData.currentUser.id,
               name: dirData.currentUser.name || "Alumni Member",
@@ -163,22 +189,9 @@ export default function MessagesHubPage() {
           }
         }
 
-        if (meRes && meRes.ok) {
-          const meData = await meRes.json();
-          if (meData?.user) {
-            setCurrentUserProfile((prev) => ({
-              id: meData.user.id,
-              name: meData.user.name || prev?.name || "Alumni Member",
-              username: meData.user.username || prev?.username || `@${(meData.user.name || "alumni").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
-              batchYear: meData.user.batchYear || prev?.batchYear || new Date().getFullYear(),
-              institutionName: meData.user.institutionName || prev?.institutionName || "Brainware University",
-            }));
-          }
-        }
-
         // Safe fallback user profile if still unpopulated
         setCurrentUserProfile((prev) => prev || {
-          id: "me",
+          id: currentUserId || "me",
           name: "Alumni Member",
           username: "alumni",
           batchYear: new Date().getFullYear(),
@@ -187,9 +200,31 @@ export default function MessagesHubPage() {
 
         setCallLogs(calls);
 
-        // Merge vault connected peers and localStorage connected peers
-        const localStoredPeers = getLocalConnectedPeerIds();
-        const mergedPeers = new Set<string>([...vaultPeers, ...localStoredPeers]);
+        // 3. Build strictly scoped connected peers
+        const serverConnectedPeers = new Set<string>();
+        if (reqsRes && reqsRes.ok) {
+          const reqsData = await reqsRes.json();
+          if (reqsData.incoming) {
+            setIncomingRequests(reqsData.incoming);
+          }
+          if (Array.isArray(reqsData.connectedPeerIds)) {
+            for (const pid of reqsData.connectedPeerIds) {
+              if (pid && pid !== currentUserId) {
+                serverConnectedPeers.add(pid);
+                addLocalConnectedPeer(pid, currentUserId || undefined);
+              }
+            }
+          }
+        }
+
+        // Scoped local peers strictly for current user
+        const localStoredPeers = currentUserId ? getLocalConnectedPeerIds(currentUserId) : [];
+        const mergedPeers = new Set<string>([
+          ...serverConnectedPeers,
+          ...vaultPeers.filter((pid) => pid !== currentUserId),
+          ...localStoredPeers.filter((pid) => pid !== currentUserId),
+        ]);
+
         setConnectedPeerIds(mergedPeers);
         setLatestMessages(latestMap);
 
@@ -245,6 +280,81 @@ export default function MessagesHubPage() {
     loadData();
   }, [router]);
 
+  // Live real-time sync when connection requests or vault messages update
+  useEffect(() => {
+    const handleUpdate = () => {
+      const uid = currentUserProfile?.id;
+      fetch("/api/contacts/requests")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.incoming) setIncomingRequests(data.incoming);
+          if (Array.isArray(data.connectedPeerIds)) {
+            const serverIds = new Set<string>(
+              data.connectedPeerIds.filter((id: string) => id !== uid)
+            );
+            // Also include active local peers for this user
+            const localPeers = uid ? getLocalConnectedPeerIds(uid) : [];
+            localPeers.forEach((id) => {
+              if (id !== uid) serverIds.add(id);
+            });
+            setConnectedPeerIds(serverIds);
+          }
+        })
+        .catch(() => {});
+
+      getLatestMessagesPerPeer(uid)
+        .then((map) => setLatestMessages(map))
+        .catch(() => {});
+    };
+
+    window.addEventListener("connection-requests-updated", handleUpdate);
+    window.addEventListener("vault-messages-updated", handleUpdate);
+    return () => {
+      window.removeEventListener("connection-requests-updated", handleUpdate);
+      window.removeEventListener("vault-messages-updated", handleUpdate);
+    };
+  }, [currentUserProfile?.id]);
+
+  const handleAcceptRequest = async (targetUserId: string) => {
+    try {
+      setRequestsLoading(true);
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId, action: "ACCEPT" }),
+      });
+      if (res.ok) {
+        addLocalConnectedPeer(targetUserId);
+        setConnectedPeerIds((prev) => new Set(prev).add(targetUserId));
+        setIncomingRequests((prev) => prev.filter((r) => r.user.id !== targetUserId));
+        triggerHaptic("success");
+      }
+    } catch (err) {
+      console.error("Accept connection error:", err);
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
+
+  const handleRejectRequest = async (targetUserId: string) => {
+    try {
+      setRequestsLoading(true);
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId, action: "REJECT" }),
+      });
+      if (res.ok) {
+        setIncomingRequests((prev) => prev.filter((r) => r.user.id !== targetUserId));
+        triggerHaptic("light");
+      }
+    } catch (err) {
+      console.error("Reject connection error:", err);
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
+
   // Remote search when query has length > 1 (supports @username and name)
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) return;
@@ -280,16 +390,19 @@ export default function MessagesHubPage() {
   }, [searchQuery]);
 
   const cleanFilter = searchQuery.toLowerCase().replace(/^@/, "").trim();
-  const filteredContacts = contacts.filter((c) => {
-    if (!cleanFilter) return true;
-    return (
-      (c.name || "").toLowerCase().includes(cleanFilter) ||
-      (c.username && c.username.toLowerCase().includes(cleanFilter)) ||
-      c.currentCompany?.toLowerCase().includes(cleanFilter) ||
-      c.currentRole?.toLowerCase().includes(cleanFilter) ||
-      c.batchYear?.toString().includes(cleanFilter)
-    );
-  });
+  const currentUserId = currentUserProfile?.id;
+  const filteredContacts = contacts
+    .filter((c) => c.id !== currentUserId)
+    .filter((c) => {
+      if (!cleanFilter) return true;
+      return (
+        (c.name || "").toLowerCase().includes(cleanFilter) ||
+        (c.username && c.username.toLowerCase().includes(cleanFilter)) ||
+        c.currentCompany?.toLowerCase().includes(cleanFilter) ||
+        c.currentRole?.toLowerCase().includes(cleanFilter) ||
+        c.batchYear?.toString().includes(cleanFilter)
+      );
+    });
 
   // CHATS tab shows strictly connected accounts
   const connectedContacts = filteredContacts.filter((c) => connectedPeerIds.has(c.id));
@@ -567,19 +680,20 @@ export default function MessagesHubPage() {
             onClick={async () => {
               setRefreshing(true);
               triggerHaptic("medium");
+              const uid = currentUserProfile?.id;
               try {
                 const [dirRes, calls, vaultPeers, latestMap] = await Promise.all([
                   fetch("/api/directory?limit=100&batchScope=all&institutionScope=all").catch(() => null),
-                  getCallLogs().catch(() => []),
-                  getVaultConnectedPeerIds().catch(() => []),
-                  getLatestMessagesPerPeer().catch(() => new Map()),
+                  getCallLogs(uid).catch(() => []),
+                  getVaultConnectedPeerIds(uid).catch(() => []),
+                  getLatestMessagesPerPeer(uid).catch(() => new Map()),
                 ]);
                 if (dirRes && dirRes.ok) {
                   const dirData = await dirRes.json();
                   setContacts(dirData.alumni || dirData.users || []);
                 }
                 setCallLogs(calls);
-                const localStoredPeers = getLocalConnectedPeerIds();
+                const localStoredPeers = getLocalConnectedPeerIds(uid);
                 const merged = new Set<string>([...vaultPeers, ...localStoredPeers]);
                 setConnectedPeerIds(merged);
                 setLatestMessages(latestMap);
@@ -596,6 +710,96 @@ export default function MessagesHubPage() {
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-600" : ""}`} />
           </motion.button>
         </div>
+
+        {/* PENDING INCOMING CONNECTION REQUESTS BANNER */}
+        {incomingRequests.length > 0 && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-xs sm:text-sm font-bold text-slate-900">
+                    Connection Requests
+                  </h2>
+                  <p className="text-[10px] sm:text-[11px] text-slate-500">
+                    Accept to unlock real-time encrypted messaging and calling.
+                  </p>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                {incomingRequests.length} New
+              </span>
+            </div>
+
+            <div className="divide-y divide-blue-100/80">
+              {incomingRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className="pt-3 first:pt-1 pb-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs overflow-hidden">
+                      {req.user.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={req.user.avatarUrl}
+                          alt={req.user.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        req.user.name?.charAt(0)?.toUpperCase() || "A"
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs font-bold text-slate-900 truncate">
+                          {req.user.name}
+                        </p>
+                        {req.user.username && (
+                          <span className="text-[10px] font-mono text-slate-500 bg-white/80 px-1.5 py-0.5 rounded border border-blue-100">
+                            @{req.user.username}
+                          </span>
+                        )}
+                        {req.user.batchYear && (
+                          <span className="text-[10px] text-slate-400">
+                            Class of {req.user.batchYear}
+                          </span>
+                        )}
+                      </div>
+                      {(req.user.currentRole || req.user.currentCompany) && (
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {[req.user.currentRole, req.user.currentCompany].filter(Boolean).join(" • ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    <button
+                      type="button"
+                      disabled={requestsLoading}
+                      onClick={() => handleAcceptRequest(req.user.id)}
+                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs flex items-center gap-1 active:scale-95 disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Accept</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={requestsLoading}
+                      onClick={() => handleRejectRequest(req.user.id)}
+                      className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-600 text-xs font-semibold border border-slate-200/80 transition active:scale-95 disabled:opacity-50"
+                    >
+                      <span>Decline</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* TAB 1: CHATS (Swipeable conversation cards for CONNECTED ACCOUNTS ONLY) */}
         {tab === "CHATS" && (
@@ -698,8 +902,17 @@ export default function MessagesHubPage() {
                       >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div className="relative shrink-0">
-                            <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-base font-bold shadow-xs shadow-blue-500/20">
-                              {(contact.name || "A").charAt(0).toUpperCase()}
+                            <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-base font-bold shadow-xs shadow-blue-500/20 overflow-hidden">
+                              {contact.avatarUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={contact.avatarUrl}
+                                  alt={contact.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                (contact.name || "A").charAt(0).toUpperCase()
+                              )}
                             </div>
                             <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white ring-1 ring-emerald-400/40" />
                           </div>
@@ -927,8 +1140,17 @@ export default function MessagesHubPage() {
               {filteredContacts.map((contact) => (
                 <div key={contact.id} className="p-3.5 flex items-center justify-between hover:bg-slate-50 transition">
                   <div className="flex items-center gap-2.5">
-                    <div className="h-9 w-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs">
-                      {(contact.name || "A").charAt(0)}
+                    <div className="h-9 w-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs overflow-hidden shrink-0">
+                      {contact.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={contact.avatarUrl}
+                          alt={contact.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        (contact.name || "A").charAt(0)
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
@@ -1026,6 +1248,7 @@ export default function MessagesHubPage() {
       <FloatingBottomNav
         activeTab={tab}
         onTabChange={setTab}
+        unreadCount={incomingRequests.length}
         missedCallsCount={callLogs.filter((c) => c.status === "MISSED").length}
       />
 

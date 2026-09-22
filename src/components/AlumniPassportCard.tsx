@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   Building,
@@ -14,6 +14,7 @@ import {
   Camera,
   CheckCircle2,
   Edit3,
+  BookOpen,
 } from "lucide-react";
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
@@ -36,6 +37,8 @@ interface AlumniPassportCardProps {
     institution?: {
       name: string;
     } | null;
+    institutionName?: string | null;
+    course?: string | null;
     department?: {
       name: string;
     } | null;
@@ -51,6 +54,33 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
 
   const quickAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const quickCoverInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Sync state when initialUser changes
+  useEffect(() => {
+    setUser(initialUser);
+  }, [initialUser]);
+
+  // Sync with client-side localStorage fallback so avatar/cover NEVER vanishes on refresh
+  useEffect(() => {
+    if (typeof window === "undefined" || !initialUser?.id) return;
+    const cachedAvatar = localStorage.getItem(`alumni_avatar_${initialUser.id}`);
+    const cachedCover = localStorage.getItem(`alumni_cover_${initialUser.id}`);
+    if ((cachedAvatar && !initialUser.avatarUrl) || (cachedCover && !initialUser.coverUrl)) {
+      setUser((prev) => ({
+        ...prev,
+        avatarUrl: prev.avatarUrl || cachedAvatar,
+        coverUrl: prev.coverUrl || cachedCover,
+      }));
+    }
+
+    const handleProfileUpdate = (e: any) => {
+      if (e.detail) {
+        setUser((prev) => ({ ...prev, ...e.detail }));
+      }
+    };
+    window.addEventListener("profile-updated", handleProfileUpdate);
+    return () => window.removeEventListener("profile-updated", handleProfileUpdate);
+  }, [initialUser?.id, initialUser?.avatarUrl, initialUser?.coverUrl]);
 
   const isVerified = user.verificationStatus === "VERIFIED";
 
@@ -80,8 +110,12 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", 0.82);
+          const compressed = canvas.toDataURL("image/jpeg", 0.78);
           setUser((prev) => ({ ...prev, coverUrl: compressed }));
+          if (typeof window !== "undefined") {
+            localStorage.setItem(`alumni_cover_${user.id}`, compressed);
+            window.dispatchEvent(new CustomEvent("profile-updated", { detail: { coverUrl: compressed } }));
+          }
 
           try {
             await fetch("/api/profile", {
@@ -120,8 +154,12 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", 0.82);
+          const compressed = canvas.toDataURL("image/jpeg", 0.78);
           setUser((prev) => ({ ...prev, avatarUrl: compressed }));
+          if (typeof window !== "undefined") {
+            localStorage.setItem(`alumni_avatar_${user.id}`, compressed);
+            window.dispatchEvent(new CustomEvent("profile-updated", { detail: { avatarUrl: compressed } }));
+          }
 
           try {
             await fetch("/api/profile", {
@@ -294,7 +332,7 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
                 className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 ${
                   isVerified
                     ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
-                    : "bg-amber-50 text-amber-700 border border-amber-200/80"
+                    : "bg-slate-100 text-slate-700 border border-slate-200/80"
                 }`}
               >
                 {isVerified ? (
@@ -304,8 +342,8 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
                   </>
                 ) : (
                   <>
-                    <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Awaiting Batch Vouch</span>
+                    <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Community Member</span>
                   </>
                 )}
               </span>
@@ -333,6 +371,13 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/90 text-slate-700">
                   <Building className="w-3.5 h-3.5 text-slate-400" />
                   <span>{user.institution.name}</span>
+                </span>
+              )}
+
+              {user.course && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-semibold border border-indigo-100">
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>{user.course}</span>
                 </span>
               )}
 

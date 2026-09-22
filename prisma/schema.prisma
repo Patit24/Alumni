@@ -78,6 +78,7 @@ model User {
 
   departmentId       String?
   department         Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  course             String?      // e.g. "BCA", "B.Tech CSE"
 
   batchId            String
   batch              Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
@@ -130,6 +131,14 @@ model User {
   // E2EE Devices & Privacy
   devices             UserDevice[]
   privacySettings     UserPrivacySettings?
+
+  // Connection Requests & Relationships
+  sentConnectionRequests     ConnectionRequest[]   @relation("SentConnectionRequests")
+  receivedConnectionRequests ConnectionRequest[]   @relation("ReceivedConnectionRequests")
+
+  // In-App Notifications
+  notifications              AppNotification[]     @relation("UserNotifications")
+  actedNotifications         AppNotification[]     @relation("NotificationActor")
 
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
@@ -388,6 +397,10 @@ model UserPrivacySettings {
   screenshotAlert         Boolean  @default(true) // Detect and alert on screenshot/recording events
   contactDiscoveryEnabled Boolean  @default(true) // Allow discovery via hashed contact matching
   presenceVisibility     String   @default("LIMITED") // "EVERYONE", "CONTACTS", "TRUSTED", "CHATTING_ONLY", "NOBODY"
+  showInstitution         Boolean  @default(true) // Show my school/university on profile
+  allowInstitutionDiscovery Boolean @default(true) // Show me to people from my institution in discovery
+  showCourse              Boolean  @default(true) // Show course
+  showGraduationYear      Boolean  @default(true) // Show graduation year
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 }
@@ -438,6 +451,41 @@ model UserReport {
   reportedId  String
   reason      String
   createdAt   DateTime @default(now())
+}
+
+// User-to-User Connection Requests
+model ConnectionRequest {
+  id         String   @id @default(cuid())
+  senderId   String
+  sender     User     @relation("SentConnectionRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver   User     @relation("ReceivedConnectionRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+  status     String   @default("PENDING") // "PENDING", "ACCEPTED", "REJECTED", "CANCELLED", "BLOCKED"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+  @@index([senderId, status])
+}
+
+// User in-app notifications
+model AppNotification {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actor      User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  type       String   // "CONNECTION_REQUEST", "CONNECTION_ACCEPTED", "MESSAGE", "COMMUNITY_INVITE", "SYSTEM"
+  title      String
+  body       String
+  data       String?  // Serialized JSON metadata
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
 }
 
 // ==========================================

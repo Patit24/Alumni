@@ -43,6 +43,7 @@ import {
   verifyContactSafety,
   markMessageBurned,
   addLocalConnectedPeer,
+  setActiveVaultUser,
   VaultMessage,
 } from "@/lib/e2ee/vault";
 import {
@@ -65,6 +66,7 @@ interface PeerProfile {
   id: string;
   name: string;
   username?: string | null;
+  avatarUrl?: string | null;
   currentRole: string | null;
   currentCompany: string | null;
   batchYear: number;
@@ -157,6 +159,7 @@ export default function DirectMessageChatPage(props: {
           return;
         }
         const user = meData.user;
+        setActiveVaultUser(user.id);
         setCurrentUser({ id: user.id, name: user.name });
 
         // Fetch peer profile from directory
@@ -215,7 +218,12 @@ export default function DirectMessageChatPage(props: {
             }
           }
         } else {
-          peerPubKeySpki = localIdentity.publicKeySpki;
+          // Retry once in case server auto-provisioned
+          const retryRes = await fetch(`/api/messages/devices?userId=${peerId}`);
+          const retryData = await retryRes.json();
+          if (retryData.devices && retryData.devices.length > 0 && retryData.devices[0].publicKey) {
+            peerPubKeySpki = retryData.devices[0].publicKey;
+          }
         }
 
         if (peerPubKeySpki) {
@@ -241,7 +249,13 @@ export default function DirectMessageChatPage(props: {
         // Send read receipts for any unread incoming messages from peer
         const unreadFromPeer = localMsgs.filter((m) => m.senderId === peerId && m.status !== "READ");
         if (unreadFromPeer.length > 0) {
-          realtimeSignaling.sendMessageStatus(peerId, unreadFromPeer.map((m) => m.id), "READ");
+          const ids = unreadFromPeer.map((m) => m.id);
+          realtimeSignaling.sendMessageStatus(peerId, ids, "READ");
+          fetch("/api/messages/ack", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageIds: ids, senderId: peerId, status: "READ" }),
+          }).catch(() => {});
         }
 
         // Drain any offline queued encrypted messages from server
@@ -254,6 +268,11 @@ export default function DirectMessageChatPage(props: {
             scrollToBottom();
             // Acknowledge read receipt immediately as user is actively viewing the chat
             realtimeSignaling.sendMessageStatus(peerId, [msg.id], "READ");
+            fetch("/api/messages/ack", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ messageIds: [msg.id], senderId: peerId, status: "READ" }),
+            }).catch(() => {});
           }
         });
 
@@ -370,6 +389,7 @@ export default function DirectMessageChatPage(props: {
       const expiresAt = expireSec ? Date.now() + expireSec * 1000 : undefined;
 
       const structuredPayload = JSON.stringify({
+        id: msgId,
         text: cleanText,
         privacyMode: messagePrivacy,
         disappearingSeconds: expireSec,
@@ -409,33 +429,20 @@ export default function DirectMessageChatPage(props: {
         }),
       });
 
-      // 4. Update status: Single Tick (SENT) -> Double Tick (DELIVERED) -> Blue Double Tick (READ)
-      localMsg.status = "SENT";
-      await saveLocalMessage(localMsg);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === msgId ? { ...m, status: "SENT" } : m))
-      );
-
+      // 4. Update status: If relayed successfully to server, status is Single Tick (SENT).
+      // Genuine DELIVERED and READ ticks arrive via peer WebSocket acknowledgment.
       if (res.ok) {
-        // Transition to Double Tick (DELIVERED)
-        setTimeout(async () => {
-          localMsg.status = "DELIVERED";
-          await saveLocalMessage(localMsg);
-          setMessages((prev) =>
-            prev.map((m) => (m.id === msgId && m.status !== "READ" ? { ...m, status: "DELIVERED" } : m))
-          );
-        }, 500);
-
-        // If recipient is connected or in room, transition to Seen Blue Double Tick (READ)
-        if (isPeerTyping || trustLevel === "CONNECTED" || trustLevel === "TRUSTED") {
-          setTimeout(async () => {
-            localMsg.status = "READ";
-            await saveLocalMessage(localMsg);
-            setMessages((prev) =>
-              prev.map((m) => (m.id === msgId ? { ...m, status: "READ" } : m))
-            );
-          }, 1400);
-        }
+        localMsg.status = "SENT";
+        await saveLocalMessage(localMsg);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msgId ? { ...m, status: "SENT" } : m))
+        );
+      } else {
+        localMsg.status = "FAILED";
+        await saveLocalMessage(localMsg);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msgId ? { ...m, status: "FAILED" } : m))
+        );
       }
     } catch (err) {
       console.error("Error sending encrypted message:", err);
@@ -608,8 +615,17 @@ export default function DirectMessageChatPage(props: {
             <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </Link>
 
-          <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs shadow-blue-500/20 shrink-0">
-            {peer?.name?.charAt(0).toUpperCase() || "A"}
+          <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs shadow-blue-500/20 shrink-0 overflow-hidden">
+            {peer?.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={peer.avatarUrl}
+                alt={peer.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              peer?.name?.charAt(0).toUpperCase() || "A"
+            )}
           </div>
 
           <div className="min-w-0 flex-1">

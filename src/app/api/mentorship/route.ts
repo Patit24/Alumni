@@ -36,6 +36,7 @@ export async function GET(req: Request) {
       select: {
         id: true,
         name: true,
+        avatarUrl: true,
         batchYear: true,
         currentRole: true,
         currentCompany: true,
@@ -59,6 +60,7 @@ export async function GET(req: Request) {
           select: {
             id: true,
             name: true,
+            avatarUrl: true,
             currentRole: true,
             currentCompany: true,
             institution: { select: { name: true } },
@@ -76,6 +78,7 @@ export async function GET(req: Request) {
           select: {
             id: true,
             name: true,
+            avatarUrl: true,
             batchYear: true,
             currentRole: true,
             currentCompany: true,

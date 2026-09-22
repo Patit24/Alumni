@@ -15,6 +15,9 @@ import {
   AlertCircle,
   Image as ImageIcon,
   Trash2,
+  School,
+  GraduationCap,
+  BookOpen,
 } from "lucide-react";
 
 interface EditProfileModalProps {
@@ -31,6 +34,8 @@ interface EditProfileModalProps {
     city?: string | null;
     linkedinUrl?: string | null;
     institution?: { name: string } | null;
+    institutionName?: string | null;
+    course?: string | null;
     batchYear?: number | null;
   };
   onProfileUpdated?: (updated: any) => void;
@@ -70,6 +75,13 @@ export default function EditProfileModal({
   const [city, setCity] = useState(currentUser.city || "");
   const [bio, setBio] = useState(currentUser.bio || "");
   const [linkedinUrl, setLinkedinUrl] = useState(currentUser.linkedinUrl || "");
+  const [institutionName, setInstitutionName] = useState(
+    currentUser.institution?.name || currentUser.institutionName || ""
+  );
+  const [course, setCourse] = useState(currentUser.course || "");
+  const [batchYear, setBatchYear] = useState<string>(
+    currentUser.batchYear ? String(currentUser.batchYear) : ""
+  );
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentUser.avatarUrl || null);
   const [coverUrl, setCoverUrl] = useState<string | null>(currentUser.coverUrl || null);
 
@@ -150,12 +162,29 @@ export default function EditProfileModal({
           currentCompany: currentCompany.trim() || null,
           city: city.trim() || null,
           linkedinUrl: linkedinUrl.trim() || null,
+          institutionName: institutionName.trim() || null,
+          course: course.trim() || null,
+          batchYear: batchYear.trim() && !isNaN(Number(batchYear.trim())) ? parseInt(batchYear.trim(), 10) : null,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Failed to update profile");
+      }
+
+      if (typeof window !== "undefined" && currentUser?.id) {
+        if (avatarUrl) localStorage.setItem(`alumni_avatar_${currentUser.id}`, avatarUrl);
+        if (coverUrl) localStorage.setItem(`alumni_cover_${currentUser.id}`, coverUrl);
+        window.dispatchEvent(
+          new CustomEvent("profile-updated", {
+            detail: {
+              ...(data.user || {}),
+              avatarUrl: avatarUrl || data.user?.avatarUrl,
+              coverUrl: coverUrl || data.user?.coverUrl,
+            },
+          })
+        );
       }
 
       setSuccess(true);
@@ -441,6 +470,70 @@ export default function EditProfileModal({
                 rows={3}
                 className="w-full p-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
               />
+            </div>
+
+            {/* Academic & Institution Discovery */}
+            <div className="space-y-3 pt-3 border-t border-slate-100">
+              <div>
+                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <GraduationCap className="w-4 h-4 text-blue-600" /> College / School Discovery
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Institution affiliation is a discovery attribute to connect with peers. No ID upload or verification required.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  College / University / School Name
+                </label>
+                <div className="relative">
+                  <School className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={institutionName}
+                    onChange={(e) => setInstitutionName(e.target.value)}
+                    placeholder="e.g. ABC University, Stanford, Modern High School"
+                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Course / Degree
+                  </label>
+                  <div className="relative">
+                    <BookOpen className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      value={course}
+                      onChange={(e) => setCourse(e.target.value)}
+                      placeholder="e.g. BCA, Computer Science"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Graduation Year / Class
+                  </label>
+                  <div className="relative">
+                    <GraduationCap className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="number"
+                      min={1950}
+                      max={2040}
+                      value={batchYear}
+                      onChange={(e) => setBatchYear(e.target.value)}
+                      placeholder="e.g. 2027"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

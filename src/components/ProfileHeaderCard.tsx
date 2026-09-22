@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Briefcase,
@@ -20,6 +20,9 @@ import {
   ArrowRight,
   CheckCircle2,
   Sparkles,
+  UserPlus,
+  Users,
+  Clock,
 } from "lucide-react";
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
@@ -42,6 +45,7 @@ interface ProfileHeaderCardProps {
     phone?: string | null;
     linkedinUrl?: string | null;
     isPhoneVisible?: boolean;
+    course?: string | null;
     institution: {
       name: string;
       city?: string | null;
@@ -73,6 +77,33 @@ export default function ProfileHeaderCard({
   const quickAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const quickCoverInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Sync state when initialUser changes
+  useEffect(() => {
+    setUser(initialUser);
+  }, [initialUser]);
+
+  // Sync with client-side localStorage fallback so avatar/cover NEVER vanishes on refresh
+  useEffect(() => {
+    if (typeof window === "undefined" || !initialUser?.id) return;
+    const cachedAvatar = localStorage.getItem(`alumni_avatar_${initialUser.id}`);
+    const cachedCover = localStorage.getItem(`alumni_cover_${initialUser.id}`);
+    if ((cachedAvatar && !initialUser.avatarUrl) || (cachedCover && !initialUser.coverUrl)) {
+      setUser((prev) => ({
+        ...prev,
+        avatarUrl: prev.avatarUrl || cachedAvatar,
+        coverUrl: prev.coverUrl || cachedCover,
+      }));
+    }
+
+    const handleProfileUpdate = (e: any) => {
+      if (e.detail) {
+        setUser((prev) => ({ ...prev, ...e.detail }));
+      }
+    };
+    window.addEventListener("profile-updated", handleProfileUpdate);
+    return () => window.removeEventListener("profile-updated", handleProfileUpdate);
+  }, [initialUser?.id, initialUser?.avatarUrl, initialUser?.coverUrl]);
+
   const isOwnProfile = currentUser?.id === user.id;
   const isVerified = user.verificationStatus === "VERIFIED";
 
@@ -102,8 +133,12 @@ export default function ProfileHeaderCard({
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", 0.82);
+          const compressed = canvas.toDataURL("image/jpeg", 0.78);
           setUser((prev) => ({ ...prev, coverUrl: compressed }));
+          if (typeof window !== "undefined") {
+            localStorage.setItem(`alumni_cover_${user.id}`, compressed);
+            window.dispatchEvent(new CustomEvent("profile-updated", { detail: { coverUrl: compressed } }));
+          }
 
           try {
             await fetch("/api/profile", {
@@ -142,8 +177,12 @@ export default function ProfileHeaderCard({
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", 0.82);
+          const compressed = canvas.toDataURL("image/jpeg", 0.78);
           setUser((prev) => ({ ...prev, avatarUrl: compressed }));
+          if (typeof window !== "undefined") {
+            localStorage.setItem(`alumni_avatar_${user.id}`, compressed);
+            window.dispatchEvent(new CustomEvent("profile-updated", { detail: { avatarUrl: compressed } }));
+          }
 
           try {
             await fetch("/api/profile", {
@@ -161,16 +200,119 @@ export default function ProfileHeaderCard({
     reader.readAsDataURL(file);
   };
 
-  const handleConnectForChat = () => {
+  const [relStatus, setRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">("NONE");
+  const [mutualCount, setMutualCount] = useState<number>(0);
+
+  // Fetch true relationship status and mutual connections from server
+  useEffect(() => {
+    if (!currentUser || isOwnProfile) return;
+    const fetchStatus = () => {
+      fetch(`/api/contacts/requests?targetUserId=${user.id}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.statusMap && data.statusMap[user.id]) {
+            setRelStatus(data.statusMap[user.id]);
+          } else {
+            setRelStatus("NONE");
+          }
+          if (typeof data.mutualCount === "number") {
+            setMutualCount(data.mutualCount);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchStatus();
+    window.addEventListener("connection-requests-updated", fetchStatus);
+    return () => window.removeEventListener("connection-requests-updated", fetchStatus);
+  }, [currentUser, isOwnProfile, user.id]);
+
+  const handleSendConnect = async () => {
     if (!currentUser) {
-      // Redirect to login/signup with return url
       router.push(`/auth?redirect=/profile/${user.id}?connect=true`);
       return;
     }
-
     setConnecting(true);
+    // Optimistic UI update: Immediately mark as Request Sent
+    setRelStatus("PENDING_OUTGOING");
+
+    try {
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: user.id, action: "REQUEST" }),
+      });
+      const data = await res.json();
+      if (data.status === "ACCEPTED") {
+        setRelStatus("CONNECTED");
+        addLocalConnectedPeer(user.id);
+      } else if (data.status === "PENDING") {
+        setRelStatus("PENDING_OUTGOING");
+      }
+    } catch (err) {
+      console.error(err);
+      fetch(`/api/contacts/requests?targetUserId=${user.id}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.statusMap) setRelStatus(data.statusMap[user.id] || "NONE");
+        });
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleAcceptConnect = async () => {
+    setConnecting(true);
+    setRelStatus("CONNECTED");
+    try {
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: user.id, action: "ACCEPT" }),
+      });
+      const data = await res.json();
+      if (data.status === "ACCEPTED") {
+        setRelStatus("CONNECTED");
+        addLocalConnectedPeer(user.id);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleRejectConnect = async () => {
+    setConnecting(true);
+    setRelStatus("NONE");
+    try {
+      await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: user.id, action: "REJECT" }),
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleGoToChat = () => {
     addLocalConnectedPeer(user.id);
     router.push(`/messages/${user.id}`);
+  };
+
+  const handleConnectForChat = async () => {
+    if (relStatus === "CONNECTED") {
+      handleGoToChat();
+    } else if (relStatus === "PENDING_INCOMING") {
+      await handleAcceptConnect();
+      handleGoToChat();
+    } else {
+      await handleSendConnect();
+      handleGoToChat();
+    }
   };
 
   return (
@@ -340,23 +482,70 @@ export default function ProfileHeaderCard({
                   </button>
                 </>
               ) : (
-                /* Visiting Another Member's Profile -> Connect for Chat Button */
+                /* Visiting Another Member's Profile -> Relationship Aware Button */
                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={handleConnectForChat}
-                    disabled={connecting}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition active:scale-98 cursor-pointer ring-2 ring-blue-500/30"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    <span>{connecting ? "Connecting..." : "Connect for Chat"}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
+                  {relStatus === "CONNECTED" ? (
+                    <button
+                      type="button"
+                      onClick={handleGoToChat}
+                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition active:scale-98 cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      <span>Message</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  ) : relStatus === "PENDING_OUTGOING" ? (
+                    <span className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200 transition">
+                      <Clock className="w-4 h-4 text-slate-400" />
+                      <span>Request Sent</span>
+                    </span>
+                  ) : relStatus === "PENDING_INCOMING" ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleAcceptConnect}
+                        disabled={connecting}
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/25 transition active:scale-98 cursor-pointer disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>{connecting ? "Accepting..." : "Accept"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRejectConnect}
+                        disabled={connecting}
+                        className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200/80 transition active:scale-98 cursor-pointer disabled:opacity-50"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={handleSendConnect}
+                        disabled={connecting}
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition active:scale-98 cursor-pointer ring-2 ring-blue-500/30 disabled:opacity-50"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        <span>{connecting ? "Connecting..." : "Connect"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleGoToChat}
+                        className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition active:scale-98 cursor-pointer flex items-center gap-1.5"
+                        title="Direct Message"
+                      >
+                        <MessageSquare className="w-4 h-4 text-blue-600" />
+                        <span className="hidden xs:inline">Message</span>
+                      </button>
+                    </div>
+                  )}
 
                   <button
                     type="button"
                     onClick={() => setShowQrModal(true)}
-                    className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                    className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition shrink-0"
                     title="View QR Code"
                   >
                     <QrCode className="w-4 h-4" />
@@ -377,25 +566,12 @@ export default function ProfileHeaderCard({
                   @{user.username}
                 </span>
               )}
-              <span
-                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 ${
-                  isVerified
-                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
-                    : "bg-amber-50 text-amber-700 border border-amber-200/80"
-                }`}
-              >
-                {isVerified ? (
-                  <>
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Verified Member</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Unverified</span>
-                  </>
-                )}
-              </span>
+              {isVerified && (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Verified Member</span>
+                </span>
+              )}
             </div>
 
             <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
@@ -421,10 +597,23 @@ export default function ProfileHeaderCard({
                 <span>{user.institution.name}</span>
               </span>
 
+              {user.course && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  <span>{user.course}</span>
+                </span>
+              )}
+
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100">
                 <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
                 <span>Class of {user.batchYear} {user.department ? `(${user.department.name})` : ""}</span>
               </span>
+
+              {!isOwnProfile && mutualCount > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/80 font-semibold">
+                  <Users className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{mutualCount} mutual connection{mutualCount > 1 ? "s" : ""}</span>
+                </span>
+              )}
             </div>
 
             {/* Bio */}

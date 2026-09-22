@@ -1,30 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { createClient } from "@supabase/supabase-js";
+import { sendRealtimeBroadcast } from "@/lib/realtime-broadcast";
 
 export const dynamic = "force-dynamic";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://tinoesrmhzgelxiykcgq.supabase.co";
-const supabaseKey =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "sb_publishable_DtrGzEbOc2n4oeilkvpuCQ_tj6jRqyX";
-
-// Helper to broadcast encrypted payload over WebSocket channel
-async function broadcastToRecipient(recipientId: string, event: string, payload: unknown) {
-  try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const channel = supabase.channel(`p2p-signal:${recipientId}`);
-    await channel.send({
-      type: "broadcast",
-      event,
-      payload,
-    });
-  } catch (err) {
-    console.warn("Supabase Realtime relay broadcast notice:", err);
-  }
-}
 
 // POST /api/messages/relay - Queue encrypted payload and broadcast via WebSocket
 export async function POST(req: Request) {
@@ -63,8 +42,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Cannot send message to this user" }, { status: 403 });
     }
 
+    // Ensure reciprocal contact trust exists
+    await Promise.all([
+      db.contactTrust.upsert({
+        where: { userId_contactId: { userId: user.id, contactId: recipientId } },
+        update: {},
+        create: { userId: user.id, contactId: recipientId, trustLevel: "CONNECTED" },
+      }),
+      db.contactTrust.upsert({
+        where: { userId_contactId: { userId: recipientId, contactId: user.id } },
+        update: {},
+        create: { userId: recipientId, contactId: user.id, trustLevel: "CONNECTED" },
+      }),
+    ]).catch(() => {});
+
     // 7 days auto-expiration for undelivered encrypted payloads
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const serializedPayload =
+      typeof encryptedPayload === "string"
+        ? encryptedPayload
+        : JSON.stringify(encryptedPayload);
+
+    let parsedPayloadObj: any = encryptedPayload;
+    if (typeof encryptedPayload === "string") {
+      try {
+        parsedPayloadObj = JSON.parse(encryptedPayload);
+      } catch {
+        parsedPayloadObj = encryptedPayload;
+      }
+    }
 
     const queuedItem = await db.encryptedMessageQueue.create({
       data: {
@@ -72,18 +79,39 @@ export async function POST(req: Request) {
         senderDeviceId,
         recipientId,
         recipientDeviceId: recipientDeviceId || null,
-        encryptedPayload,
+        encryptedPayload: serializedPayload,
         messageType,
         expiresAt,
       },
     });
 
+    // Create ghost / privacy-respecting notification for recipient (zero plaintext stored!)
+    const recipientSettings = await db.userPrivacySettings.findUnique({
+      where: { userId: recipientId },
+    });
+
+    const isGhost = recipientSettings?.ghostNotifications !== false;
+    await db.appNotification.create({
+      data: {
+        userId: recipientId,
+        actorId: user.id,
+        type: "MESSAGE",
+        title: isGhost ? "New Message" : `New message from ${user.name}`,
+        body: isGhost ? "You received an encrypted message." : `${user.name} sent you an end-to-end encrypted message.`,
+        data: JSON.stringify({
+          queueId: queuedItem.id,
+          senderId: user.id,
+          senderName: user.name,
+        }),
+      },
+    }).catch(() => {});
+
     // Broadcast in realtime over recipient's private WebSocket signaling channel
-    await broadcastToRecipient(recipientId, "encrypted-message", {
+    const deliveredRealtime = await sendRealtimeBroadcast(`p2p-signal:${recipientId}`, "encrypted-message", {
       queueId: queuedItem.id,
       senderId: user.id,
       senderDeviceId,
-      encryptedPayload,
+      encryptedPayload: parsedPayloadObj,
       messageType,
       createdAt: queuedItem.createdAt.toISOString(),
     });
@@ -91,7 +119,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       queueId: queuedItem.id,
-      deliveredRealtime: true,
+      deliveredRealtime,
     });
   } catch (error) {
     console.error("Error in /api/messages/relay POST:", error);

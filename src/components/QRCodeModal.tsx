@@ -50,22 +50,43 @@ export default function QRCodeModal({
   const username = (currentUser?.username?.trim() || "alumni").replace(/^@/, "");
   const batchYear = currentUser?.batchYear || new Date().getFullYear();
 
-  const connectPayload = typeof window !== "undefined"
-    ? `${window.location.origin}/profile/${currentUser?.id || username}?connect=true`
-    : `https://alumni-pink.vercel.app/profile/${currentUser?.id || username}?connect=true`;
+  const [connectUrl, setConnectUrl] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/profile/${currentUser?.id || username}?connect=true`;
+    }
+    return `https://alumni-pink.vercel.app/profile/${currentUser?.id || username}?connect=true`;
+  });
 
-  const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=${encodeURIComponent(connectPayload)}`;
+  // Fetch LAN IP for cross-mobile scanning if testing on localhost
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      fetch("/api/network-info")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.lanOrigin) {
+            setConnectUrl(`${data.lanOrigin}/profile/${currentUser?.id || username}?connect=true`);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setConnectUrl(`${window.location.origin}/profile/${currentUser?.id || username}?connect=true`);
+    }
+  }, [currentUser?.id, username]);
+
+  const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=${encodeURIComponent(connectUrl)}`;
 
   // Generate QR Code vector SVG or use instant fallback
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !connectUrl) return;
 
     try {
       const qrcodeLib = QRCode as any;
       const toStringFn = qrcodeLib?.toString || qrcodeLib?.default?.toString;
 
       if (typeof toStringFn === "function") {
-        toStringFn(connectPayload, {
+        toStringFn(connectUrl, {
           type: "svg",
           margin: 2,
           color: {
@@ -85,11 +106,11 @@ export default function QRCodeModal({
     } catch (e: unknown) {
       console.warn("QR generation error:", e);
     }
-  }, [isOpen, connectPayload]);
+  }, [isOpen, connectUrl]);
 
   const handleCopyLink = async () => {
     try {
-      await navigator.clipboard.writeText(connectPayload);
+      await navigator.clipboard.writeText(connectUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (e) {
@@ -103,7 +124,7 @@ export default function QRCodeModal({
         await navigator.share({
           title: `Connect with ${displayName} on Alumni Network`,
           text: `Scan my QR code or tap this link to start an encrypted direct chat with @${username}:`,
-          url: connectPayload,
+          url: connectUrl,
         });
       } catch (e) {
         console.warn("Share aborted:", e);

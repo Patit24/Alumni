@@ -58,6 +58,10 @@ export async function PUT(req: Request) {
       contactDiscoveryEnabled,
       presenceVisibility,
       privacyLockActive,
+      showInstitution,
+      allowInstitutionDiscovery,
+      showCourse,
+      showGraduationYear,
     } = body;
 
     const updated = await db.userPrivacySettings.upsert({
@@ -74,6 +78,10 @@ export async function PUT(req: Request) {
         ...(typeof contactDiscoveryEnabled === "boolean" ? { contactDiscoveryEnabled } : {}),
         ...(presenceVisibility ? { presenceVisibility } : {}),
         ...(typeof privacyLockActive === "boolean" ? { privacyLockActive } : {}),
+        ...(typeof showInstitution === "boolean" ? { showInstitution } : {}),
+        ...(typeof allowInstitutionDiscovery === "boolean" ? { allowInstitutionDiscovery } : {}),
+        ...(typeof showCourse === "boolean" ? { showCourse } : {}),
+        ...(typeof showGraduationYear === "boolean" ? { showGraduationYear } : {}),
       },
       create: {
         userId: user.id,
@@ -88,6 +96,10 @@ export async function PUT(req: Request) {
         contactDiscoveryEnabled: contactDiscoveryEnabled ?? true,
         presenceVisibility: presenceVisibility || "LIMITED",
         privacyLockActive: privacyLockActive ?? false,
+        showInstitution: showInstitution ?? true,
+        allowInstitutionDiscovery: allowInstitutionDiscovery ?? true,
+        showCourse: showCourse ?? true,
+        showGraduationYear: showGraduationYear ?? true,
       },
     });
 

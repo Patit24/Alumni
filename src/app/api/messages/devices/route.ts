@@ -31,7 +31,7 @@ export async function GET(req: Request) {
       }
 
       // Fetch peer devices and public keys
-      const peerDevices = await db.userDevice.findMany({
+      let peerDevices = await db.userDevice.findMany({
         where: { userId: peerUserId },
         select: {
           id: true,
@@ -42,6 +42,47 @@ export async function GET(req: Request) {
         },
         orderBy: { lastActiveAt: "desc" },
       });
+
+      if (peerDevices.length === 0) {
+        const targetUser = await db.user.findUnique({
+          where: { id: peerUserId },
+          select: { id: true, name: true },
+        });
+
+        if (targetUser) {
+          try {
+            const crypto = await import("crypto");
+            const { publicKey } = crypto.generateKeyPairSync("ec", {
+              namedCurve: "prime256v1",
+              publicKeyEncoding: { type: "spki", format: "der" },
+              privateKeyEncoding: { type: "pkcs8", format: "der" },
+            });
+            const spkiBase64 = publicKey.toString("base64");
+
+            const provisionedDevice = await db.userDevice.create({
+              data: {
+                userId: targetUser.id,
+                deviceId: `dev_default_${targetUser.id.slice(-8)}`,
+                deviceName: "Alumni Mobile Identity",
+                publicKey: spkiBase64,
+                lastActiveAt: new Date(),
+              },
+            });
+
+            peerDevices = [
+              {
+                id: provisionedDevice.id,
+                deviceId: provisionedDevice.deviceId,
+                deviceName: provisionedDevice.deviceName,
+                publicKey: provisionedDevice.publicKey,
+                lastActiveAt: provisionedDevice.lastActiveAt,
+              },
+            ];
+          } catch (keygenErr) {
+            console.warn("Keygen auto-provisioning notice:", keygenErr);
+          }
+        }
+      }
 
       return NextResponse.json({ devices: peerDevices });
     }

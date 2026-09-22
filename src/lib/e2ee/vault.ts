@@ -23,7 +23,7 @@ export interface VaultMessage {
   type: "TEXT" | "EMOJI" | "SIGNALING";
   replyToId?: string;
   replySnippet?: string;
-  status: "SENDING" | "SENT" | "DELIVERED" | "READ";
+  status: "SENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
   createdAt: number;
   expiresAt?: number; // For disappearing messages (timestamp ms)
   disappearingSeconds?: number;
@@ -52,17 +52,61 @@ export interface StoredContact {
   updatedAt: number;
 }
 
-let dbInstance: IDBDatabase | null = null;
+let currentActiveUserId: string | null = null;
+const dbInstances = new Map<string, IDBDatabase>();
 
-function openDB(): Promise<IDBDatabase> {
-  if (dbInstance) return Promise.resolve(dbInstance);
+export function setActiveVaultUser(userId: string | null): void {
+  if (typeof window !== "undefined") {
+    if (userId) {
+      currentActiveUserId = userId;
+      try {
+        sessionStorage.setItem("alumni_active_vault_user_id", userId);
+      } catch {}
+    } else {
+      currentActiveUserId = null;
+      try {
+        sessionStorage.removeItem("alumni_active_vault_user_id");
+      } catch {}
+    }
+  } else {
+    currentActiveUserId = userId;
+  }
+}
+
+export function getActiveVaultUserId(): string | null {
+  if (currentActiveUserId) return currentActiveUserId;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = sessionStorage.getItem("alumni_active_vault_user_id");
+      if (stored) {
+        currentActiveUserId = stored;
+        return stored;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+export function getDatabaseName(userId?: string): string {
+  const uid = userId || getActiveVaultUserId();
+  if (uid) {
+    const safeUid = uid.replace(/[^a-zA-Z0-9_-]/g, "_");
+    return `alumni_e2ee_vault_${safeUid}_v1`;
+  }
+  return "alumni_e2ee_vault_guest_v1";
+}
+
+function openDB(userId?: string): Promise<IDBDatabase> {
+  const dbName = getDatabaseName(userId);
+  const cached = dbInstances.get(dbName);
+  if (cached) return Promise.resolve(cached);
 
   return new Promise((resolve, reject) => {
     if (typeof window === "undefined" || !window.indexedDB) {
       return reject(new Error("IndexedDB is not supported in this environment"));
     }
 
-    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+    const request = window.indexedDB.open(dbName, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -93,8 +137,9 @@ function openDB(): Promise<IDBDatabase> {
     };
 
     request.onsuccess = () => {
-      dbInstance = request.result;
-      resolve(dbInstance);
+      const db = request.result;
+      dbInstances.set(dbName, db);
+      resolve(db);
     };
 
     request.onerror = () => reject(request.error);
@@ -110,12 +155,14 @@ export async function getOrCreateDeviceIdentity(userId: string): Promise<{
   privateKey: CryptoKey;
   publicKey: CryptoKey;
 }> {
-  const db = await openDB();
+  setActiveVaultUser(userId);
+  const db = await openDB(userId);
+  const keyId = `device_key_${userId}`;
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction("identity_keys", "readwrite");
     const store = tx.objectStore("identity_keys");
-    const getReq = store.get("local_device_key");
+    const getReq = store.get(keyId);
 
     getReq.onsuccess = async () => {
       if (getReq.result) {
@@ -136,7 +183,7 @@ export async function getOrCreateDeviceIdentity(userId: string): Promise<{
         const deviceId = `dev_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
 
         store.put({
-          id: "local_device_key",
+          id: keyId,
           userId,
           deviceId,
           publicKeySpki: pair.publicKeyBase64,
@@ -339,8 +386,8 @@ export async function saveCallLog(call: VaultCallLog): Promise<void> {
 /**
  * Retrieves all local call history
  */
-export async function getCallLogs(): Promise<VaultCallLog[]> {
-  const db = await openDB();
+export async function getCallLogs(userId?: string): Promise<VaultCallLog[]> {
+  const db = await openDB(userId);
   return new Promise((resolve, reject) => {
     const tx = db.transaction("call_logs", "readonly");
     const store = tx.objectStore("call_logs");
@@ -358,8 +405,8 @@ export async function getCallLogs(): Promise<VaultCallLog[]> {
 /**
  * Clears all call logs locally
  */
-export async function clearCallLogs(): Promise<void> {
-  const db = await openDB();
+export async function clearCallLogs(userId?: string): Promise<void> {
+  const db = await openDB(userId);
   return new Promise((resolve, reject) => {
     const tx = db.transaction("call_logs", "readwrite");
     const store = tx.objectStore("call_logs");
@@ -463,34 +510,59 @@ export async function cleanMyPrivacy(): Promise<{
 
 export const CONNECTED_CHATS_KEY = "alumni_connected_peer_ids";
 
-export function getLocalConnectedPeerIds(): string[] {
+export function getLocalConnectedPeerIds(userId?: string): string[] {
   if (typeof window === "undefined") return [];
+  const uid = userId || getActiveVaultUserId();
+  if (!uid) return [];
   try {
-    const raw = localStorage.getItem(CONNECTED_CHATS_KEY);
+    // Purge deprecated legacy un-scoped key if still present
+    localStorage.removeItem(CONNECTED_CHATS_KEY);
+
+    const scopedKey = `alumni_connected_peer_ids_${uid}`;
+    const raw = localStorage.getItem(scopedKey);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-export function addLocalConnectedPeer(peerId: string): void {
+export function addLocalConnectedPeer(peerId: string, userId?: string): void {
   if (typeof window === "undefined" || !peerId) return;
+  const uid = userId || getActiveVaultUserId();
+  if (!uid || peerId === uid) return; // Never add self as connected peer!
   try {
-    const existing = getLocalConnectedPeerIds();
+    const scopedKey = `alumni_connected_peer_ids_${uid}`;
+    const existing = getLocalConnectedPeerIds(uid);
     if (!existing.includes(peerId)) {
       existing.unshift(peerId);
-      localStorage.setItem(CONNECTED_CHATS_KEY, JSON.stringify(existing));
+      localStorage.setItem(scopedKey, JSON.stringify(existing));
     }
   } catch {}
+}
+
+export function clearUserLocalVault(userId?: string): void {
+  if (typeof window === "undefined") return;
+  const uid = userId || getActiveVaultUserId();
+  if (uid) {
+    try {
+      localStorage.removeItem(`alumni_connected_peer_ids_${uid}`);
+    } catch {}
+  }
+  try {
+    localStorage.removeItem(CONNECTED_CHATS_KEY);
+    sessionStorage.removeItem("alumni_active_vault_user_id");
+  } catch {}
+  setActiveVaultUser(null);
 }
 
 /**
  * Retrieves all unique peerIds who have messages or are stored contacts in the local E2EE vault
  */
-export async function getVaultConnectedPeerIds(): Promise<string[]> {
+export async function getVaultConnectedPeerIds(userId?: string): Promise<string[]> {
+  const uid = userId || getActiveVaultUserId();
   const peerIds = new Set<string>();
   try {
-    const db = await openDB();
+    const db = await openDB(uid || undefined);
 
     // 1. Peer IDs from messages
     await new Promise<void>((resolve) => {
@@ -500,7 +572,7 @@ export async function getVaultConnectedPeerIds(): Promise<string[]> {
       req.onsuccess = () => {
         const msgs = (req.result as VaultMessage[]) || [];
         msgs.forEach((m) => {
-          if (m.peerId) peerIds.add(m.peerId);
+          if (m.peerId && m.peerId !== uid) peerIds.add(m.peerId);
         });
         resolve();
       };
@@ -515,7 +587,7 @@ export async function getVaultConnectedPeerIds(): Promise<string[]> {
       req.onsuccess = () => {
         const contacts = (req.result as StoredContact[]) || [];
         contacts.forEach((c) => {
-          if (c.userId) peerIds.add(c.userId);
+          if (c.userId && c.userId !== uid) peerIds.add(c.userId);
         });
         resolve();
       };
@@ -530,10 +602,11 @@ export async function getVaultConnectedPeerIds(): Promise<string[]> {
 /**
  * Retrieves the latest message for every peer conversation
  */
-export async function getLatestMessagesPerPeer(): Promise<Map<string, VaultMessage>> {
+export async function getLatestMessagesPerPeer(userId?: string): Promise<Map<string, VaultMessage>> {
+  const uid = userId || getActiveVaultUserId();
   const map = new Map<string, VaultMessage>();
   try {
-    const db = await openDB();
+    const db = await openDB(uid || undefined);
     return new Promise((resolve) => {
       const tx = db.transaction("messages", "readonly");
       const store = tx.objectStore("messages");
@@ -541,7 +614,7 @@ export async function getLatestMessagesPerPeer(): Promise<Map<string, VaultMessa
       req.onsuccess = () => {
         const msgs = (req.result as VaultMessage[]) || [];
         for (const m of msgs) {
-          if (!m.peerId) continue;
+          if (!m.peerId || m.peerId === uid) continue;
           const existing = map.get(m.peerId);
           if (!existing || m.createdAt > existing.createdAt) {
             map.set(m.peerId, m);

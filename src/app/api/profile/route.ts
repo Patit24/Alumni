@@ -37,6 +37,12 @@ export async function PUT(req: NextRequest) {
       city,
       linkedinUrl,
       isPhoneVisible,
+      institutionId,
+      institutionName,
+      institutionType,
+      course,
+      departmentName,
+      batchYear,
     } = body;
 
     const dataToUpdate: any = {};
@@ -50,6 +56,87 @@ export async function PUT(req: NextRequest) {
     if (typeof linkedinUrl === "string" || linkedinUrl === null) dataToUpdate.linkedinUrl = linkedinUrl;
     if (typeof isPhoneVisible === "boolean") dataToUpdate.isPhoneVisible = isPhoneVisible;
 
+    // Institution selection (discovery attribute - no verification roadblock)
+    if (institutionId) {
+      let inst = await db.institution.findUnique({ where: { id: institutionId } });
+      if (!inst && institutionName) {
+        inst = await db.institution.findFirst({ where: { name: institutionName.trim() } });
+        if (!inst) {
+          inst = await db.institution.create({
+            data: {
+              name: institutionName.trim(),
+              slug: `inst-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              type: institutionType || "COLLEGE",
+            },
+          });
+        }
+      }
+      if (inst) {
+        dataToUpdate.institutionId = inst.id;
+      }
+    } else if (institutionName && typeof institutionName === "string" && institutionName.trim()) {
+      let inst = await db.institution.findFirst({ where: { name: institutionName.trim() } });
+      if (!inst) {
+        inst = await db.institution.create({
+          data: {
+            name: institutionName.trim(),
+            slug: `inst-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            type: institutionType || "COLLEGE",
+          },
+        });
+      }
+      dataToUpdate.institutionId = inst.id;
+    }
+
+    if (course !== undefined) {
+      dataToUpdate.course = typeof course === "string" ? course.trim() : null;
+    }
+
+    const effectiveInstId = dataToUpdate.institutionId || user.institutionId;
+
+    if (batchYear && !isNaN(Number(batchYear))) {
+      const yearInt = parseInt(String(batchYear), 10);
+      dataToUpdate.batchYear = yearInt;
+      let batch = await db.batch.findUnique({
+        where: {
+          institutionId_year: {
+            institutionId: effectiveInstId,
+            year: yearInt,
+          },
+        },
+      });
+      if (!batch) {
+        batch = await db.batch.create({
+          data: {
+            institutionId: effectiveInstId,
+            year: yearInt,
+            estimatedSize: 60,
+          },
+        });
+      }
+      dataToUpdate.batchId = batch.id;
+    }
+
+    if (departmentName && typeof departmentName === "string" && departmentName.trim()) {
+      let dept = await db.department.findUnique({
+        where: {
+          institutionId_name: {
+            institutionId: effectiveInstId,
+            name: departmentName.trim(),
+          },
+        },
+      });
+      if (!dept) {
+        dept = await db.department.create({
+          data: {
+            institutionId: effectiveInstId,
+            name: departmentName.trim(),
+          },
+        });
+      }
+      dataToUpdate.departmentId = dept.id;
+    }
+
     const updatedUser = await db.user.update({
       where: { id: user.id },
       data: dataToUpdate,
@@ -60,8 +147,17 @@ export async function PUT(req: NextRequest) {
       },
     });
 
-    // Refresh the session cookie with updated fields
+    // Refresh the session cookie with updated fields (strictly keeping cookie < 1KB)
     try {
+      const safeAvatar =
+        updatedUser.avatarUrl && updatedUser.avatarUrl.startsWith("http") && updatedUser.avatarUrl.length < 300
+          ? updatedUser.avatarUrl
+          : null;
+      const safeCover =
+        updatedUser.coverUrl && updatedUser.coverUrl.startsWith("http") && updatedUser.coverUrl.length < 300
+          ? updatedUser.coverUrl
+          : null;
+
       const newSessionToken = await createSessionToken({
         userId: updatedUser.id,
         phone: updatedUser.phone,
@@ -74,11 +170,12 @@ export async function PUT(req: NextRequest) {
         institutionName: updatedUser.institution?.name,
         batchYear: updatedUser.batchYear,
         departmentName: updatedUser.department?.name,
+        course: updatedUser.course,
         currentCompany: updatedUser.currentCompany,
         currentRole: updatedUser.currentRole,
         city: updatedUser.city,
-        avatarUrl: updatedUser.avatarUrl,
-        coverUrl: updatedUser.coverUrl,
+        avatarUrl: safeAvatar,
+        coverUrl: safeCover,
       });
 
       const cookieStore = await cookies();

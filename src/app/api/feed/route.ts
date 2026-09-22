@@ -17,9 +17,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const filter = searchParams.get("filter") || "ALL"; // "ALL", "JOBS", "MENTORSHIP", "BATCH"
 
-    const where: Prisma.FeedItemWhereInput = {
-      institutionId: user.institutionId,
-    };
+    const where: Prisma.FeedItemWhereInput = {};
 
     if (filter === "JOBS") {
       where.type = "JOB_POSTED";
@@ -29,6 +27,8 @@ export async function GET(req: Request) {
       where.actor = {
         batchYear: user.batchYear,
       };
+    } else if (filter === "CAMPUS" && user.institutionId) {
+      where.institutionId = user.institutionId;
     }
 
     const items = await db.feedItem.findMany({
@@ -38,6 +38,7 @@ export async function GET(req: Request) {
           select: {
             id: true,
             name: true,
+            avatarUrl: true,
             currentRole: true,
             currentCompany: true,
             batchYear: true,
@@ -56,6 +57,7 @@ export async function GET(req: Request) {
               select: {
                 id: true,
                 name: true,
+                avatarUrl: true,
                 batchYear: true,
                 currentRole: true,
                 currentCompany: true,
@@ -155,6 +157,7 @@ export async function POST(req: Request) {
           select: {
             id: true,
             name: true,
+            avatarUrl: true,
             currentRole: true,
             currentCompany: true,
             batchYear: true,

@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   MessageSquare,
   ShieldCheck,
-  ShieldAlert,
   Building,
   RefreshCw,
 } from "lucide-react";
@@ -16,6 +15,7 @@ import {
 interface Mentor {
   id: string;
   name: string;
+  avatarUrl?: string | null;
   batchYear: number;
   currentRole: string | null;
   currentCompany: string | null;
@@ -36,12 +36,14 @@ interface RequestItem {
   createdAt: string;
   mentor?: {
     name: string;
+    avatarUrl?: string | null;
     currentRole: string | null;
     currentCompany: string | null;
     institution: { name: string };
   };
   sender?: {
     name: string;
+    avatarUrl?: string | null;
     batchYear: number;
     currentRole: string | null;
     currentCompany: string | null;
@@ -230,14 +232,6 @@ export default function MentorshipPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {!isVerified && (
-              <Link
-                href="/verification"
-                className="text-[11px] font-bold text-amber-800 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1 transition"
-              >
-                <ShieldAlert className="w-3 h-3" /> Get Verified to Connect
-              </Link>
-            )}
           </div>
         </div>
       </header>
@@ -349,8 +343,17 @@ export default function MentorshipPage() {
                   <div>
                     <div className="flex items-start justify-between gap-3 mb-2">
                       <div className="flex items-center gap-3">
-                        <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-md shadow-indigo-500/10">
-                          {mentor.name.charAt(0)}
+                        <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-md shadow-indigo-500/10 overflow-hidden shrink-0">
+                          {mentor.avatarUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={mentor.avatarUrl}
+                              alt={mentor.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            mentor.name.charAt(0)
+                          )}
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
