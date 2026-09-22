@@ -43,6 +43,8 @@ export default function QRCodeModal({
   const [copied, setCopied] = useState(false);
   const [manualInput, setManualInput] = useState("");
   const [resolving, setResolving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const displayName = currentUser?.name?.trim() || "Alumni Member";
   const username = (currentUser?.username?.trim() || "alumni").replace(/^@/, "");
@@ -92,8 +94,6 @@ export default function QRCodeModal({
     }
   }, [isOpen, connectPayload, fallbackQrUrl]);
 
-  if (!isOpen) return null;
-
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(connectPayload);
@@ -120,8 +120,7 @@ export default function QRCodeModal({
     }
   };
 
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  if (!isOpen) return null;
 
   const handleConnectManual = async (e: React.FormEvent) => {
     e.preventDefault();
