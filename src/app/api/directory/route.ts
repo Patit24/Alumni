@@ -13,44 +13,54 @@ export async function GET(req: Request) {
     const city = searchParams.get("city")?.trim() || "";
     const department = searchParams.get("department")?.trim() || "";
 
+    const id = searchParams.get("id")?.trim() || "";
+    const usernameParam = searchParams.get("username")?.trim() || "";
+
     // Build Prisma where filter
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
 
-    // 1. Institution filter
-    if (institutionScope === "my" && currentUser?.institutionId) {
-      where.institutionId = currentUser.institutionId;
-    }
+    if (id) {
+      where.id = id;
+    } else if (usernameParam) {
+      const cleanUsername = usernameParam.startsWith("@") ? usernameParam.slice(1) : usernameParam;
+      where.username = cleanUsername;
+    } else {
+      // 1. Institution filter
+      if (institutionScope === "my" && currentUser?.institutionId) {
+        where.institutionId = currentUser.institutionId;
+      }
 
-    // 2. Batch year filter
-    if (batchScope === "my" && currentUser?.batchYear) {
-      where.batchYear = currentUser.batchYear;
-    } else if (batchScope !== "all" && batchScope !== "my" && !isNaN(parseInt(batchScope, 10))) {
-      where.batchYear = parseInt(batchScope, 10);
-    }
+      // 2. Batch year filter
+      if (batchScope === "my" && currentUser?.batchYear) {
+        where.batchYear = currentUser.batchYear;
+      } else if (batchScope !== "all" && batchScope !== "my" && !isNaN(parseInt(batchScope, 10))) {
+        where.batchYear = parseInt(batchScope, 10);
+      }
 
-    // 3. City filter
-    if (city && city !== "all") {
-      where.city = city;
-    }
+      // 3. City filter
+      if (city && city !== "all") {
+        where.city = city;
+      }
 
-    // 4. Department filter
-    if (department && department !== "all") {
-      where.department = {
-        name: department,
-      };
-    }
+      // 4. Department filter
+      if (department && department !== "all") {
+        where.department = {
+          name: department,
+        };
+      }
 
-    // 5. Search query
-    if (q) {
-      const cleanQ = q.startsWith("@") ? q.slice(1) : q;
-      where.OR = [
-        { name: { contains: q } },
-        { username: { contains: cleanQ } },
-        { currentCompany: { contains: q } },
-        { currentRole: { contains: q } },
-        { city: { contains: q } },
-      ];
+      // 5. Search query
+      if (q) {
+        const cleanQ = q.startsWith("@") ? q.slice(1) : q;
+        where.OR = [
+          { name: { contains: q } },
+          { username: { contains: cleanQ } },
+          { currentCompany: { contains: q } },
+          { currentRole: { contains: q } },
+          { city: { contains: q } },
+        ];
+      }
     }
 
     const alumni = await db.user.findMany({
@@ -112,6 +122,7 @@ export async function GET(req: Request) {
         ? {
             id: currentUser.id,
             name: currentUser.name,
+            username: (currentUser as any).username || null,
             institutionId: currentUser.institutionId,
             institutionName: currentUser.institution?.name,
             batchYear: currentUser.batchYear,

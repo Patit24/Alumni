@@ -10,8 +10,14 @@ import {
   Search,
   MailCheck,
   Mail,
+  Zap,
+  Lock,
+  KeyRound,
+  ShieldCheck,
+  CheckCircle2,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+import { getOrCreateDeviceIdentity } from "@/lib/e2ee/vault";
 
 interface Institution {
   id: string;
@@ -26,8 +32,19 @@ export default function AuthPage() {
   const router = useRouter();
   // Multi-step state: "email" | "otp" | "onboarding"
   const [step, setStep] = useState<"email" | "otp" | "onboarding">("email");
+  const [authMode, setAuthMode] = useState<"instant" | "email">("instant");
 
-  // Form fields
+  // Instant Private Identity fields
+  const [instantName, setInstantName] = useState("");
+  const [instantUsername, setInstantUsername] = useState("");
+  const [userEditedUsername, setUserEditedUsername] = useState(false);
+  const [instantBatchYear, setInstantBatchYear] = useState(new Date().getFullYear().toString());
+  const [instantDepartment, setInstantDepartment] = useState("");
+  const [instantRole, setInstantRole] = useState("");
+  const [instantCompany, setInstantCompany] = useState("");
+  const [instantCity, setInstantCity] = useState("");
+
+  // Form fields (Email OTP)
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [signupToken, setSignupToken] = useState("");
@@ -67,7 +84,7 @@ export default function AuthPage() {
 
   // Fetch institutions for auto-complete
   useEffect(() => {
-    if (step !== "onboarding" || !instSearchQuery.trim()) return;
+    if (!instSearchQuery.trim()) return;
     const timer = setTimeout(async () => {
       setSearchLoading(true);
       try {
@@ -112,6 +129,76 @@ export default function AuthPage() {
         .catch(() => {});
     }
   }, []);
+
+  // Handle Display Name change & auto-suggest @username
+  const handleNameChange = (val: string) => {
+    setInstantName(val);
+    if (!userEditedUsername) {
+      const clean = val.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (clean) {
+        const rand = Math.random().toString(36).substring(2, 6);
+        setInstantUsername(`@${clean}_${rand}`);
+      } else {
+        setInstantUsername("");
+      }
+    }
+  };
+
+  // Instant Private Registration (No Phone, No OTP)
+  const handleInstantRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setInfoMessage(null);
+
+    const trimmedName = instantName.trim();
+    if (!trimmedName) {
+      setError("Please enter your display name");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 1. Generate NIST P-256 key pair locally on this client device
+      const localIdentity = await getOrCreateDeviceIdentity("temp_init");
+
+      // 2. Dispatch to instant identity API
+      const res = await fetch("/api/auth/instant-identity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: trimmedName,
+          username: instantUsername.replace(/^@/, "").trim() || undefined,
+          batchYear: parseInt(instantBatchYear, 10) || new Date().getFullYear(),
+          departmentName: instantDepartment.trim() || undefined,
+          institutionId: isCustomInst ? undefined : selectedInstId || undefined,
+          currentRole: instantRole.trim() || undefined,
+          currentCompany: instantCompany.trim() || undefined,
+          city: instantCity.trim() || undefined,
+          publicKey: localIdentity.publicKeySpki,
+          deviceId: localIdentity.deviceId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to create instant private account");
+      }
+
+      if (data.user) {
+        try {
+          localStorage.setItem("alumni_user", JSON.stringify(data.user));
+        } catch {}
+      }
+
+      // Hard redirect to dashboard so server session cookie is recognized
+      window.location.href = "/";
+    } catch (err: any) {
+      console.error("Instant register error:", err);
+      setError(err?.message || "Failed to create instant account. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // One-Click Google Sign-In via Supabase OAuth
   const handleGoogleSignIn = async () => {
@@ -300,84 +387,315 @@ export default function AuthPage() {
           </div>
         )}
 
-        {/* STEP 1: Email Entry & Google Sign-In */}
+        {/* STEP 1: Mode Switcher & Forms */}
         {step === "email" && (
           <div className="space-y-4">
-            {/* Google One-Click Button */}
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={googleLoading || loading}
-              className="w-full flex items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white py-3 px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.99] disabled:opacity-50"
-            >
-              {googleLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-              ) : (
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.14z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                  />
-                </svg>
-              )}
-              Continue with Google
-            </button>
-
-            <div className="relative flex items-center justify-center">
-              <div className="border-t border-slate-200 w-full" />
-              <span className="bg-white px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Or with Email OTP
-              </span>
+            {/* Top Switcher: Instant Private Identity vs Email / Google */}
+            <div className="flex bg-slate-100 p-1 rounded-2xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("instant");
+                  setError(null);
+                  setInfoMessage(null);
+                }}
+                className={`flex-1 py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 ${
+                  authMode === "instant"
+                    ? "bg-white text-blue-700 shadow-xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                <span className="truncate">Instant Private ID</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("email");
+                  setError(null);
+                  setInfoMessage(null);
+                }}
+                className={`flex-1 py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 ${
+                  authMode === "email"
+                    ? "bg-white text-slate-900 shadow-xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span className="truncate">Email / Google</span>
+              </button>
             </div>
 
-            <form onSubmit={handleSendOtp} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Email Address / Gmail
-                </label>
-                <div className="relative flex items-center">
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5" />
+            {/* OPTION A: Instant Private Identity (No Phone, No OTP) */}
+            {authMode === "instant" && (
+              <form onSubmit={handleInstantRegister} className="space-y-3">
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 text-left space-y-1">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Signal-grade Zero Phone / Zero OTP Account</span>
+                  </div>
+                  <p className="text-[11px] text-blue-700/90 leading-relaxed">
+                    Identity keys are generated locally on your device in IndexedDB. No phone number or SMS verification is required.
+                  </p>
+                </div>
+
+                {/* Display Name */}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                    Your Full Name *
+                  </label>
                   <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="patitpabanroy2002@gmail.com"
-                    autoFocus
+                    type="text"
+                    value={instantName}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    placeholder="e.g. Patitpaban Roy"
                     required
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-3 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    autoFocus
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white"
                   />
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1.5">
-                  Free 6-digit code will be sent to your Gmail inbox.
-                </p>
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    Send 6-Digit Code <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
+                {/* Alumni Username (@handle) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Alumni @Username *
+                    </label>
+                    <span className="text-[10px] text-blue-600 font-semibold">For search & QR connect</span>
+                  </div>
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      value={instantUsername}
+                      onChange={(e) => {
+                        setUserEditedUsername(true);
+                        const val = e.target.value;
+                        setInstantUsername(val.startsWith("@") ? val : `@${val}`);
+                      }}
+                      placeholder="@patit_7x92"
+                      required
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2.5 px-3.5 text-sm font-mono font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Batch Year & Department */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                      Batch Year *
+                    </label>
+                    <select
+                      value={instantBatchYear}
+                      onChange={(e) => setInstantBatchYear(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 px-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                    >
+                      {years.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                      Department
+                    </label>
+                    <input
+                      type="text"
+                      value={instantDepartment}
+                      onChange={(e) => setInstantDepartment(e.target.value)}
+                      placeholder="e.g. MCA / CSE"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Work info (Role & Company) */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                      Current Role
+                    </label>
+                    <input
+                      type="text"
+                      value={instantRole}
+                      onChange={(e) => setInstantRole(e.target.value)}
+                      placeholder="e.g. Developer / Student"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                      Company / Org
+                    </label>
+                    <input
+                      type="text"
+                      value={instantCompany}
+                      onChange={(e) => setInstantCompany(e.target.value)}
+                      placeholder="e.g. Tech Corp"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 px-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Institution Selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Alma Mater / Institution
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomInst(!isCustomInst)}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      {isCustomInst ? "Default" : "+ Change"}
+                    </button>
+                  </div>
+
+                  {isCustomInst ? (
+                    <div className="space-y-2 p-2.5 rounded-xl border border-blue-200 bg-blue-50/30">
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        <input
+                          type="text"
+                          value={instSearchQuery}
+                          onChange={(e) => setInstSearchQuery(e.target.value)}
+                          placeholder="Search college or school..."
+                          className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-900 outline-none"
+                        />
+                      </div>
+                      {institutions.length > 0 && (
+                        <div className="max-h-24 overflow-y-auto space-y-1 rounded-lg border border-slate-200 p-1 bg-white">
+                          {institutions.map((inst) => (
+                            <button
+                              type="button"
+                              key={inst.id}
+                              onClick={() => {
+                                setSelectedInstId(inst.id);
+                                setInstSearchQuery(inst.name);
+                              }}
+                              className={`w-full text-left p-1.5 rounded text-xs flex items-center justify-between ${
+                                selectedInstId === inst.id ? "bg-blue-50 font-bold text-blue-800" : "hover:bg-slate-50"
+                              }`}
+                            >
+                              <span className="truncate">{inst.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between text-xs font-medium text-slate-700">
+                      <span className="truncate">{instSearchQuery || "Brainware University (Default)"}</span>
+                      <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100/70 px-2 py-0.5 rounded-md shrink-0">
+                        Selected
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || !instantName.trim()}
+                  className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Generating E2EE Keys & Launching...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+                      <span>Generate Identity & Launch App</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {/* OPTION B: Email / Google Sign-In */}
+            {authMode === "email" && (
+              <div className="space-y-4">
+                {/* Google One-Click Button */}
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={googleLoading || loading}
+                  className="w-full flex items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white py-3 px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.99] disabled:opacity-50"
+                >
+                  {googleLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+                  ) : (
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.14z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                      />
+                    </svg>
+                  )}
+                  Continue with Google
+                </button>
+
+                <div className="relative flex items-center justify-center">
+                  <div className="border-t border-slate-200 w-full" />
+                  <span className="bg-white px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Or with Email OTP
+                  </span>
+                </div>
+
+                <form onSubmit={handleSendOtp} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      Email Address / Gmail
+                    </label>
+                    <div className="relative flex items-center">
+                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="patitpabanroy2002@gmail.com"
+                        required
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-3 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1.5">
+                      Free 6-digit code will be sent to your Gmail inbox.
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
+                  >
+                    {loading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Send 6-Digit Code <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         )}
 

@@ -24,8 +24,10 @@ import {
   AlertCircle,
   Loader2,
   Share2,
+  QrCode,
 } from "lucide-react";
 import { getCallLogs, clearCallLogs, VaultCallLog } from "@/lib/e2ee/vault";
+import QRCodeModal from "@/components/QRCodeModal";
 
 interface AlumniContact {
   id: string;
@@ -68,6 +70,14 @@ export default function MessagesHubPage() {
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showSmsModal, setShowSmsModal] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [currentUserProfile, setCurrentUserProfile] = useState<{
+    id: string;
+    name: string;
+    username: string;
+    batchYear: number;
+    institutionName?: string;
+  } | null>(null);
 
   // Contact Sync State
   const [rawPhoneInput, setRawPhoneInput] = useState("");
@@ -92,17 +102,62 @@ export default function MessagesHubPage() {
     async function loadData() {
       try {
         setLoading(true);
-        const [dirRes, calls] = await Promise.all([
+        const [dirRes, calls, meRes] = await Promise.all([
           fetch("/api/directory?limit=50"),
           getCallLogs(),
+          fetch("/api/auth/me"),
         ]);
 
         if (dirRes.ok) {
           const dirData = await dirRes.json();
           setContacts(dirData.alumni || dirData.users || []);
+          if (dirData.currentUser) {
+            setCurrentUserProfile(dirData.currentUser);
+          }
+        }
+
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          if (meData?.user) {
+            setCurrentUserProfile((prev) => ({
+              id: meData.user.id,
+              name: meData.user.name || "Alumni Member",
+              username: meData.user.username || `@${(meData.user.name || "alumni").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+              batchYear: meData.user.batchYear || new Date().getFullYear(),
+              institutionName: meData.user.institutionName || prev?.institutionName || "Brainware University",
+            }));
+          }
         }
 
         setCallLogs(calls);
+
+        // Handle ?connect=@username or ?connect=userId from QR scan or link
+        if (typeof window !== "undefined") {
+          const params = new URLSearchParams(window.location.search);
+          const connectTarget = params.get("connect");
+          if (connectTarget) {
+            const cleanTarget = connectTarget.trim().replace(/^@/, "");
+            const res = await fetch(`/api/directory?username=${encodeURIComponent(cleanTarget)}`);
+            if (res.ok) {
+              const data = await res.json();
+              const peer = data.alumni?.[0];
+              if (peer) {
+                router.push(`/messages/${peer.id}`);
+                return;
+              }
+            }
+            // Fallback try by ID
+            const idRes = await fetch(`/api/directory?id=${encodeURIComponent(cleanTarget)}`);
+            if (idRes.ok) {
+              const data = await idRes.json();
+              const peer = data.alumni?.[0];
+              if (peer) {
+                router.push(`/messages/${peer.id}`);
+                return;
+              }
+            }
+          }
+        }
       } catch (err) {
         console.error("Error loading messages hub:", err);
       } finally {
@@ -111,7 +166,7 @@ export default function MessagesHubPage() {
     }
 
     loadData();
-  }, []);
+  }, [router]);
 
   // Remote search when query has length > 1 (supports @username and name)
   useEffect(() => {
@@ -166,7 +221,18 @@ export default function MessagesHubPage() {
     }
   };
 
-  // Sync Phone Contacts Action
+  // Signal-style client-side phone number hashing
+  const hashPhoneNumberLocally = async (phone: string): Promise<string | null> => {
+    const digits = phone.replace(/[^0-9]/g, "");
+    if (digits.length < 10) return null;
+    const last10 = digits.slice(-10);
+    const data = new TextEncoder().encode("alumni_disc_v1:" + last10);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  };
+
+  // Sync Phone Contacts Action via Privacy-Preserving Discovery
   const handleSyncContacts = async (numbersToSync?: string[]) => {
     setSyncError(null);
     const list =
@@ -183,21 +249,46 @@ export default function MessagesHubPage() {
 
     setSyncing(true);
     try {
-      const res = await fetch("/api/contacts/sync", {
+      // 1. Compute SHA-256 hashes locally on the client device
+      const hashes = (
+        await Promise.all(list.map((num) => hashPhoneNumberLocally(num)))
+      ).filter((h): h is string => Boolean(h));
+
+      if (hashes.length === 0) {
+        throw new Error("Please enter valid 10-digit mobile numbers.");
+      }
+
+      // 2. Dispatch ONLY hashes to private discovery endpoint (server never receives raw phone numbers)
+      const res = await fetch("/api/contacts/discovery", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumbers: list }),
+        body: JSON.stringify({ phoneHashes: hashes }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to sync contacts");
+        throw new Error(data.error || "Failed to discover contacts");
       }
 
-      setMatchedRegistered(data.registered || []);
-      setMatchedUnregistered(data.unregistered || []);
+      const matches = data.matches || [];
+      setMatchedRegistered(matches);
+
+      // 3. Compute unregistered list locally for optional SMS invites
+      const matchedUsernames = new Set(matches.map((m: any) => m.name.toLowerCase()));
+      const unreg: UnregisteredContact[] = [];
+      for (const num of list) {
+        const clean = num.replace(/[^0-9]/g, "");
+        if (clean.length >= 10) {
+          const last10 = clean.slice(-10);
+          unreg.push({
+            phone: last10,
+            inviteSmsUrl: `/api/test-sms?phone=${last10}`,
+          });
+        }
+      }
+      setMatchedUnregistered(unreg);
     } catch (err: any) {
-      setSyncError(err.message || "Failed to sync contacts");
+      setSyncError(err.message || "Failed to discover contacts");
     } finally {
       setSyncing(false);
     }
@@ -283,6 +374,16 @@ export default function MessagesHubPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* My QR Code Button */}
+            <button
+              onClick={() => setShowQrModal(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200/70 transition"
+              title="My Connect QR Code & Key Exchange"
+            >
+              <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="hidden sm:inline">My QR</span>
+            </button>
+
             {/* Find Contacts Button */}
             <button
               onClick={() => setShowSyncModal(true)}
@@ -598,6 +699,13 @@ export default function MessagesHubPage() {
               </button>
             </div>
 
+            <div className="p-2.5 rounded-xl bg-emerald-50 text-[11px] text-emerald-800 flex items-start gap-2 border border-emerald-100">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Zero Address Book Storage:</strong> Contact numbers are hashed locally using client-side SHA-256 before matching. Your phonebook is never uploaded or saved to the server.
+              </span>
+            </div>
+
             <div className="shrink-0 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-700">Enter or paste mobile numbers:</label>
@@ -830,6 +938,15 @@ export default function MessagesHubPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* QR Code Modal for In-Person Key Exchange & Instant Chat Connection */}
+      {currentUserProfile && (
+        <QRCodeModal
+          isOpen={showQrModal}
+          onClose={() => setShowQrModal(false)}
+          currentUser={currentUserProfile}
+        />
       )}
     </div>
   );

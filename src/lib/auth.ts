@@ -160,6 +160,7 @@ export async function getCurrentUser() {
         where: { id: targetUserId },
         update: {
           email: targetEmail,
+          username: payload.username || undefined,
           name: userName,
           institutionId: inst.id,
           batchId: batch.id,
@@ -168,6 +169,7 @@ export async function getCurrentUser() {
         create: {
           id: targetUserId,
           email: targetEmail,
+          username: payload.username || null,
           phone: payload.phone || null,
           name: userName,
           role: payload.role || "USER",
@@ -194,6 +196,7 @@ export async function getCurrentUser() {
       return {
         id: targetUserId,
         email: targetEmail,
+        username: payload.username || null,
         phone: payload.phone || null,
         name: userName,
         avatarUrl: null,
