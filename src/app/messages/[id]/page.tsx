@@ -42,6 +42,7 @@ import {
   checkPeerKeyRotation,
   verifyContactSafety,
   markMessageBurned,
+  addLocalConnectedPeer,
   VaultMessage,
 } from "@/lib/e2ee/vault";
 import {
@@ -167,7 +168,10 @@ export default function DirectMessageChatPage(props: {
         if (peerRes.ok) {
           const pData = await peerRes.json();
           const target = pData.alumni?.find((u: PeerProfile) => u.id === peerId) || pData.alumni?.[0];
-          if (target) setPeer(target);
+          if (target) {
+            setPeer(target);
+            addLocalConnectedPeer(peerId);
+          }
         }
 
         if (trustRes.ok) {

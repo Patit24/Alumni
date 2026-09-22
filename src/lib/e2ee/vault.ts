@@ -461,3 +461,100 @@ export async function cleanMyPrivacy(): Promise<{
   };
 }
 
+export const CONNECTED_CHATS_KEY = "alumni_connected_peer_ids";
+
+export function getLocalConnectedPeerIds(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CONNECTED_CHATS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addLocalConnectedPeer(peerId: string): void {
+  if (typeof window === "undefined" || !peerId) return;
+  try {
+    const existing = getLocalConnectedPeerIds();
+    if (!existing.includes(peerId)) {
+      existing.unshift(peerId);
+      localStorage.setItem(CONNECTED_CHATS_KEY, JSON.stringify(existing));
+    }
+  } catch {}
+}
+
+/**
+ * Retrieves all unique peerIds who have messages or are stored contacts in the local E2EE vault
+ */
+export async function getVaultConnectedPeerIds(): Promise<string[]> {
+  const peerIds = new Set<string>();
+  try {
+    const db = await openDB();
+
+    // 1. Peer IDs from messages
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction("messages", "readonly");
+      const store = tx.objectStore("messages");
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const msgs = (req.result as VaultMessage[]) || [];
+        msgs.forEach((m) => {
+          if (m.peerId) peerIds.add(m.peerId);
+        });
+        resolve();
+      };
+      req.onerror = () => resolve();
+    });
+
+    // 2. Peer IDs from contacts store
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction("contacts", "readonly");
+      const store = tx.objectStore("contacts");
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const contacts = (req.result as StoredContact[]) || [];
+        contacts.forEach((c) => {
+          if (c.userId) peerIds.add(c.userId);
+        });
+        resolve();
+      };
+      req.onerror = () => resolve();
+    });
+  } catch (e) {
+    console.warn("Error getting vault connected peer IDs:", e);
+  }
+  return Array.from(peerIds);
+}
+
+/**
+ * Retrieves the latest message for every peer conversation
+ */
+export async function getLatestMessagesPerPeer(): Promise<Map<string, VaultMessage>> {
+  const map = new Map<string, VaultMessage>();
+  try {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction("messages", "readonly");
+      const store = tx.objectStore("messages");
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const msgs = (req.result as VaultMessage[]) || [];
+        for (const m of msgs) {
+          if (!m.peerId) continue;
+          const existing = map.get(m.peerId);
+          if (!existing || m.createdAt > existing.createdAt) {
+            map.set(m.peerId, m);
+          }
+        }
+        resolve(map);
+      };
+      req.onerror = () => resolve(map);
+    });
+  } catch (e) {
+    console.warn("Failed to get latest messages per peer:", e);
+    return map;
+  }
+}
+
+

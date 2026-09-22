@@ -18,17 +18,18 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { addLocalConnectedPeer } from "@/lib/e2ee/vault";
 
 interface QRCodeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: {
-    id: string;
-    name: string;
-    username: string;
-    batchYear: number;
+  currentUser?: {
+    id?: string;
+    name?: string;
+    username?: string | null;
+    batchYear?: number;
     institutionName?: string;
-  };
+  } | null;
 }
 
 export default function QRCodeModal({
@@ -43,9 +44,13 @@ export default function QRCodeModal({
   const [manualInput, setManualInput] = useState("");
   const [resolving, setResolving] = useState(false);
 
+  const displayName = currentUser?.name?.trim() || "Alumni Member";
+  const username = (currentUser?.username?.trim() || "alumni").replace(/^@/, "");
+  const batchYear = currentUser?.batchYear || new Date().getFullYear();
+
   const connectPayload = typeof window !== "undefined"
-    ? `${window.location.origin}/messages?connect=${encodeURIComponent(currentUser.username)}`
-    : `https://alumni-pink.vercel.app/messages?connect=${encodeURIComponent(currentUser.username)}`;
+    ? `${window.location.origin}/messages?connect=${encodeURIComponent(username)}`
+    : `https://alumni-pink.vercel.app/messages?connect=${encodeURIComponent(username)}`;
 
   // Generate QR Code data URL
   useEffect(() => {
@@ -86,8 +91,8 @@ export default function QRCodeModal({
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `Connect with ${currentUser.name} on Alumni Network`,
-          text: `Scan my QR code or tap this link to start an encrypted direct chat with @${currentUser.username}:`,
+          title: `Connect with ${displayName} on Alumni Network`,
+          text: `Scan my QR code or tap this link to start an encrypted direct chat with @${username}:`,
           url: connectPayload,
         });
       } catch (e) {
@@ -131,6 +136,7 @@ export default function QRCodeModal({
       }
 
       if (peer) {
+        addLocalConnectedPeer(peer.id);
         setSuccessMessage(`Found ${peer.name} (@${peer.username || "alumni"})! Opening chat...`);
         setTimeout(() => {
           onClose();
@@ -215,14 +221,14 @@ export default function QRCodeModal({
 
             <div>
               <div className="flex items-center justify-center gap-1.5">
-                <p className="text-sm font-bold text-slate-900">{currentUser.name}</p>
+                <p className="text-sm font-bold text-slate-900">{displayName}</p>
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               </div>
               <p className="text-xs font-mono font-semibold text-blue-600 mt-0.5">
-                @{currentUser.username}
+                @{username}
               </p>
               <p className="text-[10px] text-slate-400 mt-0.5">
-                Class of {currentUser.batchYear} • End-to-End Encrypted
+                Class of {batchYear} • End-to-End Encrypted
               </p>
             </div>
 

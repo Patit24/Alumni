@@ -26,7 +26,16 @@ import {
   Share2,
   QrCode,
 } from "lucide-react";
-import { getCallLogs, clearCallLogs, VaultCallLog } from "@/lib/e2ee/vault";
+import {
+  getCallLogs,
+  clearCallLogs,
+  VaultCallLog,
+  getVaultConnectedPeerIds,
+  getLocalConnectedPeerIds,
+  addLocalConnectedPeer,
+  getLatestMessagesPerPeer,
+  VaultMessage,
+} from "@/lib/e2ee/vault";
 import QRCodeModal from "@/components/QRCodeModal";
 import { motion, AnimatePresence } from "framer-motion";
 import FloatingBottomNav, { NavTab } from "@/components/motion/FloatingBottomNav";
@@ -71,6 +80,8 @@ export default function MessagesHubPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [contacts, setContacts] = useState<AlumniContact[]>([]);
   const [callLogs, setCallLogs] = useState<VaultCallLog[]>([]);
+  const [connectedPeerIds, setConnectedPeerIds] = useState<Set<string>>(new Set());
+  const [latestMessages, setLatestMessages] = useState<Map<string, VaultMessage>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchingRemote, setSearchingRemote] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -115,40 +126,63 @@ export default function MessagesHubPage() {
     async function loadData() {
       try {
         setLoading(true);
-        const [dirRes, calls, meRes, lockRes] = await Promise.all([
-          fetch("/api/directory?limit=100&batchScope=all&institutionScope=all"),
-          getCallLogs(),
-          fetch("/api/auth/me"),
-          fetch("/api/privacy/lock"),
+        const [dirRes, calls, meRes, lockRes, vaultPeers, latestMap] = await Promise.all([
+          fetch("/api/directory?limit=100&batchScope=all&institutionScope=all").catch(() => null),
+          getCallLogs().catch(() => []),
+          fetch("/api/auth/me").catch(() => null),
+          fetch("/api/privacy/lock").catch(() => null),
+          getVaultConnectedPeerIds().catch(() => []),
+          getLatestMessagesPerPeer().catch(() => new Map()),
         ]);
 
-        if (lockRes.ok) {
+        if (lockRes && lockRes.ok) {
           const lData = await lockRes.json();
           setPrivacyLockActive(lData.privacyLockActive || false);
         }
 
-        if (dirRes.ok) {
+        if (dirRes && dirRes.ok) {
           const dirData = await dirRes.json();
           setContacts(dirData.alumni || dirData.users || []);
           if (dirData.currentUser) {
-            setCurrentUserProfile(dirData.currentUser);
+            setCurrentUserProfile({
+              id: dirData.currentUser.id,
+              name: dirData.currentUser.name || "Alumni Member",
+              username: dirData.currentUser.username || `@user_${dirData.currentUser.id.slice(-6)}`,
+              batchYear: dirData.currentUser.batchYear || new Date().getFullYear(),
+              institutionName: dirData.currentUser.institutionName || "Brainware University",
+            });
           }
         }
 
-        if (meRes.ok) {
+        if (meRes && meRes.ok) {
           const meData = await meRes.json();
           if (meData?.user) {
             setCurrentUserProfile((prev) => ({
               id: meData.user.id,
-              name: meData.user.name || "Alumni Member",
-              username: meData.user.username || `@${(meData.user.name || "alumni").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
-              batchYear: meData.user.batchYear || new Date().getFullYear(),
+              name: meData.user.name || prev?.name || "Alumni Member",
+              username: meData.user.username || prev?.username || `@${(meData.user.name || "alumni").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+              batchYear: meData.user.batchYear || prev?.batchYear || new Date().getFullYear(),
               institutionName: meData.user.institutionName || prev?.institutionName || "Brainware University",
             }));
           }
         }
 
+        // Safe fallback user profile if still unpopulated
+        setCurrentUserProfile((prev) => prev || {
+          id: "me",
+          name: "Alumni Member",
+          username: "alumni",
+          batchYear: new Date().getFullYear(),
+          institutionName: "Brainware University",
+        });
+
         setCallLogs(calls);
+
+        // Merge vault connected peers and localStorage connected peers
+        const localStoredPeers = getLocalConnectedPeerIds();
+        const mergedPeers = new Set<string>([...vaultPeers, ...localStoredPeers]);
+        setConnectedPeerIds(mergedPeers);
+        setLatestMessages(latestMap);
 
         // Handle ?connect=@username or ?connect=userId from QR scan or link
         if (typeof window !== "undefined") {
@@ -161,6 +195,8 @@ export default function MessagesHubPage() {
               const data = await res.json();
               const peer = data.alumni?.[0];
               if (peer) {
+                addLocalConnectedPeer(peer.id);
+                setConnectedPeerIds((prev) => new Set(prev).add(peer.id));
                 router.push(`/messages/${peer.id}`);
                 return;
               }
@@ -171,6 +207,8 @@ export default function MessagesHubPage() {
               const data = await idRes.json();
               const peer = data.alumni?.[0];
               if (peer) {
+                addLocalConnectedPeer(peer.id);
+                setConnectedPeerIds((prev) => new Set(prev).add(peer.id));
                 router.push(`/messages/${peer.id}`);
                 return;
               }
@@ -180,6 +218,8 @@ export default function MessagesHubPage() {
               const data = await qRes.json();
               const peer = data.alumni?.[0];
               if (peer) {
+                addLocalConnectedPeer(peer.id);
+                setConnectedPeerIds((prev) => new Set(prev).add(peer.id));
                 router.push(`/messages/${peer.id}`);
                 return;
               }
@@ -234,13 +274,16 @@ export default function MessagesHubPage() {
   const filteredContacts = contacts.filter((c) => {
     if (!cleanFilter) return true;
     return (
-      c.name.toLowerCase().includes(cleanFilter) ||
+      (c.name || "").toLowerCase().includes(cleanFilter) ||
       (c.username && c.username.toLowerCase().includes(cleanFilter)) ||
       c.currentCompany?.toLowerCase().includes(cleanFilter) ||
       c.currentRole?.toLowerCase().includes(cleanFilter) ||
-      c.batchYear.toString().includes(cleanFilter)
+      c.batchYear?.toString().includes(cleanFilter)
     );
   });
+
+  // CHATS tab shows strictly connected accounts
+  const connectedContacts = filteredContacts.filter((c) => connectedPeerIds.has(c.id));
 
   const handleClearCallLogs = async () => {
     if (confirm("Clear your entire call history from this device?")) {
@@ -545,15 +588,21 @@ export default function MessagesHubPage() {
               setRefreshing(true);
               triggerHaptic("medium");
               try {
-                const [dirRes, calls] = await Promise.all([
-                  fetch("/api/directory?limit=100&batchScope=all&institutionScope=all"),
-                  getCallLogs(),
+                const [dirRes, calls, vaultPeers, latestMap] = await Promise.all([
+                  fetch("/api/directory?limit=100&batchScope=all&institutionScope=all").catch(() => null),
+                  getCallLogs().catch(() => []),
+                  getVaultConnectedPeerIds().catch(() => []),
+                  getLatestMessagesPerPeer().catch(() => new Map()),
                 ]);
-                if (dirRes.ok) {
+                if (dirRes && dirRes.ok) {
                   const dirData = await dirRes.json();
                   setContacts(dirData.alumni || dirData.users || []);
                 }
                 setCallLogs(calls);
+                const localStoredPeers = getLocalConnectedPeerIds();
+                const merged = new Set<string>([...vaultPeers, ...localStoredPeers]);
+                setConnectedPeerIds(merged);
+                setLatestMessages(latestMap);
                 triggerHaptic("success");
               } catch (e) {
                 console.error(e);
@@ -568,7 +617,7 @@ export default function MessagesHubPage() {
           </motion.button>
         </div>
 
-        {/* TAB 1: CHATS (Swipeable conversation cards) */}
+        {/* TAB 1: CHATS (Swipeable conversation cards for CONNECTED ACCOUNTS ONLY) */}
         {tab === "CHATS" && (
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
             {loading ? (
@@ -576,38 +625,57 @@ export default function MessagesHubPage() {
                 <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
                 <p className="text-xs">Loading encrypted conversations...</p>
               </div>
-            ) : filteredContacts.length === 0 ? (
-              <div className="p-10 text-center text-slate-400 space-y-3">
-                <MessageSquare className="w-8 h-8 mx-auto text-slate-300" />
-                <div>
-                  <p className="text-xs font-semibold text-slate-700">No matching contacts found</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Search by another name/username or sync your phone contacts
+            ) : connectedContacts.length === 0 ? (
+              <div className="p-8 sm:p-10 text-center space-y-4">
+                <div className="mx-auto w-14 h-14 rounded-3xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-xs">
+                  <MessageSquare className="w-7 h-7" />
+                </div>
+                <div className="max-w-xs mx-auto space-y-1">
+                  <h3 className="text-sm font-bold text-slate-900">No active conversations</h3>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Chats are end-to-end encrypted. Pick any alumnus from your Contacts directory or scan a QR code to start chatting.
                   </p>
                 </div>
-                <div className="flex justify-center gap-2 pt-2">
-                  <AnimatedButton
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setTab("CONTACTS")}
-                  >
-                    Find Contacts
-                  </AnimatedButton>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
                   <AnimatedButton
                     size="sm"
                     variant="primary"
                     onClick={() => setShowNewChatModal(true)}
                   >
-                    View All Alumni
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Start New Chat
+                  </AnimatedButton>
+                  <AnimatedButton
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setTab("CONTACTS")}
+                  >
+                    <UserCheck className="w-3.5 h-3.5 mr-1" /> Browse Directory ({contacts.length})
+                  </AnimatedButton>
+                  <AnimatedButton
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowQrModal(true)}
+                  >
+                    <QrCode className="w-3.5 h-3.5 mr-1 text-indigo-600" /> My QR Code
                   </AnimatedButton>
                 </div>
               </div>
             ) : (
-              filteredContacts
+              connectedContacts
                 .filter((c) => !archivedIds.has(c.id))
-                .sort((a, b) => (pinnedIds.has(b.id) ? 1 : 0) - (pinnedIds.has(a.id) ? 1 : 0))
+                .sort((a, b) => {
+                  if (pinnedIds.has(b.id) !== pinnedIds.has(a.id)) {
+                    return (pinnedIds.has(b.id) ? 1 : 0) - (pinnedIds.has(a.id) ? 1 : 0);
+                  }
+                  const timeA = latestMessages.get(a.id)?.createdAt || 0;
+                  const timeB = latestMessages.get(b.id)?.createdAt || 0;
+                  return timeB - timeA;
+                })
                 .map((contact) => {
                   const isPinned = pinnedIds.has(contact.id);
+                  const lastMsg = latestMessages.get(contact.id);
+                  const isOutgoing = lastMsg && lastMsg.senderId !== contact.id;
+
                   return (
                     <div key={contact.id} className="relative overflow-hidden group">
                       {/* Swipe reveal actions behind card */}
@@ -640,45 +708,79 @@ export default function MessagesHubPage() {
                           }
                         }}
                         whileTap={{ scale: 0.985 }}
-                        className="relative z-10 bg-white p-4 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition cursor-pointer select-none"
-                        onClick={() => router.push(`/messages/${contact.id}`)}
+                        className="relative z-10 bg-white p-3.5 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition cursor-pointer select-none"
+                        onClick={() => {
+                          addLocalConnectedPeer(contact.id);
+                          router.push(`/messages/${contact.id}`);
+                        }}
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="relative">
-                            <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-base font-bold shadow-sm shadow-blue-500/20 shrink-0">
-                              {contact.name.charAt(0).toUpperCase()}
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="relative shrink-0">
+                            <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-base font-bold shadow-xs shadow-blue-500/20">
+                              {(contact.name || "A").charAt(0).toUpperCase()}
                             </div>
                             <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white ring-1 ring-emerald-400/40" />
                           </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition">
-                                {contact.name}
-                              </p>
-                              {isPinned && (
-                                <span className="p-0.5 rounded-md bg-blue-100 text-blue-700">
-                                  <Pin className="w-3 h-3" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <p className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition">
+                                  {contact.name}
+                                </p>
+                                {isPinned && (
+                                  <span className="p-0.5 rounded-md bg-blue-100 text-blue-700">
+                                    <Pin className="w-3 h-3" />
+                                  </span>
+                                )}
+                                {contact.username && (
+                                  <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded font-medium">
+                                    @{contact.username}
+                                  </span>
+                                )}
+                                {contact.verificationStatus === "VERIFIED" && (
+                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                )}
+                              </div>
+                              {lastMsg && (
+                                <span className="text-[10px] text-slate-400 shrink-0">
+                                  {new Date(lastMsg.createdAt).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
                                 </span>
-                              )}
-                              {contact.username && (
-                                <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded font-medium">
-                                  @{contact.username}
-                                </span>
-                              )}
-                              {contact.verificationStatus === "VERIFIED" && (
-                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                               )}
                             </div>
-                            <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                              {contact.currentRole || "Alumni Member"}{" "}
-                              {contact.currentCompany ? `at ${contact.currentCompany}` : ""}
-                            </p>
-                            <p className="text-[10px] text-slate-400">Class of {contact.batchYear}</p>
+
+                            {/* WhatsApp-style snippet with delivery ticks */}
+                            <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                              {lastMsg ? (
+                                <>
+                                  {isOutgoing && (
+                                    <span className="shrink-0 flex items-center">
+                                      {lastMsg.status === "READ" ? (
+                                        <span className="text-[11px] text-[#53bdeb] font-bold leading-none">✓✓</span>
+                                      ) : lastMsg.status === "DELIVERED" ? (
+                                        <span className="text-[11px] text-slate-400 font-bold leading-none">✓✓</span>
+                                      ) : (
+                                        <span className="text-[11px] text-slate-400 leading-none">✓</span>
+                                      )}
+                                    </span>
+                                  )}
+                                  <p className="text-[11px] text-slate-500 truncate">
+                                    {lastMsg.text}
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="text-[11px] text-slate-400 truncate">
+                                  {contact.currentRole || "Alumni"} {contact.currentCompany ? `at ${contact.currentCompany}` : ""} • Class of {contact.batchYear}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="h-8 px-3 rounded-xl bg-slate-100 group-hover:bg-blue-50 group-hover:text-blue-600 text-[11px] font-bold text-slate-600 flex items-center transition">
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="h-8 px-2.5 rounded-xl bg-slate-100 group-hover:bg-blue-50 group-hover:text-blue-600 text-[11px] font-bold text-slate-600 flex items-center transition">
                             Chat →
                           </span>
                         </div>
@@ -811,14 +913,19 @@ export default function MessagesHubPage() {
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Alumni Directory</span>
                 <span className="text-[11px] text-slate-400 font-semibold">{contacts.length} verified members</span>
               </div>
-              {contacts.slice(0, 15).map((contact) => (
+              {filteredContacts.map((contact) => (
                 <div key={contact.id} className="p-3.5 flex items-center justify-between hover:bg-slate-50 transition">
                   <div className="flex items-center gap-2.5">
                     <div className="h-9 w-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs">
-                      {contact.name.charAt(0)}
+                      {(contact.name || "A").charAt(0)}
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-slate-900">{contact.name}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-slate-900">{contact.name}</p>
+                        {contact.verificationStatus === "VERIFIED" && (
+                          <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                        )}
+                      </div>
                       {contact.username && (
                         <p className="text-[10px] text-slate-400 font-mono">@{contact.username}</p>
                       )}
@@ -827,9 +934,13 @@ export default function MessagesHubPage() {
                   <AnimatedButton
                     size="sm"
                     variant="ghost"
-                    onClick={() => router.push(`/messages/${contact.id}`)}
+                    onClick={() => {
+                      addLocalConnectedPeer(contact.id);
+                      setConnectedPeerIds((prev) => new Set(prev).add(contact.id));
+                      router.push(`/messages/${contact.id}`);
+                    }}
                   >
-                    Connect →
+                    Chat →
                   </AnimatedButton>
                 </div>
               ))}
@@ -959,6 +1070,8 @@ export default function MessagesHubPage() {
                     onClick={() => {
                       setShowNewChatModal(false);
                       setNewChatSearch("");
+                      addLocalConnectedPeer(c.id);
+                      setConnectedPeerIds((prev) => new Set(prev).add(c.id));
                       router.push(`/messages/${c.id}`);
                     }}
                     className="py-2.5 px-2 flex items-center justify-between hover:bg-slate-50 rounded-xl cursor-pointer transition"
@@ -1251,13 +1364,11 @@ export default function MessagesHubPage() {
       )}
 
       {/* QR Code Modal for In-Person Key Exchange & Instant Chat Connection */}
-      {currentUserProfile && (
-        <QRCodeModal
-          isOpen={showQrModal}
-          onClose={() => setShowQrModal(false)}
-          currentUser={currentUserProfile}
-        />
-      )}
+      <QRCodeModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        currentUser={currentUserProfile}
+      />
     </div>
   );
 }
