@@ -778,6 +778,16 @@ export default function CommunityDetailPage() {
               </button>
             </div>
 
+            {/* QR Code Canvas */}
+            <div className="p-4 rounded-2xl bg-white flex flex-col items-center justify-center mx-auto max-w-[200px]">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(inviteLink)}`}
+                alt="Community QR Code"
+                className="w-40 h-40 object-contain"
+              />
+              <span className="text-[10px] text-zinc-600 mt-2 font-medium">Scan to join immediately</span>
+            </div>
+
             <div className="flex justify-end pt-2">
               <button
                 onClick={() => setInviteModalOpen(false)}

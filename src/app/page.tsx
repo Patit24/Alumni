@@ -273,19 +273,19 @@ export default async function HomePage(props: {
               </div>
             </Link>
 
-            {/* Campus Groups */}
+            {/* Communities & Organizations */}
             <Link
-              href="/groups"
-              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-pink-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
+              href="/communities"
+              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-cyan-400 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
             >
-              <div className="h-10 w-10 rounded-xl bg-pink-50 text-pink-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <Music className="w-5 h-5" />
+              <div className="h-10 w-10 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <Users className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-900 group-hover:text-pink-600 transition">
-                  Campus Groups
+                <p className="text-xs font-bold text-slate-900 group-hover:text-cyan-600 transition">
+                  Communities
                 </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Clubs & Chat</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Teams, Hubs & Orgs</p>
               </div>
             </Link>
 
