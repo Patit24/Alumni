@@ -74,6 +74,23 @@ interface UnregisteredContact {
   inviteSmsUrl: string;
 }
 
+function formatContactBio(role?: string | null, company?: string | null, batchYear?: number | null) {
+  const parts: string[] = [];
+  if (role && company) {
+    parts.push(`${role} at ${company}`);
+  } else if (role) {
+    parts.push(role);
+  } else if (company) {
+    parts.push(company);
+  } else {
+    parts.push("Alumni");
+  }
+  if (batchYear) {
+    parts.push(`Class of ${batchYear}`);
+  }
+  return parts.join(" • ");
+}
+
 export default function MessagesHubPage() {
   const router = useRouter();
   const [tab, setTab] = useState<NavTab>("CHATS");
@@ -781,7 +798,7 @@ export default function MessagesHubPage() {
                                 </>
                               ) : (
                                 <p className="text-[11px] text-slate-400 truncate">
-                                  {contact.currentRole || "Alumni"} {contact.currentCompany ? `at ${contact.currentCompany}` : ""} • Class of {contact.batchYear}
+                                  {formatContactBio(contact.currentRole, contact.currentCompany, contact.batchYear)}
                                 </p>
                               )}
                             </div>
@@ -1098,7 +1115,7 @@ export default function MessagesHubPage() {
                         )}
                       </div>
                       <p className="text-[10px] text-slate-400">
-                        {c.currentRole || "Alumni"} {c.currentCompany ? `at ${c.currentCompany}` : ""} • Class of {c.batchYear}
+                        {formatContactBio(c.currentRole, c.currentCompany, c.batchYear)}
                       </p>
                     </div>
                     <span className="text-[11px] text-blue-600 font-bold">Start →</span>

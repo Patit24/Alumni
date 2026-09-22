@@ -104,8 +104,9 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
               <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
                 <Briefcase className="w-4 h-4 text-slate-400 shrink-0" />
                 <span>
-                  {user.currentRole || "Alumni Member"}
-                  {user.currentCompany && ` at ${user.currentCompany}`}
+                  {user.currentRole && user.currentCompany
+                    ? `${user.currentRole} at ${user.currentCompany}`
+                    : user.currentRole || user.currentCompany || "Alumni Member"}
                 </span>
               </p>
 

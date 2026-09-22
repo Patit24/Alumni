@@ -834,8 +834,10 @@ export default function DirectMessageChatPage(props: {
                   </p>
                   {peerReveals.phone && peer?.phone && <p className="font-semibold text-slate-800">📱 {peer.phone}</p>}
                   {peerReveals.email && peer?.email && <p className="font-semibold text-slate-800">✉️ {peer.email}</p>}
-                  {peerReveals.work && peer?.currentRole && (
-                    <p className="font-semibold text-slate-800">💼 {peer.currentRole} at {peer.currentCompany || "N/A"}</p>
+                  {peerReveals.work && (peer?.currentRole || peer?.currentCompany) && (
+                    <p className="font-semibold text-slate-800">
+                      💼 {peer.currentRole || "Alumni"}{peer.currentCompany ? ` at ${peer.currentCompany}` : ""}
+                    </p>
                   )}
                 </div>
               )}

@@ -130,7 +130,7 @@ export async function POST(req: Request) {
         batchId: batch.id,
         batchYear: year,
         departmentId,
-        currentRole: currentRole?.trim() || "Alumni Member",
+        currentRole: currentRole?.trim() || null,
         currentCompany: currentCompany?.trim() || null,
         city: city?.trim() || null,
       },
