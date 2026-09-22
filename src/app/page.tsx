@@ -15,6 +15,7 @@ import {
   Lock,
   CheckCircle2,
   QrCode,
+  Compass,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
@@ -183,115 +184,85 @@ export default async function HomePage(props: {
           initialInstitutionName={user.institution?.name}
         />
 
-        {/* Campus Hub: Interactive Feature Grid */}
+        {/* Quick 1-Click Feature Shortcuts Hub */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Campus Hub
             </h2>
-            <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full">
-              Class of {user.batchYear}
-            </span>
+            <Link
+              href="/explore"
+              className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition"
+            >
+              <span>All Features</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {/* Private E2EE Chat */}
-            <Link
-              href="/messages"
-              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
-            >
-              <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <Lock className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition">
-                  Private Messages
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">E2EE Chat & Calls</p>
-              </div>
-            </Link>
-
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
             {/* Alumni Directory */}
             <Link
               href="/directory"
-              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-indigo-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
+              className="p-3.5 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 hover:shadow-xs transition group flex items-center gap-3"
             >
-              <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Users className="w-5 h-5" />
               </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition">
-                  Alumni Directory
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition truncate">
+                  Network
                 </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Search Batchmates</p>
+                <p className="text-[11px] text-slate-500 truncate">Find Alumni</p>
               </div>
             </Link>
 
             {/* Jobs & Referrals */}
             <Link
               href="/jobs"
-              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-purple-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
+              className="p-3.5 rounded-2xl bg-white border border-slate-200/80 hover:border-purple-300 hover:shadow-xs transition group flex items-center gap-3"
             >
-              <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Briefcase className="w-5 h-5" />
               </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 group-hover:text-purple-600 transition">
-                  Jobs & Referrals
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 group-hover:text-purple-600 transition truncate">
+                  Jobs
                 </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Internal Openings</p>
+                <p className="text-[11px] text-slate-500 truncate">Referrals</p>
               </div>
             </Link>
 
             {/* Senior Mentorship */}
             <Link
               href="/mentorship"
-              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-teal-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
+              className="p-3.5 rounded-2xl bg-white border border-slate-200/80 hover:border-teal-300 hover:shadow-xs transition group flex items-center gap-3"
             >
-              <div className="h-10 w-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+              <div className="h-10 w-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Sparkles className="w-5 h-5" />
               </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 group-hover:text-teal-600 transition">
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 group-hover:text-teal-600 transition truncate">
                   Mentorship
                 </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">1-on-1 Guidance</p>
+                <p className="text-[11px] text-slate-500 truncate">1-on-1 Help</p>
               </div>
             </Link>
 
-            {/* Communities & Organizations */}
+            {/* Explore Hub */}
             <Link
-              href="/communities"
-              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-cyan-400 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
+              href="/explore"
+              className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs hover:shadow-md transition group flex items-center gap-3 active:scale-95"
             >
-              <div className="h-10 w-10 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <Users className="w-5 h-5" />
+              <div className="h-10 w-10 rounded-xl bg-white/20 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Compass className="w-5 h-5" />
               </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 group-hover:text-cyan-600 transition">
-                  Communities
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-white transition truncate">
+                  Explore Hub
                 </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Teams, Hubs & Orgs</p>
+                <p className="text-[11px] text-blue-100 truncate">More Features</p>
               </div>
             </Link>
-
-            {/* Reunions */}
-            <Link
-              href="/reunions"
-              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-amber-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
-            >
-              <div className="h-10 w-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                <PartyPopper className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-900 group-hover:text-amber-600 transition">
-                  Batch Reunions
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Plan & Meet</p>
-              </div>
-            </Link>
-
-
           </div>
         </section>
 

@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { MessageSquare, Phone, Users, ShieldCheck } from "lucide-react";
+import { MessageSquare, Phone, Users, ShieldCheck, Home } from "lucide-react";
 import { triggerHaptic, MOTION_SPRINGS } from "@/lib/motion/tokens";
 
 export type NavTab = "CHATS" | "CALLS" | "CONTACTS" | "PRIVACY";
@@ -53,6 +54,16 @@ export default function FloatingBottomNav({
         transition={MOTION_SPRINGS.gentle}
         className="pointer-events-auto bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-xl shadow-slate-900/10 rounded-full p-1.5 flex items-center gap-1 sm:gap-2 max-w-md w-full justify-around"
       >
+        {/* 1-Click Back to Home */}
+        <Link
+          href="/"
+          onClick={() => triggerHaptic("light")}
+          className="relative flex items-center justify-center p-2 rounded-full text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition select-none"
+          title="Home"
+        >
+          <Home className="w-4 h-4" />
+        </Link>
+
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
