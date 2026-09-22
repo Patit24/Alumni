@@ -41,37 +41,42 @@ export default async function HomePage(props: {
       <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-6 bg-slate-50">
         <ClientAuthRedirect />
         <div className="w-full max-w-lg bg-white rounded-3xl shadow-sm border border-slate-200/80 p-6 sm:p-10 text-center">
-          <div className="mx-auto h-16 w-16 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/25 mb-6">
+          <div className="mx-auto h-16 w-16 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/25 mb-4">
             <GraduationCap className="w-8 h-8" />
           </div>
 
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-[11px] font-bold border border-blue-100/80 mb-3">
+            <Lock className="w-3 h-3 text-blue-600" />
+            <span>Signal-Grade Privacy • Verified Alumni Network</span>
+          </div>
+
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            Your Alumni Community
+            Your Campus Network, Built for Privacy
           </h1>
           <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto leading-relaxed">
-            Find batchmates, request senior mentorship, discover exclusive job referrals, and reunite with your alma mater.
+            Reunite with verified batchmates, request senior mentorship, discover internal job referrals, and communicate with end-to-end encryption.
           </p>
 
-          <div className="my-8 grid grid-cols-2 gap-3 text-left">
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-              <Users className="w-5 h-5 text-blue-600 mb-1.5" />
-              <p className="text-xs font-semibold text-slate-800">Batch Directory</p>
-              <p className="text-[11px] text-slate-500">Search by year, city & company</p>
+          <div className="my-7 grid grid-cols-2 gap-3 text-left">
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-blue-200 transition">
+              <Lock className="w-5 h-5 text-blue-600 mb-1.5" />
+              <p className="text-xs font-semibold text-slate-800">Private E2EE Chat</p>
+              <p className="text-[11px] text-slate-500">Encrypted messaging, voice & video calls</p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-              <Sparkles className="w-5 h-5 text-indigo-600 mb-1.5" />
-              <p className="text-xs font-semibold text-slate-800">Senior Mentorship</p>
-              <p className="text-[11px] text-slate-500">Resume review & mock talks</p>
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition">
+              <Users className="w-5 h-5 text-indigo-600 mb-1.5" />
+              <p className="text-xs font-semibold text-slate-800">Verified Directory</p>
+              <p className="text-[11px] text-slate-500">Find batchmates by year & department</p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-emerald-200 transition">
               <Briefcase className="w-5 h-5 text-emerald-600 mb-1.5" />
               <p className="text-xs font-semibold text-slate-800">Jobs & Referrals</p>
-              <p className="text-[11px] text-slate-500">Internal alumni referral leads</p>
+              <p className="text-[11px] text-slate-500">Exclusive alumni openings & referral leads</p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-              <ShieldCheck className="w-5 h-5 text-purple-600 mb-1.5" />
-              <p className="text-xs font-semibold text-slate-800">Passive Trust</p>
-              <p className="text-[11px] text-slate-500">Batchmates vouch for batchmates</p>
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-purple-200 transition">
+              <Sparkles className="w-5 h-5 text-purple-600 mb-1.5" />
+              <p className="text-xs font-semibold text-slate-800">Senior Mentorship</p>
+              <p className="text-[11px] text-slate-500">Career guidance, mock talks & peer vouches</p>
             </div>
           </div>
 
@@ -79,11 +84,15 @@ export default async function HomePage(props: {
             href="/auth"
             className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 px-6 text-sm font-semibold text-white shadow-lg shadow-blue-500/25 transition hover:bg-blue-700 active:scale-[0.99]"
           >
-            Get Started with Google / Email <ArrowRight className="w-4 h-4" />
+            Join Your Alumni Network <ArrowRight className="w-4 h-4" />
           </Link>
 
-          <p className="text-xs text-slate-400 mt-4">
-            No passwords required • Instant Gmail OTP & One-Click Sign-in
+          <p className="text-xs text-slate-400 mt-4 flex items-center justify-center gap-1.5 flex-wrap">
+            <span>Zero Passwords Required</span>
+            <span>•</span>
+            <span>Instant Private ID or Gmail Sign-In</span>
+            <span>•</span>
+            <span>100% Free</span>
           </p>
         </div>
       </main>
