@@ -5,29 +5,27 @@ import { getCurrentUser } from "@/lib/auth";
 import {
   ArrowLeft,
   GraduationCap,
-  Building,
-  Briefcase,
-  MapPin,
-  ShieldCheck,
-  ShieldAlert,
   Sparkles,
-  ExternalLink,
-  Phone,
   Eye,
-  Lock,
 } from "lucide-react";
+import ProfileHeaderCard from "@/components/ProfileHeaderCard";
 
 export const dynamic = "force-dynamic";
 
 interface ProfilePageProps {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export default async function ProfilePage({ params }: ProfilePageProps) {
+export default async function ProfilePage({ params, searchParams }: ProfilePageProps) {
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const isConnectAction = resolvedSearchParams?.connect === "true";
+
   const currentUser = await getCurrentUser();
 
-  const user = await db.user.findUnique({
+  // Find user by ID or by username
+  let user = await db.user.findUnique({
     where: { id },
     include: {
       institution: true,
@@ -37,11 +35,21 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   });
 
   if (!user) {
+    user = await db.user.findFirst({
+      where: { username: id },
+      include: {
+        institution: true,
+        department: true,
+        batch: true,
+      },
+    });
+  }
+
+  if (!user) {
     notFound();
   }
 
   const isOwnProfile = currentUser?.id === user.id;
-  const isVerified = user.verificationStatus === "VERIFIED";
 
   // Parse mentor topics if any
   const mentorTopicsList = user.mentorTopics
@@ -60,104 +68,29 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
             <ArrowLeft className="w-4 h-4" /> Back to Directory
           </Link>
 
-          {isOwnProfile && (
+          {isOwnProfile ? (
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80">
               Your Profile
             </span>
+          ) : (
+            <Link
+              href={`/messages/${user.id}`}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+            >
+              Direct Messages →
+            </Link>
           )}
         </div>
       </header>
 
       {/* Profile Main Content */}
       <main className="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 space-y-5">
-        {/* Main Profile Header Card */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-8 shadow-sm">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-            {/* Large Avatar */}
-            <div className="h-20 w-20 rounded-3xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-3xl font-bold shadow-md shadow-blue-500/20 shrink-0">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-
-            <div className="space-y-1.5 flex-1">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-xl sm:text-2xl font-bold text-slate-900">{user.name}</h1>
-                <span
-                  className={`text-xs font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 ${
-                    isVerified
-                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                      : "bg-amber-50 text-amber-700 border border-amber-200"
-                  }`}
-                >
-                  {isVerified ? (
-                    <>
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Verified Member
-                    </>
-                  ) : (
-                    <>
-                      <ShieldAlert className="w-3.5 h-3.5 text-amber-600" /> Unverified
-                    </>
-                  )}
-                </span>
-              </div>
-
-              {/* Current Role & Company */}
-              <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-                <Briefcase className="w-4 h-4 text-slate-400 shrink-0" />
-                <span>
-                  {user.currentRole && user.currentCompany
-                    ? `${user.currentRole} at ${user.currentCompany}`
-                    : user.currentRole || user.currentCompany || "Alumni Member"}
-                </span>
-              </p>
-
-              {/* Location & Alma Mater */}
-              <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap pt-0.5">
-                {user.city && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    {user.city}
-                  </span>
-                )}
-                <span className="flex items-center gap-1">
-                  <Building className="w-3.5 h-3.5 text-slate-400" />
-                  {user.institution.name}
-                </span>
-                <span className="flex items-center gap-1">
-                  <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
-                  Class of {user.batchYear}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Social & Action Links */}
-          <div className="mt-6 pt-5 border-t border-slate-100 flex flex-wrap items-center gap-3">
-            {user.linkedinUrl ? (
-              <a
-                href={user.linkedinUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0a66c2] text-white text-xs font-semibold shadow-xs hover:bg-[#084e96] transition"
-              >
-                LinkedIn Profile <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            ) : (
-              <span className="text-xs text-slate-400 italic">No LinkedIn profile provided</span>
-            )}
-
-            {/* Phone Display with privacy notice */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-medium">
-              <Phone className="w-3.5 h-3.5 text-slate-500" />
-              {isOwnProfile || user.isPhoneVisible ? (
-                <span>{user.phone}</span>
-              ) : (
-                <span className="text-slate-500 flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Phone hidden by privacy
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Main Profile Header Card (With Cover, Avatar, QR, Scanner & Connect for Chat) */}
+        <ProfileHeaderCard
+          user={user as any}
+          currentUser={currentUser ? { id: currentUser.id, name: currentUser.name } : null}
+          autoConnect={isConnectAction}
+        />
 
         {/* Academic Details Card */}
         <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-4">
@@ -220,17 +153,6 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                   </span>
                 ))}
               </div>
-              {!isOwnProfile && (
-                <div className="pt-2">
-                  <button
-                    disabled
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600/50 text-white text-xs font-semibold cursor-not-allowed"
-                    title="Mentorship request flow arrives in Phase 5"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" /> Request Mentorship (Available in Phase 5)
-                  </button>
-                </div>
-              )}
             </div>
           ) : (
             <p className="text-xs text-slate-400 italic">
@@ -239,7 +161,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
           )}
         </div>
 
-        {/* Privacy & Settings (Phase 2 Requirement) */}
+        {/* Privacy & Settings */}
         <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">

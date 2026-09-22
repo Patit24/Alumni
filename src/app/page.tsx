@@ -20,6 +20,7 @@ import {
 import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
 import ClientAuthRedirect from "@/components/ClientAuthRedirect";
+import AlumniPassportCard from "@/components/AlumniPassportCard";
 
 import { redirect } from "next/navigation";
 
@@ -166,122 +167,7 @@ export default async function HomePage(props: {
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
         {/* Alumni Identity Passport Card */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
-          {/* Ambient Header Cover Banner */}
-          <div className="h-28 sm:h-36 bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 relative p-4 flex items-end justify-between overflow-hidden">
-            {/* Ambient Lighting Gradients */}
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.3),transparent_50%)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.2),transparent_50%)]" />
-
-            {/* Banner Labels */}
-            <div className="relative z-10 hidden sm:flex items-center gap-2 text-white/70 text-xs font-medium tracking-wide">
-              <Building className="w-3.5 h-3.5 text-indigo-300" />
-              <span>Verified Alumni Passport</span>
-            </div>
-
-            <div className="relative z-10 ml-auto flex items-center gap-2">
-              <Link
-                href="/settings/privacy/dashboard"
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/90 text-[11px] font-medium backdrop-blur-md border border-white/10 transition"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>End-to-End Encrypted</span>
-              </Link>
-            </div>
-          </div>
-
-          {/* Profile Details Container (Overlapping the Banner) */}
-          <div className="px-5 sm:px-8 pb-6 pt-0">
-            <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 -mt-12 sm:-mt-16 mb-4">
-              {/* Avatar with Floating Verified Check Badge */}
-              <div className="relative">
-                <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl ring-4 ring-white bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center font-black text-3xl sm:text-4xl shadow-lg shadow-slate-900/15 shrink-0 select-none">
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-                {isVerified && (
-                  <div
-                    className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-emerald-500 text-white ring-2 ring-white flex items-center justify-center shadow-xs"
-                    title="Verified Alumni Member"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-white" />
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons on Card */}
-              <div className="flex items-center gap-2 w-full sm:w-auto pt-1 sm:pt-0">
-                <Link
-                  href={`/profile/${user.id}`}
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition active:scale-98"
-                >
-                  <span>Edit Profile</span>
-                </Link>
-                <Link
-                  href="/messages"
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition active:scale-98"
-                >
-                  <QrCode className="w-3.5 h-3.5 text-slate-500" />
-                  <span>My QR</span>
-                </Link>
-              </div>
-            </div>
-
-            {/* Typography & Profile Info */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                  {user.name}
-                </h1>
-                <span
-                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 ${
-                    isVerified
-                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
-                      : "bg-amber-50 text-amber-700 border border-amber-200/80"
-                  }`}
-                >
-                  {isVerified ? (
-                    <>
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Verified Alumni</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Awaiting Batch Vouch</span>
-                    </>
-                  )}
-                </span>
-              </div>
-
-              <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-                <Briefcase className="w-4 h-4 text-slate-400 shrink-0" />
-                <span>
-                  {user.currentRole && user.currentCompany
-                    ? `${user.currentRole} at ${user.currentCompany}`
-                    : user.currentRole || user.currentCompany || "Alumni Member"}
-                </span>
-              </p>
-
-              {/* Meta Chips */}
-              <div className="flex items-center gap-2 pt-1 flex-wrap text-xs font-medium text-slate-500">
-                {formattedCity && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/90 text-slate-700">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{formattedCity}</span>
-                  </span>
-                )}
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/90 text-slate-700">
-                  <Building className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{user.institution.name}</span>
-                </span>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100">
-                  <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Class of {user.batchYear} {user.department ? `(${user.department.name})` : ""}</span>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <AlumniPassportCard user={user as any} />
 
         {/* Verification Banner (if unverified) */}
         {!isVerified && (

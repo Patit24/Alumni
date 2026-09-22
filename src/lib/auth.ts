@@ -23,6 +23,8 @@ export interface SessionPayload {
   currentCompany?: string | null;
   currentRole?: string | null;
   city?: string | null;
+  avatarUrl?: string | null;
+  coverUrl?: string | null;
   [key: string]: unknown;
 }
 
@@ -52,6 +54,8 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       currentCompany: (payload.currentCompany as string) || null,
       currentRole: (payload.currentRole as string) || null,
       city: (payload.city as string) || null,
+      avatarUrl: (payload.avatarUrl as string) || null,
+      coverUrl: (payload.coverUrl as string) || null,
     };
   } catch {
     return null;

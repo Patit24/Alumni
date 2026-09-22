@@ -66,6 +66,8 @@ model User {
   username           String?      @unique
   name               String
   avatarUrl          String?
+  coverUrl           String?
+  bio                String?
   role               String       @default("USER") // "USER", "INSTITUTION_ADMIN", "SUPER_ADMIN"
   verificationStatus String       @default("UNVERIFIED") // "UNVERIFIED", "VERIFIED"
   verifiedAt         DateTime?

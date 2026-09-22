@@ -21,18 +21,20 @@ import { addLocalConnectedPeer } from "@/lib/e2ee/vault";
 interface QRCodeModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenScanner?: () => void;
   currentUser?: {
     id?: string;
     name?: string;
     username?: string | null;
-    batchYear?: number;
-    institutionName?: string;
+    batchYear?: number | null;
+    institutionName?: string | null;
   } | null;
 }
 
 export default function QRCodeModal({
   isOpen,
   onClose,
+  onOpenScanner,
   currentUser,
 }: QRCodeModalProps) {
   const router = useRouter();
@@ -49,8 +51,8 @@ export default function QRCodeModal({
   const batchYear = currentUser?.batchYear || new Date().getFullYear();
 
   const connectPayload = typeof window !== "undefined"
-    ? `${window.location.origin}/messages?connect=${encodeURIComponent(username)}`
-    : `https://alumni-pink.vercel.app/messages?connect=${encodeURIComponent(username)}`;
+    ? `${window.location.origin}/profile/${currentUser?.id || username}?connect=true`
+    : `https://alumni-pink.vercel.app/profile/${currentUser?.id || username}?connect=true`;
 
   const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=${encodeURIComponent(connectPayload)}`;
 
@@ -267,8 +269,28 @@ export default function QRCodeModal({
             <div className="p-2.5 rounded-xl bg-emerald-50 text-[11px] text-emerald-800 text-left flex items-start gap-2">
               <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
               <span>
-                Scanning your QR code allows peers to exchange identity keys and start an end-to-end encrypted session instantly without any phone numbers.
+                Scanning your QR code allows peers to view your profile and start an end-to-end encrypted chat instantly.
               </span>
+            </div>
+
+            {/* Separated Button for Scanning a Batchmate's QR */}
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenScanner) {
+                    onClose();
+                    onOpenScanner();
+                  } else {
+                    setTab("SCAN_CONNECT");
+                  }
+                }}
+                className="w-full py-2.5 px-4 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center justify-center gap-2 border border-indigo-200/80 cursor-pointer active:scale-98 shadow-2xs"
+              >
+                <Scan className="w-4 h-4 text-indigo-600" />
+                <span>Scan Batchmate&apos;s QR Code</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         )}

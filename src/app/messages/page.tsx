@@ -25,6 +25,7 @@ import {
   Loader2,
   Share2,
   QrCode,
+  Scan,
   ChevronRight,
 } from "lucide-react";
 import {
@@ -38,6 +39,7 @@ import {
   VaultMessage,
 } from "@/lib/e2ee/vault";
 import QRCodeModal from "@/components/QRCodeModal";
+import QRScannerModal from "@/components/QRScannerModal";
 import { motion, AnimatePresence } from "framer-motion";
 import FloatingBottomNav, { NavTab } from "@/components/motion/FloatingBottomNav";
 import AnimatedButton from "@/components/motion/AnimatedButton";
@@ -111,6 +113,7 @@ export default function MessagesHubPage() {
   const [newChatSearch, setNewChatSearch] = useState("");
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [showScannerModal, setShowScannerModal] = useState(false);
   const [privacyLockActive, setPrivacyLockActive] = useState(false);
   const [currentUserProfile, setCurrentUserProfile] = useState<{
     id: string;
@@ -431,6 +434,17 @@ export default function MessagesHubPage() {
                 <span className="inline font-bold">My QR</span>
               </button>
 
+              {/* Scan QR Code Button (Desktop Header) */}
+              <button
+                type="button"
+                onClick={() => setShowScannerModal(true)}
+                className="hidden sm:inline-flex h-8 sm:h-9 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200/70 transition items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs"
+                title="Scan Alumni QR Code"
+              >
+                <Scan className="w-3.5 h-3.5 text-blue-600" />
+                <span className="inline font-bold">Scan QR</span>
+              </button>
+
               {/* Desktop-only secondary buttons */}
               <button
                 onClick={() => setShowSyncModal(true)}
@@ -476,6 +490,14 @@ export default function MessagesHubPage() {
             >
               <QrCode className="w-3.5 h-3.5" />
               <span>My QR</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowScannerModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-[11px] font-bold transition shrink-0 shadow-2xs active:scale-95 cursor-pointer"
+            >
+              <Scan className="w-3.5 h-3.5 text-blue-600" />
+              <span>Scan QR</span>
             </button>
             <button
               onClick={() => setShowSyncModal(true)}
@@ -1244,6 +1266,17 @@ export default function MessagesHubPage() {
         isOpen={showQrModal}
         onClose={() => setShowQrModal(false)}
         currentUser={currentUserProfile}
+        onOpenScanner={() => setShowScannerModal(true)}
+      />
+
+      {/* Live QR Camera Scanner Modal */}
+      <QRScannerModal
+        isOpen={showScannerModal}
+        onClose={() => setShowScannerModal(false)}
+        onOpenMyQr={() => {
+          setShowScannerModal(false);
+          setShowQrModal(true);
+        }}
       />
     </div>
   );
