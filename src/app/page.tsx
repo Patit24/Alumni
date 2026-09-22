@@ -14,6 +14,8 @@ import {
   Music,
   PartyPopper,
   Lock,
+  CheckCircle2,
+  QrCode,
 } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
@@ -102,84 +104,192 @@ export default async function HomePage(props: {
   // Authenticated Alumni Dashboard
   const isVerified = user.verificationStatus === "VERIFIED";
 
+  // Formatted city in Title Case
+  const formattedCity = user.city
+    ? user.city
+        .trim()
+        .toLowerCase()
+        .split(" ")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ")
+    : null;
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50 flex flex-col pb-20 sm:pb-12">
+      {/* Global Floating Sticky Header Bar */}
+      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-slate-200/80 shadow-2xs">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+          {/* Alma Mater Identity */}
+          <Link href="/" className="flex items-center gap-3 group min-w-0">
+            <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-slate-900 via-indigo-950 to-blue-900 text-white flex items-center justify-center shadow-xs shrink-0 group-hover:scale-105 transition-transform duration-200">
+              <GraduationCap className="w-5 h-5 text-indigo-200" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-bold text-slate-900 tracking-tight truncate group-hover:text-blue-600 transition">
+                  {user.institution.name}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium truncate">
+                Class of {user.batchYear} {user.department ? `• ${user.department.name}` : ""}
+              </p>
+            </div>
+          </Link>
+
+          {/* Action Header Nav */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <Link
+              href="/messages"
+              className="h-9 px-3.5 sm:px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-xs font-bold transition shadow-xs shadow-blue-500/20 active:scale-95 shrink-0"
+              title="End-to-End Encrypted Messages & Calls"
+            >
+              <div className="relative flex items-center justify-center">
+                <Lock className="w-3.5 h-3.5" />
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-blue-600 animate-pulse" />
+              </div>
+              <span className="tracking-tight">Messages</span>
+            </Link>
+
+            <Link
+              href={`/profile/${user.id}`}
+              className="h-9 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1.5 text-xs font-semibold transition shrink-0"
+              title="My Profile"
+            >
+              <span className="hidden sm:inline">Profile</span>
+            </Link>
+
+            <LogoutButton />
+          </div>
+        </div>
+      </header>
+
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* Unified Profile & Institution Card */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm">
-          {/* Institution & Action Controls Bar */}
-          <div className="flex items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-sm shadow-blue-500/20 shrink-0">
-                <GraduationCap className="w-5 h-5" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-slate-900 leading-tight">
-                  {user.institution.name}
-                </h1>
-                <p className="text-[11px] text-slate-500">
-                  Class of {user.batchYear} {user.department ? `• ${user.department.name}` : ""}
-                </p>
-              </div>
+        {/* Alumni Identity Passport Card */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+          {/* Ambient Header Cover Banner */}
+          <div className="h-28 sm:h-36 bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 relative p-4 flex items-end justify-between overflow-hidden">
+            {/* Ambient Lighting Gradients */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.3),transparent_50%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.2),transparent_50%)]" />
+
+            {/* Banner Labels */}
+            <div className="relative z-10 hidden sm:flex items-center gap-2 text-white/70 text-xs font-medium tracking-wide">
+              <Building className="w-3.5 h-3.5 text-indigo-300" />
+              <span>Verified Alumni Passport</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="relative z-10 ml-auto flex items-center gap-2">
               <Link
-                href="/messages"
-                className="h-9 px-3.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 flex items-center gap-1.5 text-xs font-bold transition shadow-2xs border border-blue-100"
-                title="Private E2EE Chat & Calls"
+                href="/settings/privacy/dashboard"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white/90 text-[11px] font-medium backdrop-blur-md border border-white/10 transition"
               >
-                <Lock className="w-3.5 h-3.5 text-blue-600" />
-                <span>Messages</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Signal Privacy Active</span>
               </Link>
-              <LogoutButton />
             </div>
           </div>
 
-          {/* User Profile Details */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xl font-bold shadow-md shadow-blue-500/20 shrink-0">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-lg font-bold text-slate-900">{user.name}</h2>
-                  <span
-                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                      isVerified
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        : "bg-amber-50 text-amber-700 border border-amber-200"
-                    }`}
+          {/* Profile Details Container (Overlapping the Banner) */}
+          <div className="px-5 sm:px-8 pb-6 pt-0">
+            <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 -mt-12 sm:-mt-16 mb-4">
+              {/* Avatar with Floating Verified Check Badge */}
+              <div className="relative">
+                <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl ring-4 ring-white bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center font-black text-3xl sm:text-4xl shadow-lg shadow-slate-900/15 shrink-0 select-none">
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+                {isVerified && (
+                  <div
+                    className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-emerald-500 text-white ring-2 ring-white flex items-center justify-center shadow-xs"
+                    title="Verified Alumni Member"
                   >
-                    {isVerified ? "Verified Member" : user.verificationStatus}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {user.currentRole ? `${user.currentRole}` : "Alumni Member"}
-                  {user.currentCompany ? ` at ${user.currentCompany}` : ""}
-                </p>
-                <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1.5 flex-wrap">
-                  {user.city && (
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3" /> {user.city}
-                    </span>
+                    <CheckCircle2 className="w-4 h-4 text-white" />
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons on Card */}
+              <div className="flex items-center gap-2 w-full sm:w-auto pt-1 sm:pt-0">
+                <Link
+                  href={`/profile/${user.id}`}
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition active:scale-98"
+                >
+                  <span>Edit Profile</span>
+                </Link>
+                <Link
+                  href="/messages"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition active:scale-98"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-slate-500" />
+                  <span>My QR</span>
+                </Link>
+              </div>
+            </div>
+
+            {/* Typography & Profile Info */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                  {user.name}
+                </h1>
+                <span
+                  className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                    isVerified
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
+                      : "bg-amber-50 text-amber-700 border border-amber-200/80"
+                  }`}
+                >
+                  {isVerified ? (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Verified Alumni</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Awaiting Batch Vouch</span>
+                    </>
                   )}
-                  <span className="flex items-center gap-1">
-                    <Building className="w-3 h-3" /> Class of {user.batchYear}
+                </span>
+              </div>
+
+              <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                <Briefcase className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>
+                  {user.currentRole && user.currentCompany
+                    ? `${user.currentRole} at ${user.currentCompany}`
+                    : user.currentRole || user.currentCompany || "Alumni Member"}
+                </span>
+              </p>
+
+              {/* Meta Chips */}
+              <div className="flex items-center gap-2 pt-1 flex-wrap text-xs font-medium text-slate-500">
+                {formattedCity && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/90 text-slate-700">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{formattedCity}</span>
                   </span>
-                </div>
+                )}
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/90 text-slate-700">
+                  <Building className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{user.institution.name}</span>
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100">
+                  <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Class of {user.batchYear} {user.department ? `(${user.department.name})` : ""}</span>
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Verification Status Banner (Phase 1 & 3 requirement) */}
+        {/* Verification Banner (if unverified) */}
         {!isVerified && (
-          <div className="rounded-2xl bg-amber-50 border border-amber-200/80 p-4 sm:p-5 flex items-start justify-between gap-3.5">
+          <div className="rounded-3xl bg-amber-50 border border-amber-200/80 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
-              <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="h-10 w-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-bold text-amber-900">Your Account is Unverified</h2>
@@ -188,118 +298,157 @@ export default async function HomePage(props: {
                   </span>
                 </div>
                 <p className="text-xs text-amber-800 mt-1 leading-relaxed max-w-xl">
-                  To protect privacy and prevent spam, posting jobs or sending direct mentor requests requires verification.
-                  Any verified batchmate from your <strong>Class of {user.batchYear}</strong> can vouch for you with one tap.
+                  To protect privacy and unlock direct referral posting and mentorship, any verified batchmate from your <strong>Class of {user.batchYear}</strong> can vouch for you with one tap.
                 </p>
               </div>
             </div>
             <Link
               href="/verification"
-              className="shrink-0 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shadow-sm"
+              className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shadow-xs"
             >
               Get Verified →
             </Link>
           </div>
         )}
 
-        {/* Mobile App Native Quick Actions Bar */}
-        <div>
-          <div className="flex items-center justify-between mb-2.5">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        {/* Campus Hub: Interactive Feature Grid */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Campus Hub
-            </h3>
-            <span className="text-[11px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-full">
+            </h2>
+            <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full">
               Class of {user.batchYear}
             </span>
           </div>
 
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2 sm:gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {/* Private E2EE Chat */}
             <Link
               href="/messages"
-              className="p-3 rounded-2xl bg-white border border-emerald-100 hover:border-emerald-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
             >
-              <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+              <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                 <Lock className="w-5 h-5" />
               </div>
-              <span className="text-[11px] font-bold text-slate-800 leading-tight">Private Chat</span>
-              <span className="text-[9px] text-slate-400 mt-0.5">Calls & E2EE</span>
-            </Link>
-
-            <Link
-              href="/groups"
-              className="p-3 rounded-2xl bg-white border border-pink-100 hover:border-pink-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
-            >
-              <div className="h-10 w-10 rounded-2xl bg-pink-50 text-pink-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
-                <Music className="w-5 h-5" />
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition">
+                  Private Messages
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">E2EE Chat & Calls</p>
               </div>
-              <span className="text-[11px] font-bold text-slate-800 leading-tight">Groups</span>
-              <span className="text-[9px] text-slate-400 mt-0.5">Chat & Music</span>
             </Link>
 
+            {/* Alumni Directory */}
             <Link
               href="/directory"
-              className="p-3 rounded-2xl bg-white border border-blue-100 hover:border-blue-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-indigo-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
             >
-              <div className="h-10 w-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+              <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                 <Users className="w-5 h-5" />
               </div>
-              <span className="text-[11px] font-bold text-slate-800 leading-tight">Directory</span>
-              <span className="text-[9px] text-slate-400 mt-0.5">Batchmates</span>
-            </Link>
-
-            <Link
-              href="/reunions"
-              className="p-3 rounded-2xl bg-white border border-amber-100 hover:border-amber-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
-            >
-              <div className="h-10 w-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
-                <PartyPopper className="w-5 h-5" />
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition">
+                  Alumni Directory
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Search Batchmates</p>
               </div>
-              <span className="text-[11px] font-bold text-slate-800 leading-tight">Reunions</span>
-              <span className="text-[9px] text-slate-400 mt-0.5">Plan & Meet</span>
             </Link>
 
+            {/* Jobs & Referrals */}
             <Link
               href="/jobs"
-              className="p-3 rounded-2xl bg-white border border-purple-100 hover:border-purple-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-purple-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
             >
-              <div className="h-10 w-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+              <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                 <Briefcase className="w-5 h-5" />
               </div>
-              <span className="text-[11px] font-bold text-slate-800 leading-tight">Jobs</span>
-              <span className="text-[9px] text-slate-400 mt-0.5">Referrals</span>
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-purple-600 transition">
+                  Jobs & Referrals
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Internal Openings</p>
+              </div>
             </Link>
 
+            {/* Senior Mentorship */}
             <Link
               href="/mentorship"
-              className="p-3 rounded-2xl bg-white border border-indigo-100 hover:border-indigo-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-teal-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
             >
-              <div className="h-10 w-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+              <div className="h-10 w-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                 <Sparkles className="w-5 h-5" />
               </div>
-              <span className="text-[11px] font-bold text-slate-800 leading-tight">Mentors</span>
-              <span className="text-[9px] text-slate-400 mt-0.5">1-on-1 Help</span>
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-teal-600 transition">
+                  Mentorship
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">1-on-1 Guidance</p>
+              </div>
             </Link>
 
+            {/* Campus Groups */}
+            <Link
+              href="/groups"
+              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-pink-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
+            >
+              <div className="h-10 w-10 rounded-xl bg-pink-50 text-pink-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <Music className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-pink-600 transition">
+                  Campus Groups
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Clubs & Chat</p>
+              </div>
+            </Link>
+
+            {/* Reunions */}
+            <Link
+              href="/reunions"
+              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-amber-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
+            >
+              <div className="h-10 w-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <PartyPopper className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-amber-600 transition">
+                  Batch Reunions
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Plan & Meet</p>
+              </div>
+            </Link>
+
+            {/* Peer Verification Vouch */}
             <Link
               href="/verification"
-              className="p-3 rounded-2xl bg-white border border-emerald-100 hover:border-emerald-300 shadow-2xs hover:shadow-xs transition flex flex-col items-center text-center group"
+              className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-emerald-300 hover:shadow-md transition-all duration-200 group flex flex-col justify-between"
             >
-              <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-1.5 group-hover:scale-110 transition">
+              <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                 <UserCheck className="w-5 h-5" />
               </div>
-              <span className="text-[11px] font-bold text-slate-800 leading-tight">Vouch</span>
-              <span className="text-[9px] text-slate-400 mt-0.5">Trust Batch</span>
+              <div>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-600 transition">
+                  Batch Vouching
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Verify Batchmates</p>
+              </div>
             </Link>
           </div>
-        </div>
+        </section>
 
-        {/* LinkedIn-Style Network Feed (Phase 4) */}
-        <div className="pt-2">
+        {/* Campus & Alumni Feed */}
+        <section className="pt-2">
           <div className="flex items-center justify-between mb-3.5">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Campus & Alumni Feed
-            </h3>
-            <span className="text-[11px] text-emerald-600 font-medium">Phase 4 Active</span>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Campus Activity Feed
+              </h2>
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live
+              </span>
+            </div>
           </div>
 
           <FeedSection
@@ -309,7 +458,7 @@ export default async function HomePage(props: {
             currentUserVerified={isVerified}
             batchYear={user.batchYear}
           />
-        </div>
+        </section>
       </main>
     </div>
   );
