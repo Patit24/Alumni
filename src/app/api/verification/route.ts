@@ -96,57 +96,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { targetUserId, action } = body;
-
-    // Special action for testing: self-verify using a verified batchmate vouch
-    if (action === "SELF_VERIFY_DEMO") {
-      const verifiedBatchmate = await db.user.findFirst({
-        where: {
-          institutionId: user.institutionId,
-          batchYear: user.batchYear,
-          verificationStatus: "VERIFIED",
-          id: { not: user.id },
-        },
-      });
-
-      if (!verifiedBatchmate) {
-        return NextResponse.json(
-          { error: "No verified batchmate found to vouch for you in this batch." },
-          { status: 400 }
-        );
-      }
-
-      // Create vouch record
-      await db.verificationVouch.upsert({
-        where: {
-          confirmerId_targetUserId: {
-            confirmerId: verifiedBatchmate.id,
-            targetUserId: user.id,
-          },
-        },
-        create: {
-          confirmerId: verifiedBatchmate.id,
-          targetUserId: user.id,
-        },
-        update: {},
-      });
-
-      // Update current user to VERIFIED
-      const updatedUser = await db.user.update({
-        where: { id: user.id },
-        data: {
-          verificationStatus: "VERIFIED",
-          verifiedAt: new Date(),
-          verifiedById: verifiedBatchmate.id,
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `${verifiedBatchmate.name} verified you! You are now a Verified Member.`,
-        user: updatedUser,
-      });
-    }
+    const { targetUserId } = body;
 
     if (!targetUserId) {
       return NextResponse.json({ error: "targetUserId is required" }, { status: 400 });

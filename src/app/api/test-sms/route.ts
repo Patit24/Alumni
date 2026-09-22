@@ -11,6 +11,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized. Please log in first." }, { status: 401 });
     }
 
+    // Only allow admins to trigger manual SMS gateway tests
+    if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN" && user.role !== "INSTITUTION_ADMIN") {
+      return NextResponse.json(
+        { error: "Forbidden. Only administrators can run SMS gateway tests." },
+        { status: 403 }
+      );
+    }
+
     const { phone, message } = await req.json();
     if (!phone) {
       return NextResponse.json({ error: "Phone number is required (e.g. 9876543210)" }, { status: 400 });
@@ -26,9 +34,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const fast2SmsKey =
-      process.env.FAST2SMS_API_KEY ||
-      "2hiq4r5d1Ix9kKOnXbWf87EgNYvsVQDUaLAzwGeJHMyP6FtupCKQsLZj4HifGTCx5udJOFmIEBXpWeNR";
+    const fast2SmsKey = process.env.FAST2SMS_API_KEY;
+    if (!fast2SmsKey) {
+      return NextResponse.json(
+        { error: "FAST2SMS_API_KEY is not configured on the server." },
+        { status: 500 }
+      );
+    }
 
     const testOtp = Math.floor(100000 + Math.random() * 900000).toString();
     const smsContent = message || `Your Alumni Network test code is ${testOtp}. Live SMS gateway verified successfully!`;

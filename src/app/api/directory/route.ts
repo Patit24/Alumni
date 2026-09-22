@@ -125,6 +125,18 @@ export async function GET(req: Request) {
       new Set(allUsers.map((u) => u.department?.name).filter((d): d is string => Boolean(d)))
     ).sort();
 
+    // Sanitize personal contact info to prevent privacy leaks
+    const sanitizedAlumni = alumni.map((person) => {
+      const isSelf = currentUser && currentUser.id === person.id;
+      return {
+        ...person,
+        // Only expose phone if it's the user's own record or if they explicitly allowed phone visibility
+        phone: isSelf || person.isPhoneVisible ? person.phone : null,
+        // Never expose private email addresses in directory listing to other users
+        email: isSelf ? person.email : null,
+      };
+    });
+
     return NextResponse.json({
       currentUser: currentUser
         ? {
@@ -136,8 +148,8 @@ export async function GET(req: Request) {
             batchYear: currentUser.batchYear,
           }
         : null,
-      alumni,
-      totalCount: alumni.length,
+      alumni: sanitizedAlumni,
+      totalCount: sanitizedAlumni.length,
       availableBatches,
       availableCities,
       availableDepartments,

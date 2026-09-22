@@ -8,9 +8,11 @@ import {
   ShieldAlert,
   Users,
   CheckCircle2,
-  Sparkles,
   Award,
   RefreshCw,
+  Copy,
+  Check,
+  Share2,
 } from "lucide-react";
 
 interface Batchmate {
@@ -47,7 +49,7 @@ export default function VerificationPage() {
   const [data, setData] = useState<VerificationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [vouchingId, setVouchingId] = useState<string | null>(null);
-  const [selfVerifying, setSelfVerifying] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const fetchVerificationState = useCallback(async () => {
@@ -105,24 +107,19 @@ export default function VerificationPage() {
     }
   }
 
-  async function handleDemoSelfVerify() {
-    try {
-      setSelfVerifying(true);
-      setStatusMessage(null);
-      const res = await fetch("/api/verification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "SELF_VERIFY_DEMO" }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Failed to self-verify");
-      setStatusMessage(result.message);
-      await fetchVerificationState();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Self verification failed");
-    } finally {
-      setSelfVerifying(false);
-    }
+  function handleCopyVouchLink() {
+    if (!data) return;
+    const url = `${window.location.origin}/verification`;
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  }
+
+  function handleShareWhatsApp() {
+    if (!data) return;
+    const url = `${window.location.origin}/verification`;
+    const text = `Hey! I just joined our ${data.currentUser.institutionName} Class of ${data.currentUser.batchYear} Alumni Network. Can you vouch for my profile so I get verified? Here is the link: ${url}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   }
 
   if (loading) {
@@ -229,16 +226,34 @@ export default function VerificationPage() {
                   How Passive Verification Works
                 </h3>
                 <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                  You don&apos;t need institutional IDs or manual admin reviews. Any verified batchmate from your <strong>Class of {data.currentUser.batchYear}</strong> can vouch for you with one tap.
+                  You don&apos;t need institutional IDs or manual paperwork. Any verified batchmate from your <strong>Class of {data.currentUser.batchYear}</strong> can vouch for you with one tap.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2.5">
                   <button
-                    onClick={handleDemoSelfVerify}
-                    disabled={selfVerifying}
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shadow-sm disabled:opacity-50"
+                    type="button"
+                    onClick={handleCopyVouchLink}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95 cursor-pointer"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    {selfVerifying ? "Verifying..." : "Vouch from Verified Batchmate (Instant Demo)"}
+                    {copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-white" />
+                        <span>Link Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Verification Link</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleShareWhatsApp}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Ask Batchmates on WhatsApp</span>
                   </button>
                 </div>
               </div>

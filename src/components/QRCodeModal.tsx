@@ -10,9 +10,7 @@ import {
   X,
   Scan,
   ShieldCheck,
-  Sparkles,
   ArrowRight,
-  ExternalLink,
   Lock,
   Loader2,
   AlertCircle,
@@ -60,9 +58,6 @@ export default function QRCodeModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    // Set immediate reliable fallback so there is never a blank screen
-    setQrDataUrl((prev) => prev || fallbackQrUrl);
-
     try {
       const qrcodeLib = QRCode as any;
       const toStringFn = qrcodeLib?.toString || qrcodeLib?.default?.toString;
@@ -81,18 +76,14 @@ export default function QRCodeModal({
               setQrDataUrl(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
             }
           })
-          .catch((err: any) => {
+          .catch((err: unknown) => {
             console.warn("SVG QR generation fallback:", err);
-            setQrDataUrl(fallbackQrUrl);
           });
-      } else {
-        setQrDataUrl(fallbackQrUrl);
       }
-    } catch (e) {
-      console.warn("QR catch, using fallback:", e);
-      setQrDataUrl(fallbackQrUrl);
+    } catch (e: unknown) {
+      console.warn("QR generation error:", e);
     }
-  }, [isOpen, connectPayload, fallbackQrUrl]);
+  }, [isOpen, connectPayload]);
 
   const handleCopyLink = async () => {
     try {

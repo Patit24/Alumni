@@ -13,7 +13,6 @@ import {
   FileText,
   MapPin,
   QrCode,
-  Trash2,
 } from "lucide-react";
 import { MOTION_SPRINGS, triggerHaptic } from "@/lib/motion/tokens";
 import { VaultMessage } from "@/lib/e2ee/vault";
@@ -51,10 +50,8 @@ export default function MessageComposer({
   const [showPrivacyPicker, setShowPrivacyPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [cancelDragX, setCancelDragX] = useState(0);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-grow textarea
   useEffect(() => {
@@ -66,16 +63,15 @@ export default function MessageComposer({
 
   // Voice recording timer
   useEffect(() => {
-    if (isRecording) {
-      setRecordingSeconds(0);
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
-    }
+    if (!isRecording) return;
+
+    const interval = setInterval(() => {
+      setRecordingSeconds((prev) => prev + 1);
+    }, 1000);
+
     return () => {
-      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+      clearInterval(interval);
+      setRecordingSeconds(0);
     };
   }, [isRecording]);
 
@@ -93,13 +89,8 @@ export default function MessageComposer({
   const handleMicPressStart = () => {
     if (inputText.trim()) return;
     triggerHaptic("heavy");
+    setRecordingSeconds(0);
     setIsRecording(true);
-  };
-
-  const handleMicDrag = (_: any, info: PanInfo) => {
-    if (info.offset.x < 0) {
-      setCancelDragX(info.offset.x);
-    }
   };
 
   const handleMicRelease = (_: any, info: PanInfo) => {
@@ -108,12 +99,10 @@ export default function MessageComposer({
       // Cancelled
       triggerHaptic("error");
       setIsRecording(false);
-      setCancelDragX(0);
     } else {
       // Sent audio note
       triggerHaptic("success");
       setIsRecording(false);
-      setCancelDragX(0);
       onSend(`🎙️ Voice Message (${recordingSeconds}s)`);
     }
   };
@@ -122,7 +111,6 @@ export default function MessageComposer({
     if (!isRecording) return;
     triggerHaptic("success");
     setIsRecording(false);
-    setCancelDragX(0);
     onSend(`🎙️ Voice Message (${recordingSeconds}s)`);
   };
 
@@ -344,7 +332,6 @@ export default function MessageComposer({
             drag="x"
             dragConstraints={{ left: -120, right: 0 }}
             dragElastic={0.2}
-            onDrag={handleMicDrag}
             onDragEnd={handleMicRelease}
             className="shrink-0"
           >

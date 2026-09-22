@@ -12,7 +12,6 @@ import {
   VolumeX,
   Lock,
   ShieldCheck,
-  Minimize2,
 } from "lucide-react";
 import { MOTION_SPRINGS, triggerHaptic } from "@/lib/motion/tokens";
 
@@ -35,7 +34,7 @@ export default function CallOverlay({
   peerName,
   peerRole,
   isVideo,
-  isCaller,
+  isCaller: _isCaller,
   callStatus,
   localStream,
   remoteStream,
@@ -53,16 +52,15 @@ export default function CallOverlay({
 
   // Call duration counter
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (callStatus === "CONNECTED") {
-      interval = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-    } else {
-      setCallDuration(0);
-    }
+    if (callStatus !== "CONNECTED") return;
+
+    const interval = setInterval(() => {
+      setCallDuration((prev) => prev + 1);
+    }, 1000);
+
     return () => {
-      if (interval) clearInterval(interval);
+      clearInterval(interval);
+      setCallDuration(0);
     };
   }, [callStatus]);
 

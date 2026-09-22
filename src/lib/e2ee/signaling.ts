@@ -183,7 +183,7 @@ class RealtimeSignalingService {
 
     // Setup WebRTC manager outbound signaling callback
     webrtcManager.setCallbacks({
-      onStateChange: (state, session) => {
+      onStateChange: (_state, _session) => {
         // Can be hooked by UI components
       },
       onRemoteStream: () => {

@@ -44,30 +44,37 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Resolve verified email or phone number
+    // 1. Resolve verified email or phone number strictly from signed token
     let verifiedEmail: string | null = null;
     let verifiedPhone: string | null = null;
 
-    if (signupToken) {
-      try {
-        const { payload } = await jwtVerify(signupToken, JWT_SECRET);
-        if (payload.email) {
-          verifiedEmail = (payload.email as string).trim().toLowerCase();
-        }
-        if (payload.phone) {
-          verifiedPhone = payload.phone as string;
-        }
-      } catch (err) {
-        console.warn("Token verify notice:", err);
-      }
+    if (!signupToken) {
+      return NextResponse.json(
+        { error: "Verification token is required. Please verify your OTP first." },
+        { status: 401 }
+      );
     }
 
-    // Fallback from request body
-    if (!verifiedEmail && email) {
-      verifiedEmail = email.trim().toLowerCase();
-    }
-    if (!verifiedPhone && phone) {
-      verifiedPhone = phone.replace(/[^0-9+]/g, "");
+    try {
+      const { payload } = await jwtVerify(signupToken, JWT_SECRET);
+      if (payload.purpose !== "signup") {
+        return NextResponse.json(
+          { error: "Invalid token purpose. Please verify OTP again." },
+          { status: 401 }
+        );
+      }
+      if (payload.email) {
+        verifiedEmail = (payload.email as string).trim().toLowerCase();
+      }
+      if (payload.phone) {
+        verifiedPhone = (payload.phone as string).replace(/[^0-9+]/g, "");
+      }
+    } catch (err) {
+      console.warn("Signup token verification failed:", err);
+      return NextResponse.json(
+        { error: "Verification token expired or invalid. Please verify OTP again." },
+        { status: 401 }
+      );
     }
 
     if (!verifiedEmail && !verifiedPhone) {
@@ -76,6 +83,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // Optional phone provided by user in profile form
+    const contactPhone = phone ? phone.replace(/[^0-9+]/g, "") : verifiedPhone;
 
     // 2. Resolve Institution cleanly
     let resolvedInstId = institutionId;
@@ -197,7 +207,7 @@ export async function POST(req: Request) {
           name: name.trim(),
           username: generatedUsername,
           email: verifiedEmail || existingUser.email,
-          phone: verifiedPhone || existingUser.phone,
+          phone: contactPhone || existingUser.phone,
           institutionId: resolvedInstId,
           departmentId: resolvedDeptId,
           batchId: batch.id,
@@ -219,7 +229,7 @@ export async function POST(req: Request) {
       user = await db.user.create({
         data: {
           email: verifiedEmail,
-          phone: verifiedPhone,
+          phone: contactPhone,
           username: generatedUsername,
           name: name.trim(),
           role: isFoundingMember ? "INSTITUTION_ADMIN" : "USER",
