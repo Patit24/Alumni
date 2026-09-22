@@ -28,6 +28,14 @@ import {
 } from "lucide-react";
 import { getCallLogs, clearCallLogs, VaultCallLog } from "@/lib/e2ee/vault";
 import QRCodeModal from "@/components/QRCodeModal";
+import { motion, AnimatePresence } from "framer-motion";
+import FloatingBottomNav, { NavTab } from "@/components/motion/FloatingBottomNav";
+import AnimatedButton from "@/components/motion/AnimatedButton";
+import AnimatedIconButton from "@/components/motion/AnimatedIconButton";
+import AnimatedCard from "@/components/motion/AnimatedCard";
+import AnimatedBottomSheet from "@/components/motion/AnimatedBottomSheet";
+import { triggerHaptic, MOTION_SPRINGS } from "@/lib/motion/tokens";
+import { Pin, Archive, RefreshCw, Radio, UserCheck } from "lucide-react";
 
 interface AlumniContact {
   id: string;
@@ -59,12 +67,15 @@ interface UnregisteredContact {
 
 export default function MessagesHubPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<"CHATS" | "CALLS">("CHATS");
+  const [tab, setTab] = useState<NavTab>("CHATS");
   const [searchQuery, setSearchQuery] = useState("");
   const [contacts, setContacts] = useState<AlumniContact[]>([]);
   const [callLogs, setCallLogs] = useState<VaultCallLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchingRemote, setSearchingRemote] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
 
   // Modals
   const [showNewChatModal, setShowNewChatModal] = useState(false);
@@ -467,50 +478,60 @@ export default function MessagesHubPage() {
           </p>
         </div>
 
-        {/* Tab Switcher: Chats vs Calls */}
-        <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2">
-          <button
-            onClick={() => setTab("CHATS")}
-            className={`text-xs font-bold px-4 py-2 rounded-xl transition ${
-              tab === "CHATS"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
+        {/* Search & Pull-to-Refresh Controls */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+            <input
+              type="text"
+              placeholder={
+                tab === "CHATS"
+                  ? "Search by @username, name, or batch..."
+                  : tab === "CALLS"
+                  ? "Search call records..."
+                  : "Search alumni directory..."
+              }
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-10 py-2.5 rounded-2xl bg-white border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 shadow-2xs"
+            />
+            {searchingRemote && (
+              <Loader2 className="w-4 h-4 text-blue-600 animate-spin absolute right-3.5 top-3" />
+            )}
+          </div>
+
+          {/* Pull to refresh / spring refresh button */}
+          <motion.button
+            whileTap={{ scale: 0.9, rotate: 180 }}
+            transition={MOTION_SPRINGS.snappy}
+            onClick={async () => {
+              setRefreshing(true);
+              triggerHaptic("medium");
+              try {
+                const [dirRes, calls] = await Promise.all([
+                  fetch("/api/directory?limit=50"),
+                  getCallLogs(),
+                ]);
+                if (dirRes.ok) {
+                  const dirData = await dirRes.json();
+                  setContacts(dirData.alumni || dirData.users || []);
+                }
+                setCallLogs(calls);
+                triggerHaptic("success");
+              } catch (e) {
+                console.error(e);
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            className="h-10 w-10 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:text-blue-600 flex items-center justify-center shadow-2xs transition shrink-0"
+            title="Refresh E2EE Sessions"
           >
-            Direct Chats
-          </button>
-          <button
-            onClick={() => setTab("CALLS")}
-            className={`text-xs font-bold px-4 py-2 rounded-xl transition ${
-              tab === "CALLS"
-                ? "bg-slate-900 text-white shadow-xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            Call History {callLogs.length > 0 && `(${callLogs.length})`}
-          </button>
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-600" : ""}`} />
+          </motion.button>
         </div>
 
-        {/* Search Filter by Name or @Username */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-          <input
-            type="text"
-            placeholder={
-              tab === "CHATS"
-                ? "Search by @username, name, company, or batch..."
-                : "Search call records..."
-            }
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-10 py-2.5 rounded-2xl bg-white border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          />
-          {searchingRemote && (
-            <Loader2 className="w-4 h-4 text-blue-600 animate-spin absolute right-3.5 top-3" />
-          )}
-        </div>
-
-        {/* CHATS TAB */}
+        {/* TAB 1: CHATS (Swipeable conversation cards) */}
         {tab === "CHATS" && (
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
             {loading ? (
@@ -528,65 +549,111 @@ export default function MessagesHubPage() {
                   </p>
                 </div>
                 <div className="flex justify-center gap-2 pt-2">
-                  <button
-                    onClick={() => setShowSyncModal(true)}
-                    className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold transition"
+                  <AnimatedButton
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setTab("CONTACTS")}
                   >
-                    Find From Phone Contacts
-                  </button>
-                  <button
+                    Find Contacts
+                  </AnimatedButton>
+                  <AnimatedButton
+                    size="sm"
+                    variant="primary"
                     onClick={() => setShowNewChatModal(true)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-semibold transition"
                   >
                     View All Alumni
-                  </button>
+                  </AnimatedButton>
                 </div>
               </div>
             ) : (
-              filteredContacts.map((contact) => (
-                <Link
-                  key={contact.id}
-                  href={`/messages/${contact.id}`}
-                  className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-base font-bold shadow-sm shadow-blue-500/20 shrink-0">
-                      {contact.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition">
-                          {contact.name}
-                        </p>
-                        {contact.username && (
-                          <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded font-medium">
-                            @{contact.username}
-                          </span>
-                        )}
-                        {contact.verificationStatus === "VERIFIED" && (
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        )}
+              filteredContacts
+                .filter((c) => !archivedIds.has(c.id))
+                .sort((a, b) => (pinnedIds.has(b.id) ? 1 : 0) - (pinnedIds.has(a.id) ? 1 : 0))
+                .map((contact) => {
+                  const isPinned = pinnedIds.has(contact.id);
+                  return (
+                    <div key={contact.id} className="relative overflow-hidden group">
+                      {/* Swipe reveal actions behind card */}
+                      <div className="absolute inset-y-0 left-0 w-24 bg-blue-500 text-white flex items-center justify-center gap-1 font-bold text-xs px-3">
+                        <Pin className="w-3.5 h-3.5" />
+                        <span>{isPinned ? "Unpin" : "Pin"}</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                        {contact.currentRole || "Alumni Member"}{" "}
-                        {contact.currentCompany ? `at ${contact.currentCompany}` : ""}
-                      </p>
-                      <p className="text-[10px] text-slate-400">Class of {contact.batchYear}</p>
-                    </div>
-                  </div>
+                      <div className="absolute inset-y-0 right-0 w-24 bg-slate-700 text-white flex items-center justify-center gap-1 font-bold text-xs px-3">
+                        <Archive className="w-3.5 h-3.5" />
+                        <span>Archive</span>
+                      </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="h-8 px-3 rounded-xl bg-slate-100 group-hover:bg-blue-50 group-hover:text-blue-600 text-[11px] font-bold text-slate-600 flex items-center transition">
-                      Chat →
-                    </span>
-                  </div>
-                </Link>
-              ))
+                      {/* Foreground swipeable card */}
+                      <motion.div
+                        drag="x"
+                        dragConstraints={{ left: -70, right: 70 }}
+                        dragElastic={0.2}
+                        onDragEnd={(_, info) => {
+                          if (info.offset.x > 45) {
+                            triggerHaptic("medium");
+                            setPinnedIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(contact.id)) next.delete(contact.id);
+                              else next.add(contact.id);
+                              return next;
+                            });
+                          } else if (info.offset.x < -45) {
+                            triggerHaptic("medium");
+                            setArchivedIds((prev) => new Set(prev).add(contact.id));
+                          }
+                        }}
+                        whileTap={{ scale: 0.985 }}
+                        className="relative z-10 bg-white p-4 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition cursor-pointer select-none"
+                        onClick={() => router.push(`/messages/${contact.id}`)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative">
+                            <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-base font-bold shadow-sm shadow-blue-500/20 shrink-0">
+                              {contact.name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white ring-1 ring-emerald-400/40" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition">
+                                {contact.name}
+                              </p>
+                              {isPinned && (
+                                <span className="p-0.5 rounded-md bg-blue-100 text-blue-700">
+                                  <Pin className="w-3 h-3" />
+                                </span>
+                              )}
+                              {contact.username && (
+                                <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded font-medium">
+                                  @{contact.username}
+                                </span>
+                              )}
+                              {contact.verificationStatus === "VERIFIED" && (
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                              {contact.currentRole || "Alumni Member"}{" "}
+                              {contact.currentCompany ? `at ${contact.currentCompany}` : ""}
+                            </p>
+                            <p className="text-[10px] text-slate-400">Class of {contact.batchYear}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="h-8 px-3 rounded-xl bg-slate-100 group-hover:bg-blue-50 group-hover:text-blue-600 text-[11px] font-bold text-slate-600 flex items-center transition">
+                            Chat →
+                          </span>
+                        </div>
+                      </motion.div>
+                    </div>
+                  );
+                })
             )}
           </div>
         )}
 
-        {/* CALLS TAB */}
+        {/* TAB 2: CALLS */}
         {tab === "CALLS" && (
           <div className="space-y-3">
             {callLogs.length > 0 && (
@@ -609,10 +676,14 @@ export default function MessagesHubPage() {
                 </div>
               ) : (
                 callLogs.map((log) => (
-                  <div key={log.id} className="p-4 flex items-center justify-between gap-3">
+                  <motion.div
+                    key={log.id}
+                    whileTap={{ scale: 0.99 }}
+                    className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition"
+                  >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`h-10 w-10 rounded-xl flex items-center justify-center ${
+                        className={`h-10 w-10 rounded-2xl flex items-center justify-center ${
                           log.status === "MISSED"
                             ? "bg-rose-50 text-rose-600"
                             : "bg-emerald-50 text-emerald-600"
@@ -651,18 +722,153 @@ export default function MessagesHubPage() {
 
                     <button
                       onClick={() => router.push(`/messages/${log.peerId}`)}
-                      className="h-8 w-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition"
+                      className="h-9 w-9 rounded-2xl bg-blue-50 hover:bg-blue-100 flex items-center justify-center text-blue-600 transition"
                       title="Call back"
                     >
                       {log.callType === "VIDEO" ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
                     </button>
-                  </div>
+                  </motion.div>
                 ))
               )}
             </div>
           </div>
         )}
+
+        {/* TAB 3: CONTACTS (Privacy-Preserving Contact Hub & QR) */}
+        {tab === "CONTACTS" && (
+          <div className="space-y-4">
+            <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-2xs space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Radio className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Privacy-Preserving Contact Discovery</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Client-side SHA-256 phone hashing. Your address book is never uploaded in plaintext.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <AnimatedButton
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowSyncModal(true)}
+                >
+                  <Smartphone className="w-4 h-4" /> Sync Phone Numbers
+                </AnimatedButton>
+                <AnimatedButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowQrModal(true)}
+                >
+                  <QrCode className="w-4 h-4 text-indigo-600" /> Share My QR Code
+                </AnimatedButton>
+              </div>
+            </div>
+
+            {/* Registered Alumni Quick Connect Directory */}
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+              <div className="p-4 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Alumni Directory</span>
+                <span className="text-[11px] text-slate-400 font-semibold">{contacts.length} verified members</span>
+              </div>
+              {contacts.slice(0, 15).map((contact) => (
+                <div key={contact.id} className="p-3.5 flex items-center justify-between hover:bg-slate-50 transition">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs">
+                      {contact.name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">{contact.name}</p>
+                      {contact.username && (
+                        <p className="text-[10px] text-slate-400 font-mono">@{contact.username}</p>
+                      )}
+                    </div>
+                  </div>
+                  <AnimatedButton
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => router.push(`/messages/${contact.id}`)}
+                  >
+                    Connect →
+                  </AnimatedButton>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: PRIVACY */}
+        {tab === "PRIVACY" && (
+          <div className="space-y-4">
+            <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Privacy & Security Controls</h3>
+                    <p className="text-[11px] text-slate-500">
+                      Manage cryptographic device identity, rotated handles, and emergency mode.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Emergency Privacy Lock</p>
+                  <p className="text-[11px] text-slate-500">Instantly drops calls and conceals profile in directory</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    const next = !privacyLockActive;
+                    setPrivacyLockActive(next);
+                    triggerHaptic("heavy");
+                    await fetch("/api/privacy/lock", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ active: next }),
+                    });
+                  }}
+                  className={`h-7 w-12 rounded-full p-1 transition-colors ${
+                    privacyLockActive ? "bg-rose-600" : "bg-slate-300"
+                  }`}
+                >
+                  <motion.div
+                    layout
+                    transition={MOTION_SPRINGS.snappy}
+                    className={`h-5 w-5 rounded-full bg-white shadow-xs ${
+                      privacyLockActive ? "ml-auto" : ""
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="pt-2">
+                <Link
+                  href="/settings/privacy/dashboard"
+                  className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 transition"
+                >
+                  <ShieldCheck className="w-4 h-4" /> Open Full Privacy Dashboard →
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="h-20" />
       </main>
+
+      {/* FLOATING 2026 BOTTOM DOCK NAVIGATION */}
+      <FloatingBottomNav
+        activeTab={tab}
+        onTabChange={setTab}
+        missedCallsCount={callLogs.filter((c) => c.status === "MISSED").length}
+      />
 
       {/* MODAL 1: Start New Chat Modal */}
       {showNewChatModal && (

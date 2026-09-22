@@ -25,6 +25,10 @@ import {
   Loader2,
 } from "lucide-react";
 import { cleanMyPrivacy } from "@/lib/e2ee/vault";
+import { motion, AnimatePresence } from "framer-motion";
+import { triggerHaptic, MOTION_SPRINGS } from "@/lib/motion/tokens";
+import AnimatedButton from "@/components/motion/AnimatedButton";
+import AnimatedCard from "@/components/motion/AnimatedCard";
 
 export default function PrivacyDashboardPage() {
   const [privacyLockActive, setPrivacyLockActive] = useState(false);
@@ -136,47 +140,69 @@ export default function PrivacyDashboardPage() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-2xl w-full mx-auto p-4 sm:p-6 space-y-5">
-        {/* Privacy Lock Banner */}
-        {privacyLockActive ? (
-          <div className="p-4 rounded-3xl bg-rose-50 border border-rose-200 text-rose-900 flex items-center justify-between gap-3 shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                <Lock className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-rose-700">Privacy Lock Active</p>
-                <p className="text-xs text-rose-800">Incoming calls blocked • Presence paused • Ghost mode enforced</p>
-              </div>
-            </div>
-            <button
-              onClick={handleTogglePrivacyLock}
-              disabled={togglingLock}
-              className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-xs disabled:opacity-50 shrink-0"
+        {/* Privacy Lock Banner with Shield Animation */}
+        <AnimatePresence mode="wait">
+          {privacyLockActive ? (
+            <motion.div
+              key="locked"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={MOTION_SPRINGS.snappy}
+              className="p-4 rounded-3xl bg-rose-50 border border-rose-200 text-rose-900 flex items-center justify-between gap-3 shadow-xs"
             >
-              {togglingLock ? <Loader2 className="w-4 h-4 animate-spin" /> : "Unlock"}
-            </button>
-          </div>
-        ) : (
-          <div className="p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex items-center justify-between gap-3 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-white/10 text-white flex items-center justify-center shrink-0 backdrop-blur">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              <div className="flex items-center gap-3">
+                <motion.div
+                  animate={{ scale: [1, 1.15, 1], rotate: [0, -8, 8, 0] }}
+                  transition={{ duration: 0.6 }}
+                  className="h-10 w-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm"
+                >
+                  <Lock className="w-5 h-5" />
+                </motion.div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-rose-700">Privacy Lock Active</p>
+                  <p className="text-xs text-rose-800">Incoming calls blocked • Presence paused • Ghost mode enforced</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-bold text-slate-100">Private by Design</p>
-                <p className="text-[11px] text-slate-300">End-to-end encrypted • Minimal server-side data</p>
-              </div>
-            </div>
-            <button
-              onClick={handleTogglePrivacyLock}
-              disabled={togglingLock}
-              className="px-3.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition border border-white/20 shrink-0 flex items-center gap-1.5"
+              <AnimatedButton
+                variant="danger"
+                size="sm"
+                onClick={handleTogglePrivacyLock}
+                loading={togglingLock}
+              >
+                Unlock
+              </AnimatedButton>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="unlocked"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={MOTION_SPRINGS.snappy}
+              className="p-4 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex items-center justify-between gap-3 shadow-sm"
             >
-              <Lock className="w-3.5 h-3.5 text-amber-300" />
-              <span>Lock App</span>
-            </button>
-          </div>
-        )}
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-white/10 text-white flex items-center justify-center shrink-0 backdrop-blur">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-100">Private by Design</p>
+                  <p className="text-[11px] text-slate-300">End-to-end encrypted • Minimal server-side data</p>
+                </div>
+              </div>
+              <AnimatedButton
+                variant="glass"
+                size="sm"
+                onClick={handleTogglePrivacyLock}
+                loading={togglingLock}
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-300" />
+                <span>Lock App</span>
+              </AnimatedButton>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Section 1: Privacy Protection Status Meters */}
         <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-2xs space-y-4">
@@ -199,7 +225,12 @@ export default function PrivacyDashboardPage() {
                 <span className="font-mono text-emerald-600 font-bold text-[11px]">Protected (AES-256-GCM)</span>
               </div>
               <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full w-full" />
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: 0.6, ease: "easeOut" }}
+                  className="h-full bg-emerald-500 rounded-full"
+                />
               </div>
               <p className="text-[10px] text-slate-400 mt-1">
                 Encrypted with per-conversation keys derived via HKDF (SHA-256).
@@ -215,7 +246,12 @@ export default function PrivacyDashboardPage() {
                 <span className="font-mono text-emerald-600 font-bold text-[11px]">Protected (DTLS-SRTP P2P)</span>
               </div>
               <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full w-full" />
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: "100%" }}
+                  transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
+                  className="h-full bg-emerald-500 rounded-full"
+                />
               </div>
               <p className="text-[10px] text-slate-400 mt-1">
                 Media streams directly peer-to-peer. Never recorded or stored by our servers.

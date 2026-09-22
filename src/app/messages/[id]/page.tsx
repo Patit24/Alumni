@@ -52,6 +52,13 @@ import {
 } from "@/lib/e2ee/crypto";
 import { realtimeSignaling } from "@/lib/e2ee/signaling";
 import { webrtcManager } from "@/lib/webrtc/call-manager";
+import { motion, AnimatePresence } from "framer-motion";
+import MessageBubble from "@/components/motion/MessageBubble";
+import MessageComposer from "@/components/motion/MessageComposer";
+import CallOverlay from "@/components/motion/CallOverlay";
+import TypingIndicator from "@/components/motion/TypingIndicator";
+import AnimatedIconButton from "@/components/motion/AnimatedIconButton";
+import { triggerHaptic, MOTION_SPRINGS } from "@/lib/motion/tokens";
 
 interface PeerProfile {
   id: string;
@@ -107,6 +114,22 @@ export default function DirectMessageChatPage(props: {
   const [showRevealModal, setShowRevealModal] = useState(false);
   const [showPrivacyPicker, setShowPrivacyPicker] = useState(false);
   const [viewedOnceSet, setViewedOnceSet] = useState<Set<string>>(new Set());
+  const [replyingTo, setReplyingTo] = useState<VaultMessage | null>(null);
+
+  // WebRTC Call Overlay States
+  const [activeCall, setActiveCall] = useState<{
+    isOpen: boolean;
+    isVideo: boolean;
+    isCaller: boolean;
+    callStatus: "CONNECTING" | "RINGING" | "CONNECTED" | "ENDED";
+  }>({
+    isOpen: false,
+    isVideo: false,
+    isCaller: false,
+    callStatus: "CONNECTING",
+  });
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -279,8 +302,8 @@ export default function DirectMessageChatPage(props: {
   }, []);
 
   // Handle typing status broadcast
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputText(e.target.value);
+  const handleInputChange = (val: string) => {
+    setInputText(val);
     realtimeSignaling.sendTypingStatus(peerId, true);
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -308,10 +331,23 @@ export default function DirectMessageChatPage(props: {
   };
 
   // 2. Send End-to-End Encrypted Message
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanText = inputText.trim();
+  const handleSendMessage = async (textOrEvent?: React.FormEvent | string) => {
+    let cleanText = "";
+    if (typeof textOrEvent === "string") {
+      cleanText = textOrEvent.trim();
+    } else {
+      if (textOrEvent && typeof (textOrEvent as React.FormEvent).preventDefault === "function") {
+        (textOrEvent as React.FormEvent).preventDefault();
+      }
+      cleanText = inputText.trim();
+    }
+
     if (!cleanText || !currentUser || !sharedKey) return;
+
+    if (replyingTo) {
+      cleanText = `↪️ Replying to "${replyingTo.text.slice(0, 30)}${replyingTo.text.length > 30 ? "..." : ""}":\n${cleanText}`;
+      setReplyingTo(null);
+    }
 
     setSending(true);
     setInputText("");
@@ -443,22 +479,70 @@ export default function DirectMessageChatPage(props: {
     }
   };
 
+  // Set up WebRTC signaling & media stream listeners
+  useEffect(() => {
+    webrtcManager.setCallbacks({
+      onStateChange: (state, session) => {
+        if (state === "IDLE" || state === "ENDED") {
+          setActiveCall((prev) => ({ ...prev, isOpen: false, callStatus: "ENDED" }));
+          setLocalStream(null);
+          setRemoteStream(null);
+        } else {
+          setActiveCall({
+            isOpen: true,
+            isVideo: session?.callType === "VIDEO",
+            isCaller: !session?.isIncoming,
+            callStatus:
+              state === "CALLING" || state === "RINGING"
+                ? "RINGING"
+                : state === "CONNECTED"
+                ? "CONNECTED"
+                : "CONNECTING",
+          });
+          setLocalStream(webrtcManager.getLocalStream());
+        }
+      },
+      onRemoteStream: (stream) => {
+        setRemoteStream(stream);
+      },
+      onSendSignal: (msg) => {
+        realtimeSignaling.sendSignalToPeer(peerId, msg);
+      },
+    });
+  }, []);
+
   // Start Voice Call (Enforces Trust Level)
-  const handleStartVoiceCall = () => {
+  const handleStartVoiceCall = async () => {
     if (trustLevel === "REQUEST" || trustLevel === "UNKNOWN") {
       alert("Please accept and connect with this contact before starting voice calls.");
       return;
     }
-    webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VOICE");
+    triggerHaptic("medium");
+    setActiveCall({
+      isOpen: true,
+      isVideo: false,
+      isCaller: true,
+      callStatus: "CONNECTING",
+    });
+    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VOICE");
+    setLocalStream(webrtcManager.getLocalStream());
   };
 
   // Start Video Call (Enforces Trust Level)
-  const handleStartVideoCall = () => {
+  const handleStartVideoCall = async () => {
     if (trustLevel === "REQUEST" || trustLevel === "UNKNOWN") {
       alert("Please accept and connect with this contact before starting video calls.");
       return;
     }
-    webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VIDEO");
+    triggerHaptic("medium");
+    setActiveCall({
+      isOpen: true,
+      isVideo: true,
+      isCaller: true,
+      callStatus: "CONNECTING",
+    });
+    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VIDEO");
+    setLocalStream(webrtcManager.getLocalStream());
   };
 
   // Clear Chat History
@@ -724,191 +808,64 @@ export default function DirectMessageChatPage(props: {
             const isBurned = isViewOnce && viewedOnceSet.has(m.id);
 
             return (
-              <div
+              <MessageBubble
                 key={m.id}
-                className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
-              >
-                <div
-                  className={`max-w-[78%] sm:max-w-[70%] rounded-2xl px-3.5 py-2 text-xs shadow-2xs ${
-                    isMe
-                      ? "bg-blue-600 text-white rounded-br-xs"
-                      : "bg-white text-slate-900 border border-slate-200/80 rounded-bl-xs"
-                  }`}
-                >
-                  {isViewOnce && !isMe ? (
-                    isBurned ? (
-                      <div className="flex items-center gap-1.5 italic text-slate-400">
-                        <Flame className="w-3.5 h-3.5 text-amber-500" />
-                        <span>💥 Burned after viewing</span>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleRevealViewOnce(m)}
-                        className="py-1 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold flex items-center gap-1.5 transition"
-                      >
-                        <Flame className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Tap to View Once</span>
-                      </button>
-                    )
-                  ) : (
-                    <p className="leading-relaxed whitespace-pre-wrap break-words">{m.text}</p>
-                  )}
-
-                  <div
-                    className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${
-                      isMe ? "text-blue-100" : "text-slate-400"
-                    }`}
-                  >
-                    <span>
-                      {new Date(m.createdAt).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-
-                    {m.privacyMode === "VIEW_ONCE" && <span title="View Once">🔥</span>}
-                    {m.disappearingSeconds && (
-                      <span title={`Auto-deletes in ${m.disappearingSeconds}s`}>⏳</span>
-                    )}
-
-                    {isMe && (
-                      <span>
-                        {m.status === "SENDING" && "🕒"}
-                        {m.status === "SENT" && <Check className="w-3 h-3 inline" />}
-                        {m.status === "DELIVERED" && <CheckCheck className="w-3 h-3 inline text-slate-300" />}
-                        {m.status === "READ" && <CheckCheck className="w-3 h-3 inline text-emerald-300" />}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
+                message={m}
+                isMe={isMe}
+                isViewOnce={isViewOnce}
+                isBurned={isBurned}
+                onRevealViewOnce={handleRevealViewOnce}
+                onReply={(msg) => {
+                  setReplyingTo(msg);
+                  triggerHaptic("light");
+                }}
+                onDelete={(id) => {
+                  deleteLocalMessage(id);
+                  setMessages((prev) => prev.filter((msg) => msg.id !== id));
+                }}
+              />
             );
           })
+        )}
+
+        {isPeerTyping && (
+          <div className="py-1">
+            <TypingIndicator name={peer?.name} />
+          </div>
         )}
 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Bottom Message Input Bar */}
-      <footer className="sticky bottom-0 z-20 bg-white border-t border-slate-200 p-2.5 sm:p-3 space-y-2">
-        {/* Privacy Selector Strip */}
-        {showPrivacyPicker && (
-          <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center gap-1.5 overflow-x-auto text-[11px] font-semibold text-slate-700">
-            <span className="text-slate-400 shrink-0 text-[10px] uppercase font-bold pl-1">Message Privacy:</span>
-            <button
-              type="button"
-              onClick={() => {
-                setMessagePrivacy("NORMAL");
-                setShowPrivacyPicker(false);
-              }}
-              className={`py-1 px-2.5 rounded-xl transition ${
-                messagePrivacy === "NORMAL" ? "bg-white text-blue-700 shadow-2xs font-bold border border-slate-200" : "hover:bg-slate-200"
-              }`}
-            >
-              Standard E2EE
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMessagePrivacy("VIEW_ONCE");
-                setShowPrivacyPicker(false);
-              }}
-              className={`py-1 px-2.5 rounded-xl transition flex items-center gap-1 ${
-                messagePrivacy === "VIEW_ONCE" ? "bg-amber-500 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
-              }`}
-            >
-              <Flame className="w-3 h-3" /> View Once
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMessagePrivacy("DISAPPEAR_30S");
-                setShowPrivacyPicker(false);
-              }}
-              className={`py-1 px-2.5 rounded-xl transition ${
-                messagePrivacy === "DISAPPEAR_30S" ? "bg-slate-900 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
-              }`}
-            >
-              30s
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMessagePrivacy("DISAPPEAR_5M");
-                setShowPrivacyPicker(false);
-              }}
-              className={`py-1 px-2.5 rounded-xl transition ${
-                messagePrivacy === "DISAPPEAR_5M" ? "bg-slate-900 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
-              }`}
-            >
-              5m
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMessagePrivacy("DISAPPEAR_1H");
-                setShowPrivacyPicker(false);
-              }}
-              className={`py-1 px-2.5 rounded-xl transition ${
-                messagePrivacy === "DISAPPEAR_1H" ? "bg-slate-900 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
-              }`}
-            >
-              1h
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMessagePrivacy("DISAPPEAR_24H");
-                setShowPrivacyPicker(false);
-              }}
-              className={`py-1 px-2.5 rounded-xl transition ${
-                messagePrivacy === "DISAPPEAR_24H" ? "bg-slate-900 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
-              }`}
-            >
-              24h
-            </button>
-          </div>
-        )}
+      {/* Tactile Message Composer */}
+      <MessageComposer
+        inputText={inputText}
+        onInputChange={handleInputChange}
+        onSend={(text) => handleSendMessage(text)}
+        replyingTo={replyingTo}
+        onCancelReply={() => setReplyingTo(null)}
+        privacyMode={messagePrivacy}
+        onPrivacyModeChange={setMessagePrivacy}
+        disabled={trustLevel === "BLOCKED"}
+      />
 
-        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-          {/* Privacy Level Toggle Button */}
-          <button
-            type="button"
-            onClick={() => setShowPrivacyPicker(!showPrivacyPicker)}
-            className={`h-9 w-9 rounded-xl flex items-center justify-center transition shrink-0 ${
-              messagePrivacy !== "NORMAL"
-                ? "bg-amber-100 text-amber-800 font-bold border border-amber-300"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
-            }`}
-            title="Choose per-message privacy level"
-          >
-            {messagePrivacy === "NORMAL" ? <Lock className="w-4 h-4" /> : <Flame className="w-4 h-4 text-amber-600" />}
-          </button>
-
-          <input
-            type="text"
-            placeholder={
-              messagePrivacy === "VIEW_ONCE"
-                ? "Send View-Once message (burns after viewing)..."
-                : messagePrivacy !== "NORMAL"
-                ? `Message disappears in ${messagePrivacy.replace("DISAPPEAR_", "").toLowerCase()}...`
-                : "Type an encrypted message..."
-            }
-            value={inputText}
-            onChange={handleInputChange}
-            className="flex-1 py-2 px-3.5 rounded-2xl bg-slate-100 border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          />
-
-          <button
-            type="submit"
-            disabled={!inputText.trim() || sending}
-            className="h-9 w-9 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white flex items-center justify-center transition shadow-xs shrink-0"
-            title="Send"
-          >
-            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </button>
-        </form>
-      </footer>
+      {/* 2026 Immersive Call HUD Overlay */}
+      <CallOverlay
+        isOpen={activeCall.isOpen}
+        peerName={peer?.name || "Alumni Contact"}
+        peerRole={peer?.currentRole ? `${peer.currentRole}${peer.currentCompany ? ` at ${peer.currentCompany}` : ""}` : undefined}
+        isVideo={activeCall.isVideo}
+        isCaller={activeCall.isCaller}
+        callStatus={activeCall.callStatus}
+        localStream={localStream}
+        remoteStream={remoteStream}
+        onEndCall={() => {
+          webrtcManager.endCall(true);
+          setActiveCall((prev) => ({ ...prev, isOpen: false }));
+        }}
+        onToggleMute={() => webrtcManager.toggleMute()}
+        onToggleVideo={() => webrtcManager.toggleVideo()}
+      />
 
       {/* Safety Number Verification Modal */}
       {showSafetyModal && (
