@@ -258,13 +258,15 @@ export default function DirectMessageChatPage(props: {
           }).catch(() => {});
         }
 
-        // Drain any offline queued encrypted messages from server
-        await realtimeSignaling.drainPendingQueue();
-
-        // Listen for new incoming messages
+        // Listen for new incoming messages — register BEFORE draining queue
+        // so that messages arriving during drain are caught by this listener.
         unsubscribeMsg = realtimeSignaling.onMessageReceived((msg) => {
           if (msg.peerId === peerId) {
-            setMessages((prev) => [...prev, msg]);
+            setMessages((prev) => {
+              // De-duplicate: don't add if already present
+              if (prev.some((m) => m.id === msg.id)) return prev;
+              return [...prev, msg];
+            });
             scrollToBottom();
             // Acknowledge read receipt immediately as user is actively viewing the chat
             realtimeSignaling.sendMessageStatus(peerId, [msg.id], "READ");
@@ -275,6 +277,14 @@ export default function DirectMessageChatPage(props: {
             }).catch(() => {});
           }
         });
+
+        // Drain any offline queued encrypted messages from server
+        // (now that listener is registered above, drained messages will show in UI)
+        await realtimeSignaling.drainPendingQueue();
+
+        // Reload local messages after drain to pick up anything freshly decrypted
+        const freshMsgs = await getLocalMessages(peerId);
+        setMessages(freshMsgs);
 
         // Listen for delivery/read receipts
         unsubscribeStatus = realtimeSignaling.onStatusUpdated((msgId, status) => {
@@ -373,7 +383,32 @@ export default function DirectMessageChatPage(props: {
       cleanText = inputText.trim();
     }
 
-    if (!cleanText || !currentUser || !sharedKey) return;
+    if (!cleanText || !currentUser) return;
+
+    // Lazily fetch shared key if not yet derived (peer may have registered their key
+    // after this chat was opened, or the initial fetch returned empty devices).
+    let activeSharedKey = sharedKey;
+    if (!activeSharedKey) {
+      try {
+        const devRes = await fetch(`/api/messages/devices?userId=${peerId}`);
+        const devData = await devRes.json();
+        if (devData.devices && devData.devices.length > 0 && devData.devices[0].publicKey) {
+          const localIdentity = await getOrCreateDeviceIdentity(currentUser.id);
+          const peerKey = await importPeerPublicKey(devData.devices[0].publicKey);
+          activeSharedKey = await deriveSharedSessionKey(localIdentity.privateKey, peerKey);
+          setSharedKey(activeSharedKey);
+        }
+      } catch {
+        // key fetch failed — proceed without encryption (will fail at encrypt step)
+      }
+    }
+
+    if (!activeSharedKey) {
+      // Peer hasn't opened the app yet — their key isn't registered.
+      // Show a brief notice rather than silently doing nothing.
+      alert("Peer device key not yet available. Ask them to open the app first.");
+      return;
+    }
 
     if (replyingTo) {
       cleanText = `↪️ Replying to "${replyingTo.text.slice(0, 30)}${replyingTo.text.length > 30 ? "..." : ""}":\n${cleanText}`;
@@ -396,7 +431,7 @@ export default function DirectMessageChatPage(props: {
       });
 
       // 1. Encrypt locally using AES-256-GCM
-      const encrypted = await encryptE2EEMessage(sharedKey, structuredPayload);
+      const encrypted = await encryptE2EEMessage(activeSharedKey, structuredPayload);
 
       // 2. Save locally in client vault
       const localMsg: VaultMessage = {
