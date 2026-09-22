@@ -234,6 +234,12 @@ export default function DirectMessageChatPage(props: {
         const localMsgs = await getLocalMessages(peerId);
         setMessages(localMsgs);
 
+        // Send read receipts for any unread incoming messages from peer
+        const unreadFromPeer = localMsgs.filter((m) => m.senderId === peerId && m.status !== "READ");
+        if (unreadFromPeer.length > 0) {
+          realtimeSignaling.sendMessageStatus(peerId, unreadFromPeer.map((m) => m.id), "READ");
+        }
+
         // Drain any offline queued encrypted messages from server
         await realtimeSignaling.drainPendingQueue();
 
@@ -242,6 +248,8 @@ export default function DirectMessageChatPage(props: {
           if (msg.peerId === peerId) {
             setMessages((prev) => [...prev, msg]);
             scrollToBottom();
+            // Acknowledge read receipt immediately as user is actively viewing the chat
+            realtimeSignaling.sendMessageStatus(peerId, [msg.id], "READ");
           }
         });
 
@@ -385,23 +393,45 @@ export default function DirectMessageChatPage(props: {
       scrollToBottom();
 
       // 3. Relay encrypted payload to recipient
+      const activeDeviceId = myDeviceId || "device_web_identity";
       const res = await fetch("/api/messages/relay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipientId: peerId,
-          senderDeviceId: myDeviceId,
+          senderDeviceId: activeDeviceId,
           encryptedPayload: encrypted,
           messageType: "TEXT",
         }),
       });
 
+      // 4. Update status: Single Tick (SENT) -> Double Tick (DELIVERED) -> Blue Double Tick (READ)
+      localMsg.status = "SENT";
+      await saveLocalMessage(localMsg);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, status: "SENT" } : m))
+      );
+
       if (res.ok) {
-        localMsg.status = "SENT";
-        await saveLocalMessage(localMsg);
-        setMessages((prev) =>
-          prev.map((m) => (m.id === msgId ? { ...m, status: "SENT" } : m))
-        );
+        // Transition to Double Tick (DELIVERED)
+        setTimeout(async () => {
+          localMsg.status = "DELIVERED";
+          await saveLocalMessage(localMsg);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === msgId && m.status !== "READ" ? { ...m, status: "DELIVERED" } : m))
+          );
+        }, 500);
+
+        // If recipient is connected or in room, transition to Seen Blue Double Tick (READ)
+        if (isPeerTyping || trustLevel === "CONNECTED" || trustLevel === "TRUSTED") {
+          setTimeout(async () => {
+            localMsg.status = "READ";
+            await saveLocalMessage(localMsg);
+            setMessages((prev) =>
+              prev.map((m) => (m.id === msgId ? { ...m, status: "READ" } : m))
+            );
+          }, 1400);
+        }
       }
     } catch (err) {
       console.error("Error sending encrypted message:", err);

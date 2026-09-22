@@ -232,6 +232,22 @@ class RealtimeSignalingService {
     }
   }
 
+  // Broadcast message delivery or read receipt (WhatsApp style double blue tick)
+  sendMessageStatus(peerId: string, messageIds: string[], status: "DELIVERED" | "READ") {
+    if (!this.currentUserId || !messageIds.length) return;
+    try {
+      const supabase = createClient();
+      const peerChannel = supabase.channel(`p2p-signal:${peerId}`);
+      peerChannel.send({
+        type: "broadcast",
+        event: "message-status",
+        payload: { messageIds, status, senderId: this.currentUserId },
+      });
+    } catch (e) {
+      console.warn("Failed to broadcast message status:", e);
+    }
+  }
+
   // Decrypt incoming message from peer using cached or fetched public key
   private async decryptFromPeer(peerId: string, payload: EncryptedMessagePayload): Promise<string> {
     if (!this.localPrivateKey) throw new Error("Local private key not initialized");

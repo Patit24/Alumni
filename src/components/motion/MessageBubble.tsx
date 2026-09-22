@@ -167,16 +167,18 @@ export default function MessageBubble({
             )}
 
             {isMe && (
-              <span className="inline-flex items-center ml-0.5">
+              <span className="inline-flex items-center ml-1" title={message.status}>
                 {message.status === "SENDING" && (
-                  <Clock className="w-2.5 h-2.5 animate-pulse" />
+                  <Clock className="w-2.5 h-2.5 text-blue-200/80 animate-pulse" />
                 )}
-                {message.status === "SENT" && <Check className="w-3 h-3" />}
+                {message.status === "SENT" && (
+                  <Check className="w-3.5 h-3.5 text-blue-200/85" strokeWidth={2.4} />
+                )}
                 {message.status === "DELIVERED" && (
-                  <CheckCheck className="w-3 h-3 text-slate-300" />
+                  <CheckCheck className="w-3.5 h-3.5 text-blue-200/85" strokeWidth={2.4} />
                 )}
                 {message.status === "READ" && (
-                  <CheckCheck className="w-3 h-3 text-emerald-300" />
+                  <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb] drop-shadow-[0_0_2px_rgba(83,189,235,0.8)]" strokeWidth={2.6} />
                 )}
               </span>
             )}
