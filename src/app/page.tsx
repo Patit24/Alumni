@@ -95,53 +95,77 @@ export default async function HomePage(props: {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Top Navigation */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200/80 px-4 py-3 sm:px-8">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-sm shadow-blue-500/20">
-              <GraduationCap className="w-5 h-5" />
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
+        {/* Unified Profile & Institution Card */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm">
+          {/* Institution & Action Controls Bar */}
+          <div className="flex items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-sm shadow-blue-500/20 shrink-0">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-sm font-bold text-slate-900 leading-tight">
+                  {user.institution.name}
+                </h1>
+                <p className="text-[11px] text-slate-500">
+                  Class of {user.batchYear} {user.department ? `• ${user.department.name}` : ""}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-sm font-bold text-slate-900 leading-tight">
-                {user.institution.name}
-              </h1>
-              <p className="text-[11px] text-slate-500">
-                Class of {user.batchYear} {user.department ? `• ${user.department.name}` : ""}
-              </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-semibold text-slate-800">{user.name}</p>
-              <span
-                className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                  isVerified
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-amber-100 text-amber-800"
-                }`}
-              >
-                {isVerified ? "Verified Member" : "Unverified"}
-              </span>
-            </div>
             <div className="flex items-center gap-2">
               <Link
                 href="/messages"
-                className="h-9 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 flex items-center gap-1.5 text-xs font-bold transition shadow-2xs"
+                className="h-9 px-3.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 flex items-center gap-1.5 text-xs font-bold transition shadow-2xs border border-blue-100"
                 title="Private E2EE Chat & Calls"
               >
                 <Lock className="w-3.5 h-3.5 text-blue-600" />
-                <span className="hidden sm:inline">Messages</span>
+                <span>Messages</span>
               </Link>
               <LogoutButton />
             </div>
           </div>
-        </div>
-      </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
+          {/* User Profile Details */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xl font-bold shadow-md shadow-blue-500/20 shrink-0">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg font-bold text-slate-900">{user.name}</h2>
+                  <span
+                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                      isVerified
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                    }`}
+                  >
+                    {isVerified ? "Verified Member" : user.verificationStatus}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {user.currentRole ? `${user.currentRole}` : "Alumni Member"}
+                  {user.currentCompany ? ` at ${user.currentCompany}` : ""}
+                </p>
+                <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1.5 flex-wrap">
+                  {user.city && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3 h-3" /> {user.city}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <Building className="w-3 h-3" /> Class of {user.batchYear}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Verification Status Banner (Phase 1 & 3 requirement) */}
         {!isVerified && (
           <div className="rounded-2xl bg-amber-50 border border-amber-200/80 p-4 sm:p-5 flex items-start justify-between gap-3.5">
@@ -168,45 +192,6 @@ export default async function HomePage(props: {
             </Link>
           </div>
         )}
-
-        {/* Profile Card */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xl font-bold shadow-md shadow-blue-500/20">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-bold text-slate-900">{user.name}</h2>
-                  <span
-                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                      isVerified
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        : "bg-amber-50 text-amber-700 border border-amber-200"
-                    }`}
-                  >
-                    {user.verificationStatus}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {user.currentRole ? `${user.currentRole}` : "Alumni Member"}
-                  {user.currentCompany ? ` at ${user.currentCompany}` : ""}
-                </p>
-                <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1.5">
-                  {user.city && (
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3" /> {user.city}
-                    </span>
-                  )}
-                  <span className="flex items-center gap-1">
-                    <Building className="w-3 h-3" /> Class of {user.batchYear}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Mobile App Native Quick Actions Bar */}
         <div>
