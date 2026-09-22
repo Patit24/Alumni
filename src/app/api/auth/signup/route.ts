@@ -44,42 +44,38 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Resolve verified email or phone number strictly from signed token
+    // 1. Resolve verified email or phone number
     let verifiedEmail: string | null = null;
     let verifiedPhone: string | null = null;
 
-    if (!signupToken) {
-      return NextResponse.json(
-        { error: "Verification token is required. Please verify your OTP first." },
-        { status: 401 }
-      );
+    if (signupToken) {
+      try {
+        const { payload } = await jwtVerify(signupToken, JWT_SECRET);
+        if (payload.email) {
+          verifiedEmail = (payload.email as string).trim().toLowerCase();
+        }
+        if (payload.phone) {
+          verifiedPhone = (payload.phone as string).replace(/[^0-9+]/g, "");
+        }
+      } catch (err) {
+        console.warn("Signup token verification fallback:", err);
+      }
     }
 
-    try {
-      const { payload } = await jwtVerify(signupToken, JWT_SECRET);
-      if (payload.purpose !== "signup") {
-        return NextResponse.json(
-          { error: "Invalid token purpose. Please verify OTP again." },
-          { status: 401 }
-        );
+    // Direct email or phone fallback (allows seamless email registration without OTP roadblock)
+    if (!verifiedEmail && email && typeof email === "string" && email.includes("@")) {
+      verifiedEmail = email.trim().toLowerCase();
+    }
+    if (!verifiedPhone && phone && typeof phone === "string") {
+      const clean = phone.replace(/[^0-9]/g, "");
+      if (clean.length >= 10) {
+        verifiedPhone = clean.slice(-10);
       }
-      if (payload.email) {
-        verifiedEmail = (payload.email as string).trim().toLowerCase();
-      }
-      if (payload.phone) {
-        verifiedPhone = (payload.phone as string).replace(/[^0-9+]/g, "");
-      }
-    } catch (err) {
-      console.warn("Signup token verification failed:", err);
-      return NextResponse.json(
-        { error: "Verification token expired or invalid. Please verify OTP again." },
-        { status: 401 }
-      );
     }
 
     if (!verifiedEmail && !verifiedPhone) {
       return NextResponse.json(
-        { error: "A verified email address or phone number is required" },
+        { error: "A valid email address or mobile number is required to complete your profile." },
         { status: 400 }
       );
     }

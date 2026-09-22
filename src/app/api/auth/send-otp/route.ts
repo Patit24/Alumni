@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { createClient } from "@supabase/supabase-js";
 import { sendOtpSms } from "@/lib/sms";
+import { createSessionToken, AUTH_COOKIE } from "@/lib/auth";
+import { SignJWT } from "jose";
 
 export const dynamic = "force-dynamic";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://tinoesrmhzgelxiykcgq.supabase.co";
-const supabaseKey =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "sb_publishable_DtrGzEbOc2n4oeilkvpuCQ_tj6jRqyX";
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.AUTH_SECRET || "alumni-network-super-secret-jwt-key-minimum-32-characters"
+);
 
 export async function POST(req: Request) {
   try {
@@ -71,49 +71,73 @@ export async function POST(req: Request) {
       });
     }
 
-    // 2. Email OTP flow
+    // 2. Email flow (No OTP required: instant login for existing users, instant onboarding for new users)
     if (!email || typeof email !== "string" || !email.includes("@")) {
       return NextResponse.json({ error: "Please enter a valid email address or phone number" }, { status: 400 });
     }
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // Check if user already exists in SQLite DB by email
+    // Check if user already exists in DB by email
     const existingUser = await db.user.findFirst({
       where: { email: cleanEmail },
-    });
-
-    // Dispatch 6-digit OTP directly to Gmail / Email inbox via Supabase
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const { error: supabaseError } = await supabase.auth.signInWithOtp({
-      email: cleanEmail,
-      options: {
-        shouldCreateUser: true,
+      include: {
+        institution: true,
+        department: true,
+        batch: true,
       },
     });
 
-    if (supabaseError) {
-      console.error("Supabase Email OTP error:", supabaseError);
-      return NextResponse.json(
-        {
-          error: supabaseError.message || "Failed to dispatch OTP to your email.",
-          code: supabaseError.code,
-        },
-        { status: 400 }
-      );
+    if (existingUser) {
+      // Returning user: automatically log in directly without requiring OTP!
+      const sessionToken = await createSessionToken({
+        userId: existingUser.id,
+        email: existingUser.email,
+        phone: existingUser.phone,
+        name: existingUser.name,
+        role: existingUser.role,
+        verificationStatus: existingUser.verificationStatus,
+        institutionId: existingUser.institutionId,
+        institutionName: existingUser.institution?.name,
+        batchYear: existingUser.batchYear,
+        departmentName: existingUser.department?.name,
+        currentCompany: existingUser.currentCompany,
+        currentRole: existingUser.currentRole,
+        city: existingUser.city,
+      });
+
+      const response = NextResponse.json({
+        success: true,
+        loggedIn: true,
+        user: existingUser,
+        message: "Logged in successfully!",
+      });
+
+      response.cookies.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+      const cookieStore = await cookies();
+      cookieStore.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+
+      return response;
     }
+
+    // New user signing up with email: issue signup token directly, no OTP needed!
+    const signupToken = await new SignJWT({ email: cleanEmail, purpose: "signup" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("2h")
+      .sign(JWT_SECRET);
 
     return NextResponse.json({
       success: true,
+      isNewUser: true,
       email: cleanEmail,
-      isExistingUser: !!existingUser,
-      provider: "supabase-email",
-      message: `6-digit verification code sent to ${cleanEmail}`,
+      signupToken,
+      message: "Welcome! Please enter your profile details.",
     });
   } catch (error) {
     console.error("send-otp error:", error);
     return NextResponse.json(
-      { error: "Failed to send verification code. Please check your internet connection." },
+      { error: "Failed to process login request. Please try again." },
       { status: 500 }
     );
   }

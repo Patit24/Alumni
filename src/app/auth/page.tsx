@@ -114,10 +114,12 @@ export default function AuthPage() {
     const params = new URLSearchParams(window.location.search);
     const verifiedEmail = params.get("verifiedEmail");
     const prefillName = params.get("name");
+    const querySignupToken = params.get("signupToken");
 
     if (verifiedEmail) {
       setEmail(verifiedEmail);
       if (prefillName) setName(prefillName);
+      if (querySignupToken) setSignupToken(querySignupToken);
       setStep("onboarding");
     } else {
       // If already authenticated, redirect straight to dashboard
@@ -258,16 +260,37 @@ export default function AuthPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to dispatch verification code");
+        throw new Error(data.error || "Failed to process request");
       }
 
+      // 1. If returning user logged in directly without OTP
+      if (data.loggedIn) {
+        if (data.user) {
+          try {
+            localStorage.setItem("alumni_user", JSON.stringify(data.user));
+          } catch {}
+        }
+        window.location.href = "/";
+        return;
+      }
+
+      // 2. If new email user: proceed directly to onboarding without OTP
+      if (data.isNewUser && !isPhone) {
+        if (data.signupToken) {
+          setSignupToken(data.signupToken);
+        }
+        setStep("onboarding");
+        return;
+      }
+
+      // 3. For Phone SMS users: proceed to OTP verification
       setIsExistingUser(data?.isExistingUser || false);
       setOtp(data.testCode || "");
       setStep("otp");
       setResendCooldown(30); // 30s resend timer
       setInfoMessage(data.message || `We've sent a 6-digit code to your ${isPhone ? "phone via SMS" : "Gmail inbox"}`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to send verification code. Please try again.");
+      setError(err instanceof Error ? err.message : "Failed to sign in. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -748,14 +771,14 @@ export default function AuthPage() {
                 <div className="relative flex items-center justify-center">
                   <div className="border-t border-slate-200 w-full" />
                   <span className="bg-white px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Or with Email OTP
+                    Or with Email
                   </span>
                 </div>
 
                 <form onSubmit={handleSendOtp} className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-                      Email Address / Gmail
+                      Email Address
                     </label>
                     <div className="relative flex items-center">
                       <Mail className="w-4 h-4 text-slate-400 absolute left-3.5" />
@@ -769,7 +792,7 @@ export default function AuthPage() {
                       />
                     </div>
                     <p className="text-[11px] text-slate-400 mt-1.5">
-                      Free 6-digit code will be sent to your Gmail inbox.
+                      Fast sign in or registration — no OTP required.
                     </p>
                   </div>
 
@@ -782,7 +805,7 @@ export default function AuthPage() {
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <>
-                        Send 6-Digit Code <ArrowRight className="w-4 h-4" />
+                        Continue with Email <ArrowRight className="w-4 h-4" />
                       </>
                     )}
                   </button>

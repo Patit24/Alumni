@@ -3,8 +3,13 @@ import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { createSessionToken, AUTH_COOKIE } from "@/lib/auth";
 import { createServerClient } from "@supabase/ssr";
+import { SignJWT } from "jose";
 
 export const dynamic = "force-dynamic";
+
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.AUTH_SECRET || "alumni-network-super-secret-jwt-key-minimum-32-characters"
+);
 
 export async function GET(req: Request) {
   const requestUrl = new URL(req.url);
@@ -81,9 +86,17 @@ export async function GET(req: Request) {
         redirectResponse.cookies.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
         return redirectResponse;
       } else {
-        // Redirect to onboarding with verified email
+        // Redirect to onboarding with verified email and signed token
         console.log("[OAUTH-CALLBACK] New user, redirecting to onboarding for:", userEmail);
-        return NextResponse.redirect(`${origin}/auth?verifiedEmail=${encodeURIComponent(userEmail)}&name=${encodeURIComponent(userName)}`);
+        const signupToken = await new SignJWT({ email: userEmail, purpose: "signup" })
+          .setProtectedHeader({ alg: "HS256" })
+          .setIssuedAt()
+          .setExpirationTime("2h")
+          .sign(JWT_SECRET);
+
+        return NextResponse.redirect(
+          `${origin}/auth?verifiedEmail=${encodeURIComponent(userEmail)}&name=${encodeURIComponent(userName)}&signupToken=${encodeURIComponent(signupToken)}`
+        );
       }
     }
   }
