@@ -325,18 +325,6 @@ export default async function HomePage(props: {
 
         {/* Campus & Alumni Feed */}
         <section className="pt-2">
-          <div className="flex items-center justify-between mb-3.5">
-            <div className="flex items-center gap-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Campus Activity Feed
-              </h2>
-              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live
-              </span>
-            </div>
-          </div>
-
           <FeedSection
             currentUserName={user.name}
             currentUserRole={user.currentRole}

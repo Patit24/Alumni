@@ -500,8 +500,8 @@ export default function FeedSection({
   return (
     <div className="space-y-4">
       {/* Feed Category Filter Header & Live Realtime Badge */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full">
           {(["ALL", "BATCH", "JOBS", "MENTORSHIP"] as const).map((tab) => {
             const label =
               tab === "ALL"
@@ -518,9 +518,9 @@ export default function FeedSection({
                 key={tab}
                 whileTap={{ scale: 0.96 }}
                 onClick={() => setFilter(tab)}
-                className={`text-xs font-bold px-3.5 py-1.5 rounded-full transition shadow-xs ${
+                className={`text-xs font-semibold px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap ${
                   isActive
-                    ? "bg-slate-900 text-white shadow-sm"
+                    ? "bg-slate-900 text-white shadow-xs"
                     : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
                 }`}
               >
@@ -530,8 +530,8 @@ export default function FeedSection({
           })}
         </div>
 
-        {/* Live Supabase Realtime Indicator */}
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200 rounded-full text-[11px] font-semibold text-slate-600 shadow-xs shrink-0">
+        {/* Live Indicator */}
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200/80 rounded-full text-[11px] font-medium text-slate-600 shadow-2xs shrink-0">
           <span className="relative flex h-2 w-2">
             <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
               isRealtimeActive ? "bg-emerald-400" : "bg-amber-400"
@@ -540,7 +540,7 @@ export default function FeedSection({
               isRealtimeActive ? "bg-emerald-500" : "bg-amber-500"
             }`}></span>
           </span>
-          <span>{isRealtimeActive ? "Supabase Realtime Live" : "Connecting..."}</span>
+          <span>{isRealtimeActive ? "Live Feed" : "Connecting..."}</span>
         </div>
       </div>
 
@@ -558,25 +558,25 @@ export default function FeedSection({
         )}
       </AnimatePresence>
 
-      {/* LinkedIn-style Share Box */}
+      {/* Share / Post Composer Box */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-sm space-y-3"
+        className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-3"
       >
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm shadow-blue-500/20">
+          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs shadow-blue-500/20">
             {currentUserName.charAt(0)}
           </div>
-          <form onSubmit={handleCreatePost} className="flex-1">
+          <form onSubmit={handleCreatePost} className="flex-1 min-w-0">
             <input
               type="text"
               value={newPostText}
               onChange={(e) => setNewPostText(e.target.value)}
               disabled={posting || uploadingImage}
               placeholder="Share an update, placement, or tip with your alumni network..."
-              className="w-full bg-slate-100 hover:bg-slate-100/80 focus:bg-white text-xs text-slate-900 placeholder:text-slate-400 rounded-2xl px-4 py-2.5 border border-transparent focus:border-blue-400 focus:outline-none transition disabled:opacity-60"
+              className="w-full bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-xs text-slate-900 placeholder:text-slate-400 rounded-2xl px-4 py-2.5 border border-transparent focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition disabled:opacity-60"
             />
           </form>
         </div>
@@ -618,55 +618,52 @@ export default function FeedSection({
           className="hidden"
         />
 
-        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-          <div className="flex items-center gap-2 text-slate-400 text-xs">
+        {/* Composer Action Bar */}
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <div className="flex items-center gap-1 sm:gap-2 text-slate-500 text-xs overflow-x-auto no-scrollbar py-0.5">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={posting || uploadingImage}
-              className="flex items-center gap-1 hover:text-blue-600 cursor-pointer p-1 rounded-lg transition disabled:opacity-50"
+              className="flex items-center gap-1.5 hover:text-blue-600 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition disabled:opacity-50 whitespace-nowrap font-medium text-slate-600"
             >
-              <ImageIcon className="w-4 h-4 text-emerald-500" />
-              <span className="font-medium text-slate-600 hover:text-blue-600">
-                {uploadingImage ? "Processing..." : selectedImage ? "Change Photo" : "Photo"}
-              </span>
+              <ImageIcon className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span>{uploadingImage ? "Processing..." : selectedImage ? "Change Photo" : "Photo"}</span>
             </button>
             <Link
               href="/reunions"
-              className="flex items-center gap-1 hover:text-amber-600 cursor-pointer p-1 rounded-lg"
+              className="flex items-center gap-1.5 hover:text-amber-600 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition whitespace-nowrap font-medium text-slate-600"
             >
-              <PartyPopper className="w-4 h-4 text-amber-500" /> Plan Reunion
+              <PartyPopper className="w-4 h-4 text-amber-500 shrink-0" />
+              <span className="hidden xs:inline">Plan</span> Reunion
             </Link>
             <Link
               href="/jobs"
-              className="flex items-center gap-1 hover:text-purple-600 cursor-pointer p-1 rounded-lg"
+              className="flex items-center gap-1.5 hover:text-purple-600 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition whitespace-nowrap font-medium text-slate-600"
             >
-              <Briefcase className="w-4 h-4 text-purple-500" /> Referral
+              <Briefcase className="w-4 h-4 text-purple-500 shrink-0" />
+              <span>Referral</span>
             </Link>
             <Link
               href="/mentorship"
-              className="flex items-center gap-1 hover:text-indigo-600 cursor-pointer p-1 rounded-lg"
+              className="flex items-center gap-1.5 hover:text-indigo-600 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition whitespace-nowrap font-medium text-slate-600"
             >
-              <Sparkles className="w-4 h-4 text-indigo-500" /> Mentorship
+              <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+              <span>Mentorship</span>
             </Link>
           </div>
 
           <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.96 }}
             onClick={handleCreatePost}
             disabled={posting || uploadingImage || (!newPostText.trim() && !selectedImage)}
-            className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-sm"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-xs shrink-0"
           >
             {posting ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Posting...</span>
-              </>
-            ) : uploadingImage ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Processing...</span>
+                <span className="hidden sm:inline">Posting...</span>
               </>
             ) : (
               <>
@@ -704,40 +701,40 @@ export default function FeedSection({
               >
                 {/* Author Info Header */}
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <Link href={`/profile/${item.actor.id}`}>
-                      <div className="h-11 w-11 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-sm hover:opacity-90 transition">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Link href={`/profile/${item.actor.id}`} className="shrink-0">
+                      <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-xs hover:opacity-90 transition">
                         {item.actor.name.charAt(0)}
                       </div>
                     </Link>
-                    <div>
-                      <div className="flex items-center gap-1.5">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <Link
                           href={`/profile/${item.actor.id}`}
-                          className="text-xs font-bold text-slate-900 hover:text-blue-600 transition"
+                          className="text-xs font-bold text-slate-900 hover:text-blue-600 transition truncate"
                         >
                           {item.actor.name}
                         </Link>
                         {item.actor.verificationStatus === "VERIFIED" && (
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                         )}
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-slate-400 shrink-0">
                           • {calculateTimeAgo(item.createdAt)}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-slate-500 truncate">
                         {item.actor.currentRole || "Alumni"}
                         {item.actor.currentCompany ? ` at ${item.actor.currentCompany}` : ""}
                       </p>
-                      <p className="text-[10px] text-slate-400">
+                      <p className="text-[10px] text-slate-400 truncate">
                         Class of {item.actor.batchYear} {item.actor.department ? `• ${item.actor.department.name}` : ""}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     {item.metadata.badge && (
-                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                      <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80 shrink-0">
                         {item.metadata.badge}
                       </span>
                     )}
@@ -745,7 +742,7 @@ export default function FeedSection({
                       <button
                         type="button"
                         onClick={() => handleDeletePost(item.id)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0"
                         title="Delete this post"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
