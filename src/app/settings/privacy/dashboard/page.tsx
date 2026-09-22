@@ -280,7 +280,7 @@ export default function PrivacyDashboardPage() {
                 <span className="font-semibold text-slate-800 flex items-center gap-1.5">
                   <Server className="w-3.5 h-3.5 text-slate-600" /> Permanent Server History
                 </span>
-                <span className="font-mono text-emerald-600 font-bold text-[11px]">None (Zero Plaintext)</span>
+                <span className="font-mono text-emerald-600 font-bold text-[11px]">None (Fully Encrypted)</span>
               </div>
               <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-emerald-500 rounded-full w-full" />
@@ -321,7 +321,7 @@ export default function PrivacyDashboardPage() {
 
           <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 text-xs">
             <div className="p-3 flex items-center justify-between bg-slate-50/50">
-              <span className="font-semibold text-slate-700">Message Plaintext</span>
+              <span className="font-semibold text-slate-700">Message Content</span>
               <span className="font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md text-[11px]">
                 ❌ No Access
               </span>

@@ -220,7 +220,7 @@ export default function PrivacySettingsPage() {
               <div>
                 <h2 className="text-xs font-bold text-slate-900">End-to-End Encryption Active</h2>
                 <p className="text-[11px] text-slate-500">
-                  AES-256-GCM + NIST P-256 ECDH with device-stored keys
+                  Protected with device-stored keys
                 </p>
               </div>
             </div>
@@ -228,11 +228,11 @@ export default function PrivacySettingsPage() {
               href="/settings/privacy/dashboard"
               className="text-xs text-blue-600 font-bold hover:underline"
             >
-              Audited Policy →
+              Privacy Dashboard →
             </Link>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed pt-2 border-t border-slate-100">
-            Messages and WebRTC calls are encrypted with keys that only exist on participants&apos; devices. The server never receives or stores plaintext message content or call media.
+            Messages and calls are end-to-end encrypted on your device. Only you and your recipient hold the decryption keys.
           </p>
         </div>
 

@@ -432,10 +432,10 @@ export default function AuthPage() {
                 <div className="p-3 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 text-left space-y-1">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
                     <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Signal-grade Zero Phone / Zero OTP Account</span>
+                    <span>Instant Private Account</span>
                   </div>
                   <p className="text-[11px] text-blue-700/90 leading-relaxed">
-                    Identity keys are generated locally on your device in IndexedDB. No phone number or SMS verification is required.
+                    Secure identity created locally on your device. No phone number or SMS verification required.
                   </p>
                 </div>
 

@@ -79,7 +79,7 @@ export async function POST(req: Request) {
       success: true,
       matches,
       matchCount: matches.length,
-      privacyPolicy: "Signal-style zero address book storage. Hashes processed ephemerally in memory.",
+      privacyPolicy: "Zero address book storage. Hashes processed ephemerally in memory.",
     });
   } catch (error: any) {
     console.error("Private contact discovery error:", error);
