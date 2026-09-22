@@ -703,13 +703,13 @@ export default function MessagesHubPage() {
                   const isOutgoing = lastMsg && lastMsg.senderId !== contact.id;
 
                   return (
-                    <div key={contact.id} className="relative overflow-hidden group">
+                    <div key={contact.id} className="relative overflow-hidden group select-none">
                       {/* Swipe reveal actions behind card */}
-                      <div className="absolute inset-y-0 left-0 w-24 bg-blue-500 text-white flex items-center justify-center gap-1 font-bold text-xs px-3">
+                      <div className="absolute inset-y-0 left-0 w-24 bg-blue-600 text-white flex items-center justify-center gap-1.5 font-bold text-xs px-3 pointer-events-none">
                         <Pin className="w-3.5 h-3.5" />
                         <span>{isPinned ? "Unpin" : "Pin"}</span>
                       </div>
-                      <div className="absolute inset-y-0 right-0 w-24 bg-slate-700 text-white flex items-center justify-center gap-1 font-bold text-xs px-3">
+                      <div className="absolute inset-y-0 right-0 w-24 bg-slate-800 text-white flex items-center justify-center gap-1.5 font-bold text-xs px-3 pointer-events-none">
                         <Archive className="w-3.5 h-3.5" />
                         <span>Archive</span>
                       </div>
@@ -717,10 +717,12 @@ export default function MessagesHubPage() {
                       {/* Foreground swipeable card */}
                       <motion.div
                         drag="x"
-                        dragConstraints={{ left: -70, right: 70 }}
-                        dragElastic={0.2}
+                        dragDirectionLock
+                        dragSnapToOrigin
+                        dragConstraints={{ left: -75, right: 75 }}
+                        dragElastic={0.15}
                         onDragEnd={(_, info) => {
-                          if (info.offset.x > 45) {
+                          if (info.offset.x > 50) {
                             triggerHaptic("medium");
                             setPinnedIds((prev) => {
                               const next = new Set(prev);
@@ -728,13 +730,13 @@ export default function MessagesHubPage() {
                               else next.add(contact.id);
                               return next;
                             });
-                          } else if (info.offset.x < -45) {
+                          } else if (info.offset.x < -50) {
                             triggerHaptic("medium");
                             setArchivedIds((prev) => new Set(prev).add(contact.id));
                           }
                         }}
-                        whileTap={{ scale: 0.985 }}
-                        className="relative z-10 bg-white p-3.5 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition cursor-pointer select-none"
+                        whileTap={{ scale: 0.99 }}
+                        className="relative z-10 bg-white p-3.5 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition cursor-pointer select-none"
                         onClick={() => {
                           addLocalConnectedPeer(contact.id);
                           router.push(`/messages/${contact.id}`);
@@ -754,7 +756,7 @@ export default function MessagesHubPage() {
                                   {contact.name}
                                 </p>
                                 {isPinned && (
-                                  <span className="p-0.5 rounded-md bg-blue-100 text-blue-700">
+                                  <span className="p-0.5 rounded-md bg-blue-100 text-blue-700" title="Pinned">
                                     <Pin className="w-3 h-3" />
                                   </span>
                                 )}
@@ -805,7 +807,40 @@ export default function MessagesHubPage() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Desktop hover quick actions */}
+                          <div className="hidden sm:flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                triggerHaptic("light");
+                                setPinnedIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(contact.id)) next.delete(contact.id);
+                                  else next.add(contact.id);
+                                  return next;
+                                });
+                              }}
+                              className="h-8 w-8 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-500 flex items-center justify-center transition"
+                              title={isPinned ? "Unpin chat" : "Pin chat"}
+                            >
+                              <Pin className={`w-3.5 h-3.5 ${isPinned ? "text-blue-600 fill-blue-600" : ""}`} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                triggerHaptic("light");
+                                setArchivedIds((prev) => new Set(prev).add(contact.id));
+                              }}
+                              className="h-8 w-8 rounded-xl bg-slate-100 hover:bg-amber-50 hover:text-amber-600 text-slate-500 flex items-center justify-center transition"
+                              title="Archive chat"
+                            >
+                              <Archive className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
                           <span className="h-8 px-2.5 rounded-xl bg-slate-100 group-hover:bg-blue-50 group-hover:text-blue-600 text-[11px] font-bold text-slate-600 flex items-center transition">
                             Chat →
                           </span>
