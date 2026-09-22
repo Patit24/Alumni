@@ -112,6 +112,17 @@ model User {
   groupMemberships    GroupMember[]
   chatMessages        ChatMessage[]
 
+  // Universal Community Engine Relations
+  ownedCommunities        Community[]               @relation("OwnedCommunities")
+  communityMemberships    CommunityMember[]
+  communityInvitesCreated CommunityInvite[]
+  communityJoinRequests   CommunityJoinRequest[]
+  communityAnnouncements  CommunityAnnouncement[]
+  communityEvents         CommunityEvent[]
+  communityEventRsvps     CommunityEventRsvp[]
+  communityPollVotes      CommunityPollVote[]
+  communityChannelMessages CommunityChannelMessage[]
+
   // Vouches
   vouchesGiven        VerificationVouch[]   @relation("VouchesGiven")
   vouchesReceived     VerificationVouch[]   @relation("VouchesReceived")
@@ -427,6 +438,344 @@ model UserReport {
   reportedId  String
   reason      String
   createdAt   DateTime @default(now())
+}
+
+// ==========================================
+// UNIVERSAL COMMUNITY ENGINE MODELS
+// ==========================================
+
+model Community {
+  id                      String                   @id @default(cuid())
+  slug                    String?                  @unique
+  name                    String
+  description             String?
+  avatarUrl               String?
+  coverUrl                String?
+  type                    String                   @default("CUSTOM") // EDUCATION, ORGANIZATION, SPORTS, GAMING, CLUB, NGO, EVENT, FRIENDS, PRIVATE, CUSTOM
+  
+  // Privacy & Governance Settings
+  discoverability         String                   @default("MEMBERS_ONLY") // PUBLIC, INVITE_ONLY, MEMBERS_ONLY, HIDDEN
+  joinMethod              String                   @default("INVITE_LINK")  // INVITE_ONLY, QR_CODE, INVITE_LINK, REQUEST_APPROVAL, CODE_PROTECTED
+  joinCode                String?
+  memberListVisibility    String                   @default("EVERYONE")     // EVERYONE, MEMBERS_ONLY, ADMINS_ONLY
+  invitePermission        String                   @default("ALL_MEMBERS")  // OWNER_ONLY, ADMINS, SELECTED_ROLES, ALL_MEMBERS
+  channelCreatePermission String                   @default("ADMINS")       // OWNER_ONLY, ADMINS, SELECTED_ROLES
+  callStartPermission     String                   @default("MEMBERS")      // OWNER_ONLY, ADMINS, MEMBERS
+
+  // Temporary / Event communities
+  isTemporary             Boolean                  @default(false)
+  startDate               DateTime?
+  endDate                 DateTime?
+  archivedAt              DateTime?
+  archiveReason           String?
+
+  ownerId                 String
+  owner                   User                     @relation("OwnedCommunities", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Relations
+  modules                 CommunityModule[]
+  roles                   CommunityRole[]
+  members                 CommunityMember[]
+  channels                CommunityChannel[]
+  invites                 CommunityInvite[]
+  joinRequests            CommunityJoinRequest[]
+  announcements           CommunityAnnouncement[]
+  events                  CommunityEvent[]
+  polls                   CommunityPoll[]
+  files                   CommunityFile[]
+  cryptoStates            CommunityCryptoState[]
+
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+
+  @@index([ownerId])
+  @@index([type])
+}
+
+model CommunityModule {
+  id          String    @id @default(cuid())
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  moduleKey   String    // CHANNELS, ANNOUNCEMENTS, EVENTS, POLLS, FILES, CALLS, SPORTS_FIXTURES, PROJECTS
+  isEnabled   Boolean   @default(true)
+  settings    String?   // JSON configuration
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([communityId, moduleKey])
+}
+
+model CommunityRole {
+  id                       String            @id @default(cuid())
+  communityId              String
+  community                Community         @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  name                     String
+  icon                     String?
+  color                    String?
+  isSystem                 Boolean           @default(false)
+  systemType               String?           // OWNER, ADMIN, MODERATOR, MANAGER, MEMBER, GUEST
+  priority                 Int               @default(10)
+
+  // Granular Permissions
+  canSendMessages          Boolean           @default(true)
+  canDeleteMessages        Boolean           @default(false)
+  canAddMembers            Boolean           @default(false)
+  canRemoveMembers         Boolean           @default(false)
+  canInviteMembers         Boolean           @default(true)
+  canCreateChannels        Boolean           @default(false)
+  canManageCommunity       Boolean           @default(false)
+  canCreateEvents          Boolean           @default(false)
+  canManageEvents          Boolean           @default(false)
+  canCreatePolls           Boolean           @default(true)
+  canUploadFiles           Boolean           @default(true)
+  canDeleteFiles           Boolean           @default(false)
+  canStartCalls            Boolean           @default(true)
+  canAssignRoles           Boolean           @default(false)
+  canCreateAnnouncements   Boolean           @default(false)
+  canModerateContent       Boolean           @default(false)
+  canManageModules         Boolean           @default(false)
+
+  members                  CommunityMember[]
+
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+
+  @@index([communityId])
+}
+
+model CommunityMember {
+  id           String         @id @default(cuid())
+  communityId  String
+  community    Community      @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId       String
+  role         CommunityRole  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  
+  // Member details in this community
+  nickname     String?
+  title        String?
+  department   String?
+  teamNumber   Int?
+  position     String?
+  status       String         @default("ACTIVE") // ACTIVE, MUTED, BANNED
+  
+  invitedById  String?
+
+  joinedAt     DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([communityId, userId])
+  @@index([communityId])
+  @@index([userId])
+}
+
+model CommunityChannel {
+  id                 String                    @id @default(cuid())
+  communityId        String
+  community          Community                 @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  name               String
+  description        String?
+  icon               String?
+  type               String                    @default("PUBLIC") // PUBLIC, PRIVATE, ROLE_RESTRICTED
+  allowedRoleIds     String?                   // JSON string array of role IDs if ROLE_RESTRICTED
+  isAnnouncementOnly Boolean                   @default(false)
+
+  messages           CommunityChannelMessage[]
+  cryptoStates       CommunityCryptoState[]
+
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  @@index([communityId])
+}
+
+model CommunityChannelMessage {
+  id          String           @id @default(cuid())
+  channelId   String
+  channel     CommunityChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  
+  // E2EE Encrypted Payload (Zero Plaintext on Server)
+  ciphertext  String
+  iv          String
+  keyEpoch    Int              @default(1)
+  
+  // Metadata & Media
+  type        String           @default("TEXT") // TEXT, MEDIA, POLL, EVENT, SYSTEM
+  metadata    String?          // JSON metadata (e.g. encrypted media attachment info, dimensions)
+
+  createdAt   DateTime         @default(now())
+
+  @@index([channelId])
+  @@index([senderId])
+}
+
+model CommunityInvite {
+  id             String    @id @default(cuid())
+  communityId    String
+  community      Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  token          String    @unique
+  assignedRoleId String?
+  maxUses        Int?
+  usedCount      Int       @default(0)
+  expiresAt      DateTime?
+  isRevoked      Boolean   @default(false)
+  createdById    String
+  createdBy      User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime  @default(now())
+
+  @@index([token])
+  @@index([communityId])
+}
+
+model CommunityJoinRequest {
+  id              String    @id @default(cuid())
+  communityId     String
+  community       Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestedRoleId String?
+  note            String?
+  status          String    @default("PENDING") // PENDING, APPROVED, REJECTED, BLOCKED
+  reviewedById    String?
+  reviewedAt      DateTime?
+
+  createdAt       DateTime  @default(now())
+
+  @@unique([communityId, userId])
+  @@index([communityId])
+}
+
+model CommunityAnnouncement {
+  id          String    @id @default(cuid())
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title       String
+  content     String
+  mediaUrl    String?
+  isPinned    Boolean   @default(false)
+  notifyAll   Boolean   @default(false)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([communityId])
+}
+
+model CommunityEvent {
+  id          String               @id @default(cuid())
+  communityId String
+  community   Community            @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  creatorId   String
+  creator     User                 @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  location    String?
+  startDate   DateTime
+  endDate     DateTime?
+  
+  rsvps       CommunityEventRsvp[]
+
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([communityId])
+}
+
+model CommunityEventRsvp {
+  id        String         @id @default(cuid())
+  eventId   String
+  event     CommunityEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String         @default("GOING") // GOING, MAYBE, NOT_GOING
+
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+}
+
+model CommunityPoll {
+  id          String                @id @default(cuid())
+  communityId String
+  community   Community             @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  question    String
+  isMultiple  Boolean               @default(false)
+  isAnonymous Boolean               @default(false)
+  closesAt    DateTime?
+  
+  options     CommunityPollOption[]
+  votes       CommunityPollVote[]
+
+  createdAt   DateTime              @default(now())
+
+  @@index([communityId])
+}
+
+model CommunityPollOption {
+  id        String              @id @default(cuid())
+  pollId    String
+  poll      CommunityPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  text      String
+
+  votes     CommunityPollVote[]
+
+  @@index([pollId])
+}
+
+model CommunityPollVote {
+  id        String              @id @default(cuid())
+  pollId    String
+  poll      CommunityPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  optionId  String
+  option    CommunityPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime            @default(now())
+
+  @@unique([pollId, optionId, userId])
+  @@index([pollId])
+}
+
+model CommunityFile {
+  id          String    @id @default(cuid())
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  name        String
+  sizeBytes   Int
+  mimeType    String
+  fileUrl     String
+  uploaderId  String
+
+  createdAt   DateTime  @default(now())
+
+  @@index([communityId])
+}
+
+model CommunityCryptoState {
+  id                    String           @id @default(cuid())
+  communityId           String
+  community             Community        @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  channelId             String
+  channel               CommunityChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  keyEpoch              Int              @default(1)
+  
+  // Encrypted key envelopes for authorized member devices
+  encryptedKeyEnvelopes String           // JSON mapping deviceId -> { ciphertext, iv }
+
+  updatedAt             DateTime         @updatedAt
+
+  @@unique([channelId, keyEpoch])
+  @@index([communityId])
 }
 
 

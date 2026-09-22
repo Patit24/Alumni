@@ -11,6 +11,7 @@ export default function MobileBottomNav() {
   if (
     pathname.startsWith("/auth") ||
     pathname.match(/^\/groups\/[^/]+$/) ||
+    pathname.match(/^\/communities\/[^/]+\/channels\/[^/]+$/) ||
     pathname.startsWith("/messages")
   ) {
     return null;
@@ -19,7 +20,7 @@ export default function MobileBottomNav() {
   const navItems = [
     { href: "/", label: "Feed", icon: Home },
     { href: "/messages", label: "Messages", icon: MessageSquareText },
-    { href: "/groups", label: "Groups", icon: MessageCircle },
+    { href: "/communities", label: "Communities", icon: MessageCircle },
     { href: "/directory", label: "Alumni", icon: Users },
     { href: "/jobs", label: "Jobs", icon: Briefcase },
   ];
