@@ -2,6 +2,7 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "@prisma/client";
 import path from "path";
 import fs from "fs";
+import { ensureCommunityTablesExist } from "./communities/init-db";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -11,14 +12,29 @@ function getDatabasePath() {
   // In serverless platforms like Vercel/AWS Lambda, the root is read-only except /tmp
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const tmpDbPath = path.join("/tmp", "dev.db");
-    // If bundled dev.db exists in project root, copy it to /tmp on cold-start
-    const bundledDbPath = path.join(process.cwd(), "dev.db");
-    if (!fs.existsSync(tmpDbPath)) {
-      if (fs.existsSync(bundledDbPath)) {
+    
+    // Candidate paths where Vercel file tracing might place dev.db
+    const candidatePaths = [
+      path.join(process.cwd(), "dev.db"),
+      path.join(__dirname, "dev.db"),
+      path.join(__dirname, "..", "dev.db"),
+      path.join(__dirname, "..", "..", "dev.db"),
+      path.join(__dirname, "..", "..", "..", "dev.db"),
+      path.resolve("dev.db"),
+    ];
+
+    for (const candidate of candidatePaths) {
+      if (fs.existsSync(candidate)) {
         try {
-          fs.copyFileSync(bundledDbPath, tmpDbPath);
+          const candidateStat = fs.statSync(candidate);
+          const tmpExists = fs.existsSync(tmpDbPath);
+          const tmpStat = tmpExists ? fs.statSync(tmpDbPath) : null;
+          if (!tmpExists || (tmpStat && candidateStat.mtimeMs > tmpStat.mtimeMs)) {
+            fs.copyFileSync(candidate, tmpDbPath);
+          }
+          break;
         } catch (e) {
-          console.error("Failed to copy bundled dev.db to /tmp:", e);
+          console.error(`Failed to sync candidate ${candidate} to /tmp:`, e);
         }
       }
     }
@@ -32,6 +48,7 @@ function getDatabasePath() {
 
 function createPrismaClient() {
   const resolvedPath = getDatabasePath();
+  ensureCommunityTablesExist(resolvedPath);
   const adapter = new PrismaBetterSqlite3({ url: resolvedPath });
 
   return new PrismaClient({

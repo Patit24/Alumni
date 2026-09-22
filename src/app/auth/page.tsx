@@ -10,6 +10,7 @@ import {
   Search,
   MailCheck,
   Mail,
+  Phone,
   Zap,
   Lock,
   KeyRound,
@@ -32,7 +33,7 @@ export default function AuthPage() {
   const router = useRouter();
   // Multi-step state: "email" | "otp" | "onboarding"
   const [step, setStep] = useState<"email" | "otp" | "onboarding">("email");
-  const [authMode, setAuthMode] = useState<"instant" | "email">("instant");
+  const [authMode, setAuthMode] = useState<"instant" | "phone" | "email">("instant");
 
   // Instant Private Identity fields
   const [instantName, setInstantName] = useState("");
@@ -44,7 +45,8 @@ export default function AuthPage() {
   const [instantCompany, setInstantCompany] = useState("");
   const [instantCity, setInstantCity] = useState("");
 
-  // Form fields (Email OTP)
+  // Form fields (Phone & Email OTP)
+  const [phoneInput, setPhoneInput] = useState("");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [signupToken, setSignupToken] = useState("");
@@ -220,16 +222,30 @@ export default function AuthPage() {
     }
   };
 
-  // Step 1: Send 6-digit OTP to Gmail / Email
+  // Step 1: Send 6-digit OTP (Phone SMS or Gmail)
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
     setInfoMessage(null);
 
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes("@") || !cleanEmail.includes(".")) {
-      setError("Please enter a valid email address (e.g. you@gmail.com)");
-      return;
+    const isPhone = authMode === "phone";
+    let payload: { email?: string; phone?: string } = {};
+
+    if (isPhone) {
+      const cleanPhone = phoneInput.replace(/[^0-9]/g, "");
+      const formatted10Digit = cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone;
+      if (formatted10Digit.length !== 10) {
+        setError("Please enter a valid 10-digit mobile number");
+        return;
+      }
+      payload = { phone: formatted10Digit };
+    } else {
+      const cleanEmail = email.trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes("@") || !cleanEmail.includes(".")) {
+        setError("Please enter a valid email address (e.g. you@gmail.com)");
+        return;
+      }
+      payload = { email: cleanEmail };
     }
 
     setLoading(true);
@@ -237,7 +253,7 @@ export default function AuthPage() {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
 
@@ -246,10 +262,10 @@ export default function AuthPage() {
       }
 
       setIsExistingUser(data?.isExistingUser || false);
-      setOtp("");
+      setOtp(data.testCode || "");
       setStep("otp");
       setResendCooldown(30); // 30s resend timer
-      setInfoMessage(`We've sent a 6-digit code to ${cleanEmail}`);
+      setInfoMessage(data.message || `We've sent a 6-digit code to your ${isPhone ? "phone via SMS" : "Gmail inbox"}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to send verification code. Please try again.");
     } finally {
@@ -265,16 +281,21 @@ export default function AuthPage() {
 
     const trimmedOtp = otp.trim();
     if (trimmedOtp.length !== 6) {
-      setError("Please enter the complete 6-digit code from your email");
+      setError("Please enter the complete 6-digit code");
       return;
     }
+
+    const isPhone = authMode === "phone";
+    const payload = isPhone
+      ? { phone: phoneInput.replace(/[^0-9]/g, "").slice(-10), code: trimmedOtp }
+      : { email: email.trim().toLowerCase(), code: trimmedOtp };
 
     setLoading(true);
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), code: trimmedOtp }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
 
@@ -288,6 +309,7 @@ export default function AuthPage() {
       } else {
         // New user - proceed to profile onboarding
         setSignupToken(data.signupToken);
+        if (isPhone && !phone) setPhone(phoneInput.replace(/[^0-9]/g, "").slice(-10));
         setStep("onboarding");
       }
     } catch (err: unknown) {
@@ -390,7 +412,7 @@ export default function AuthPage() {
         {/* STEP 1: Mode Switcher & Forms */}
         {step === "email" && (
           <div className="space-y-4">
-            {/* Top Switcher: Instant Private Identity vs Email / Google */}
+            {/* Top Switcher: Instant Private Identity vs Phone SMS vs Email / Google */}
             <div className="flex bg-slate-100 p-1 rounded-2xl text-xs font-semibold">
               <button
                 type="button"
@@ -399,14 +421,30 @@ export default function AuthPage() {
                   setError(null);
                   setInfoMessage(null);
                 }}
-                className={`flex-1 py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
                   authMode === "instant"
                     ? "bg-white text-blue-700 shadow-xs font-bold"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
-                <span className="truncate">Instant Private ID</span>
+                <span className="truncate">Instant ID</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("phone");
+                  setError(null);
+                  setInfoMessage(null);
+                }}
+                className={`flex-1 py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
+                  authMode === "phone"
+                    ? "bg-white text-emerald-700 shadow-xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">Phone SMS</span>
               </button>
               <button
                 type="button"
@@ -415,7 +453,7 @@ export default function AuthPage() {
                   setError(null);
                   setInfoMessage(null);
                 }}
-                className={`flex-1 py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
                   authMode === "email"
                     ? "bg-white text-slate-900 shadow-xs font-bold"
                     : "text-slate-600 hover:text-slate-900"
@@ -617,7 +655,62 @@ export default function AuthPage() {
               </form>
             )}
 
-            {/* OPTION B: Email / Google Sign-In */}
+            {/* OPTION B: Phone SMS Sign-In */}
+            {authMode === "phone" && (
+              <div className="space-y-4">
+                <form onSubmit={handleSendOtp} className="space-y-4">
+                  <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 text-left space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                      <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Mobile Number Verification</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700/90 leading-relaxed">
+                      Enter your Indian mobile number. A 6-digit OTP will be dispatched directly to your SMS inbox.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                      Mobile Number (India)
+                    </label>
+                    <div className="relative flex items-center">
+                      <span className="absolute left-3.5 text-sm font-semibold text-slate-500 select-none">
+                        +91
+                      </span>
+                      <input
+                        type="tel"
+                        value={phoneInput}
+                        onChange={(e) => setPhoneInput(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))}
+                        placeholder="9876543210"
+                        maxLength={10}
+                        required
+                        autoFocus
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-3 pl-14 pr-4 text-sm font-mono font-medium text-slate-900 outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-100"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1.5">
+                      Fast 6-digit carrier SMS delivered in seconds.
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading || phoneInput.length !== 10}
+                    className="w-full mt-2 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.99]"
+                  >
+                    {loading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Send 6-Digit SMS Code <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* OPTION C: Email / Google Sign-In */}
             {authMode === "email" && (
               <div className="space-y-4">
                 {/* Google One-Click Button */}
@@ -699,13 +792,17 @@ export default function AuthPage() {
           </div>
         )}
 
-        {/* STEP 2: 6-Digit Email OTP Verification */}
+        {/* STEP 2: 6-Digit OTP Verification (SMS or Email) */}
         {step === "otp" && (
           <form onSubmit={handleVerifyOtp} className="space-y-4">
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  {isExistingUser ? "Welcome back • Enter Code" : "Enter 6-digit Code from Gmail"}
+                  {isExistingUser
+                    ? "Welcome back • Enter Code"
+                    : authMode === "phone"
+                    ? "Enter 6-digit SMS Code"
+                    : "Enter 6-digit Code from Gmail"}
                 </label>
                 <button
                   type="button"
@@ -716,7 +813,7 @@ export default function AuthPage() {
                   }}
                   className="text-xs text-blue-600 hover:underline"
                 >
-                  Change email
+                  {authMode === "phone" ? "Change phone" : "Change email"}
                 </button>
               </div>
               <input
@@ -730,7 +827,7 @@ export default function AuthPage() {
                 className="w-full text-center tracking-widest text-xl font-bold rounded-xl border border-slate-200 bg-slate-50/50 py-3.5 px-4 text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100 font-mono"
               />
               <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                <span>Check spam if not in inbox</span>
+                <span>{authMode === "phone" ? "Sent via SMS message" : "Check spam if not in inbox"}</span>
                 {resendCooldown > 0 ? (
                   <span className="text-slate-400 font-medium">Resend in {resendCooldown}s</span>
                 ) : (
@@ -749,7 +846,11 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={loading || otp.length < 6}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 py-3.5 px-4 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99]"
+              className={`w-full flex items-center justify-center gap-2 rounded-xl py-3.5 px-4 text-sm font-semibold text-white shadow-md transition disabled:opacity-50 active:scale-[0.99] ${
+                authMode === "phone"
+                  ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20"
+                  : "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20"
+              }`}
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
