@@ -21,6 +21,8 @@ import {
   ExternalLink,
   MessageCircle,
   X,
+  Loader2,
+  Trash2,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
@@ -78,6 +80,40 @@ interface FeedSectionProps {
   institutionId?: string;
 }
 
+const FEED_CACHE_KEY = "alumni_local_feed_cache_v2";
+
+function getLocalFeedPosts(): FeedItemData[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(FEED_CACHE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalFeedPost(post: FeedItemData) {
+  if (typeof window === "undefined") return;
+  try {
+    const existing = getLocalFeedPosts();
+    const updated = [post, ...existing.filter((p) => p.id !== post.id)].slice(0, 40);
+    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.warn("Could not save post to local cache:", e);
+  }
+}
+
+function removeLocalFeedPost(postId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const existing = getLocalFeedPosts();
+    const updated = existing.filter((p) => p.id !== postId);
+    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(updated));
+  } catch (e) {
+    console.warn("Could not remove post from local cache:", e);
+  }
+}
+
 function calculateTimeAgo(isoString: string) {
   const date = new Date(isoString);
   const now = new Date();
@@ -118,7 +154,7 @@ export default function FeedSection({
   const [isRealtimeActive, setIsRealtimeActive] = useState(false);
   const institutionIdRef = useRef<string | null>(null);
 
-  // Handle Photo Pick and Compression (data URL for instant display)
+  // Handle Photo Pick and Compression (optimized 900x900 JPEG ~50-80KB for permanent fast display)
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -132,12 +168,11 @@ export default function FeedSection({
     const reader = new FileReader();
     reader.onload = (event) => {
       const result = event.target?.result as string;
-      // Compress with canvas if image is large
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
+        const MAX_WIDTH = 900;
+        const MAX_HEIGHT = 900;
         let width = img.width;
         let height = img.height;
 
@@ -153,12 +188,12 @@ export default function FeedSection({
           }
         }
 
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = Math.round(width);
+        canvas.height = Math.round(height);
         const ctx = canvas.getContext("2d");
         if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.75);
           setSelectedImage(compressedDataUrl);
         } else {
           setSelectedImage(result);
@@ -166,7 +201,7 @@ export default function FeedSection({
         setUploadingImage(false);
       };
       img.onerror = () => {
-        setSelectedImage(result);
+        alert("Could not process image file.");
         setUploadingImage(false);
       };
       img.src = result;
@@ -184,12 +219,35 @@ export default function FeedSection({
       const res = await fetch(`/api/feed?filter=${selectedFilter}`);
       if (!res.ok) throw new Error("Failed to load feed");
       const json = await res.json();
-      setFeed(json.feed || []);
+      const serverPosts: FeedItemData[] = json.feed || [];
+      const localPosts = getLocalFeedPosts();
+
+      // Merge server posts with local posts so that user-created posts and photos NEVER vanish
+      const map = new Map<string, FeedItemData>();
+      // First insert server posts
+      serverPosts.forEach((p) => map.set(p.id, p));
+      // Then overlay any locally saved posts not yet on server or dropped by serverless cold start
+      localPosts.forEach((p) => {
+        if (!map.has(p.id)) {
+          map.set(p.id, p);
+        }
+      });
+
+      const merged = Array.from(map.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      setFeed(merged);
       if (json.currentUser?.institutionId) {
         institutionIdRef.current = json.currentUser.institutionId;
       }
     } catch (err) {
       console.error("Error fetching feed:", err);
+      // Even if network fails, display local posts
+      const localPosts = getLocalFeedPosts();
+      if (localPosts.length > 0) {
+        setFeed(localPosts);
+      }
     } finally {
       if (!silent) setLoading(false);
     }
@@ -274,6 +332,10 @@ export default function FeedSection({
   // Post Submission
   async function handleCreatePost(e: React.FormEvent) {
     e.preventDefault();
+    if (uploadingImage) {
+      alert("Your photo is still optimizing. Please wait a moment...");
+      return;
+    }
     if (!newPostText.trim() && !selectedImage) return;
 
     try {
@@ -291,15 +353,36 @@ export default function FeedSection({
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to post");
 
+      const createdItem: FeedItemData = result.feedItem;
+      if (createdItem) {
+        // Persist to local cache so the post and its image NEVER vanish on this device
+        saveLocalFeedPost(createdItem);
+        // Prepend directly to active feed
+        setFeed((prev) => [createdItem, ...prev.filter((p) => p.id !== createdItem.id)]);
+      }
+
       setNewPostText("");
       setSelectedImage(null);
-      setSuccessMessage("Update shared live with your alumni network!");
-      await fetchFeed(filter, true);
+      setSuccessMessage("Update and photo shared live with your alumni network!");
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error creating post");
     } finally {
       setPosting(false);
+    }
+  }
+
+  // Delete Post Handler
+  async function handleDeletePost(postId: string) {
+    if (!confirm("Are you sure you want to delete this post?")) return;
+
+    setFeed((prev) => prev.filter((item) => item.id !== postId));
+    removeLocalFeedPost(postId);
+
+    try {
+      await fetch(`/api/feed/${postId}`, { method: "DELETE" });
+    } catch (err) {
+      console.warn("Delete post error:", err);
     }
   }
 
@@ -491,11 +574,20 @@ export default function FeedSection({
               type="text"
               value={newPostText}
               onChange={(e) => setNewPostText(e.target.value)}
+              disabled={posting || uploadingImage}
               placeholder="Share an update, placement, or tip with your alumni network..."
-              className="w-full bg-slate-100 hover:bg-slate-100/80 focus:bg-white text-xs text-slate-900 placeholder:text-slate-400 rounded-2xl px-4 py-2.5 border border-transparent focus:border-blue-400 focus:outline-none transition"
+              className="w-full bg-slate-100 hover:bg-slate-100/80 focus:bg-white text-xs text-slate-900 placeholder:text-slate-400 rounded-2xl px-4 py-2.5 border border-transparent focus:border-blue-400 focus:outline-none transition disabled:opacity-60"
             />
           </form>
         </div>
+
+        {/* Uploading / Processing Image Progress */}
+        {uploadingImage && (
+          <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-blue-50 border border-blue-200/80 text-xs text-blue-700 font-medium">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />
+            <span>Optimizing and compressing photo for instant feed display...</span>
+          </div>
+        )}
 
         {/* Selected Image Thumbnail Preview */}
         {selectedImage && (
@@ -531,7 +623,8 @@ export default function FeedSection({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1 hover:text-blue-600 cursor-pointer p-1 rounded-lg transition"
+              disabled={posting || uploadingImage}
+              className="flex items-center gap-1 hover:text-blue-600 cursor-pointer p-1 rounded-lg transition disabled:opacity-50"
             >
               <ImageIcon className="w-4 h-4 text-emerald-500" />
               <span className="font-medium text-slate-600 hover:text-blue-600">
@@ -562,11 +655,25 @@ export default function FeedSection({
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleCreatePost}
-            disabled={posting || (!newPostText.trim() && !selectedImage)}
+            disabled={posting || uploadingImage || (!newPostText.trim() && !selectedImage)}
             className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-sm"
           >
-            <Send className="w-3.5 h-3.5" />
-            {posting ? "Posting..." : "Post"}
+            {posting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Posting...</span>
+              </>
+            ) : uploadingImage ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Processing...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-3.5 h-3.5" />
+                <span>Post</span>
+              </>
+            )}
           </motion.button>
         </div>
       </motion.div>
@@ -628,11 +735,23 @@ export default function FeedSection({
                     </div>
                   </div>
 
-                  {item.metadata.badge && (
-                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
-                      {item.metadata.badge}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {item.metadata.badge && (
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                        {item.metadata.badge}
+                      </span>
+                    )}
+                    {item.actor.name === currentUserName && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePost(item.id)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                        title="Delete this post"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Post Content */}
@@ -649,6 +768,7 @@ export default function FeedSection({
                     <img
                       src={item.metadata.imageUrl}
                       alt="Post visual"
+                      loading="lazy"
                       className="w-full h-auto max-h-[460px] object-cover rounded-2xl"
                     />
                   </div>
