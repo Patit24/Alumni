@@ -448,12 +448,13 @@ export default function MessagesHubPage() {
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* My QR Code Button */}
               <button
+                type="button"
                 onClick={() => setShowQrModal(true)}
-                className="h-8 sm:h-9 px-2 sm:px-2.5 rounded-xl bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200/60 transition flex items-center gap-1"
+                className="h-8 sm:h-9 px-2.5 rounded-xl bg-indigo-50/90 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200/70 transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs"
                 title="My Connect QR Code & Key Exchange"
               >
                 <QrCode className="w-3.5 h-3.5 text-indigo-600" />
-                <span className="hidden sm:inline">My QR</span>
+                <span className="inline font-bold">My QR</span>
               </button>
 
               {/* Desktop-only secondary buttons */}
@@ -503,6 +504,14 @@ export default function MessagesHubPage() {
 
           {/* Mobile-only Quick Action Pills Bar */}
           <div className="flex sm:hidden items-center gap-2 overflow-x-auto scrollbar-none pb-0.5 pt-0.5">
+            <button
+              type="button"
+              onClick={() => setShowQrModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-[11px] font-bold transition shrink-0 shadow-xs active:scale-95 cursor-pointer"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <span>My QR</span>
+            </button>
             <button
               onClick={() => setShowSyncModal(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/90 border border-slate-200 text-slate-700 text-[11px] font-semibold transition shrink-0 shadow-2xs active:scale-98"

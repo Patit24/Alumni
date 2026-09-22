@@ -52,28 +52,45 @@ export default function QRCodeModal({
     ? `${window.location.origin}/messages?connect=${encodeURIComponent(username)}`
     : `https://alumni-pink.vercel.app/messages?connect=${encodeURIComponent(username)}`;
 
-  // Generate QR Code data URL
+  const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=${encodeURIComponent(connectPayload)}`;
+
+  // Generate QR Code vector SVG or use instant fallback
   useEffect(() => {
     if (!isOpen) return;
 
-    QRCode.toDataURL(
-      connectPayload,
-      {
-        width: 320,
-        margin: 2,
-        color: {
-          dark: "#0f172a",
-          light: "#ffffff",
-        },
-        errorCorrectionLevel: "M",
-      },
-      (err, url) => {
-        if (!err && url) {
-          setQrDataUrl(url);
-        }
+    // Set immediate reliable fallback so there is never a blank screen
+    setQrDataUrl((prev) => prev || fallbackQrUrl);
+
+    try {
+      const qrcodeLib = QRCode as any;
+      const toStringFn = qrcodeLib?.toString || qrcodeLib?.default?.toString;
+
+      if (typeof toStringFn === "function") {
+        toStringFn(connectPayload, {
+          type: "svg",
+          margin: 2,
+          color: {
+            dark: "#0f172a",
+            light: "#ffffff",
+          },
+        })
+          .then((svg: string) => {
+            if (svg && svg.includes("<svg")) {
+              setQrDataUrl(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+            }
+          })
+          .catch((err: any) => {
+            console.warn("SVG QR generation fallback:", err);
+            setQrDataUrl(fallbackQrUrl);
+          });
+      } else {
+        setQrDataUrl(fallbackQrUrl);
       }
-    );
-  }, [isOpen, connectPayload]);
+    } catch (e) {
+      console.warn("QR catch, using fallback:", e);
+      setQrDataUrl(fallbackQrUrl);
+    }
+  }, [isOpen, connectPayload, fallbackQrUrl]);
 
   if (!isOpen) return null;
 
@@ -154,8 +171,14 @@ export default function QRCodeModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="w-full max-w-sm bg-white rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm bg-white rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4"
+      >
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -205,18 +228,12 @@ export default function QRCodeModal({
         {tab === "MY_CODE" && (
           <div className="space-y-4 text-center">
             <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs inline-block">
-              {qrDataUrl ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={qrDataUrl}
-                  alt="My Connect QR Code"
-                  className="w-56 h-56 mx-auto rounded-xl"
-                />
-              ) : (
-                <div className="w-56 h-56 flex items-center justify-center bg-slate-50 rounded-xl text-xs text-slate-400">
-                  Generating cryptographic QR...
-                </div>
-              )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={qrDataUrl || fallbackQrUrl}
+                alt="My Connect QR Code"
+                className="w-56 h-56 mx-auto rounded-xl bg-white"
+              />
             </div>
 
             <div>
