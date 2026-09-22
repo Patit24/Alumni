@@ -361,17 +361,50 @@ model EncryptedMessageQueue {
 
 // User communication privacy settings
 model UserPrivacySettings {
-  id                   String   @id @default(cuid())
-  userId               String   @unique
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  readReceipts         Boolean  @default(true)
-  typingIndicators     Boolean  @default(true)
-  onlineStatus         Boolean  @default(true)
-  lastSeen             Boolean  @default(false)
-  allowCallsFrom       String   @default("EVERYONE") // "EVERYONE", "VERIFIED_ONLY", "BATCH_ONLY"
-  disappearingDefault  Int      @default(0) // 0 = off, seconds: 30, 60, 3600, 86400, 604800
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readReceipts            Boolean  @default(true)
+  typingIndicators        Boolean  @default(true)
+  onlineStatus            Boolean  @default(true)
+  lastSeen                Boolean  @default(false)
+  allowCallsFrom          String   @default("EVERYONE") // "EVERYONE", "VERIFIED_ONLY", "BATCH_ONLY"
+  disappearingDefault     Int      @default(0) // 0 = off, seconds: 30, 60, 3600, 86400, 604800
+  privacyLockActive       Boolean  @default(false) // Emergency Privacy Lock mode
+  ghostNotifications      Boolean  @default(true) // Ghost Notifications ("New message", no preview)
+  screenshotAlert         Boolean  @default(true) // Detect and alert on screenshot/recording events
+  contactDiscoveryEnabled Boolean  @default(true) // Allow discovery via hashed contact matching
+  presenceVisibility     String   @default("LIMITED") // "EVERYONE", "CONTACTS", "TRUSTED", "CHATTING_ONLY", "NOBODY"
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+// Contact Trust Levels & Mutual Reveal Handshake
+model ContactTrust {
+  id                  String   @id @default(cuid())
+  userId              String
+  contactId           String
+  trustLevel          String   @default("REQUEST") // "UNKNOWN", "REQUEST", "CONNECTED", "TRUSTED", "BLOCKED"
+  revealedPhone       Boolean  @default(false)
+  revealedEmail       Boolean  @default(false)
+  revealedWork        Boolean  @default(false)
+  verifiedFingerprint String?  // Verified 30-digit safety fingerprint
+  verifiedAt          DateTime?
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+
+  @@unique([userId, contactId])
+  @@index([userId])
+}
+
+// Rotated Identity History (retired public discovery handles)
+model RotatedUsername {
+  id         String   @id @default(cuid())
+  userId     String
+  username   String   @unique
+  rotatedAt  DateTime @default(now())
+
+  @@index([userId])
 }
 
 // Blocked users
@@ -393,4 +426,5 @@ model UserReport {
   reason      String
   createdAt   DateTime @default(now())
 }
+
 

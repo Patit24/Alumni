@@ -1,0 +1,125 @@
+import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
+import { db } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+
+// GET /api/contacts/trust?contactId=...
+export async function GET(req: Request) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const contactId = searchParams.get("contactId")?.trim();
+    if (!contactId) {
+      return NextResponse.json({ error: "contactId is required" }, { status: 400 });
+    }
+
+    // 1. My trust settings towards this contact
+    const myTrust = await db.contactTrust.findUnique({
+      where: {
+        userId_contactId: {
+          userId: user.id,
+          contactId,
+        },
+      },
+    });
+
+    // 2. Peer's trust settings towards me (to know what they revealed to me)
+    const peerTrust = await db.contactTrust.findUnique({
+      where: {
+        userId_contactId: {
+          userId: contactId,
+          contactId: user.id,
+        },
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      trustLevel: myTrust?.trustLevel || "REQUEST",
+      isVerified: Boolean(myTrust?.verifiedFingerprint),
+      verifiedFingerprint: myTrust?.verifiedFingerprint || null,
+      myReveals: {
+        phone: myTrust?.revealedPhone || false,
+        email: myTrust?.revealedEmail || false,
+        work: myTrust?.revealedWork || false,
+      },
+      peerReveals: {
+        phone: peerTrust?.revealedPhone || false,
+        email: peerTrust?.revealedEmail || false,
+        work: peerTrust?.revealedWork || false,
+      },
+    });
+  } catch (error: any) {
+    console.error("Fetch contact trust error:", error);
+    return NextResponse.json({ error: "Failed to fetch trust state" }, { status: 500 });
+  }
+}
+
+// POST /api/contacts/trust
+export async function POST(req: Request) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const {
+      contactId,
+      trustLevel,
+      revealedPhone,
+      revealedEmail,
+      revealedWork,
+      verifiedFingerprint,
+    } = body;
+
+    if (!contactId) {
+      return NextResponse.json({ error: "contactId is required" }, { status: 400 });
+    }
+
+    const validLevels = ["UNKNOWN", "REQUEST", "CONNECTED", "TRUSTED", "BLOCKED"];
+    if (trustLevel && !validLevels.includes(trustLevel)) {
+      return NextResponse.json({ error: "Invalid trust level" }, { status: 400 });
+    }
+
+    const updateData: any = {};
+    if (trustLevel) updateData.trustLevel = trustLevel;
+    if (typeof revealedPhone === "boolean") updateData.revealedPhone = revealedPhone;
+    if (typeof revealedEmail === "boolean") updateData.revealedEmail = revealedEmail;
+    if (typeof revealedWork === "boolean") updateData.revealedWork = revealedWork;
+    if (verifiedFingerprint !== undefined) {
+      updateData.verifiedFingerprint = verifiedFingerprint;
+      updateData.verifiedAt = verifiedFingerprint ? new Date() : null;
+    }
+
+    const trust = await db.contactTrust.upsert({
+      where: {
+        userId_contactId: {
+          userId: user.id,
+          contactId,
+        },
+      },
+      update: updateData,
+      create: {
+        userId: user.id,
+        contactId,
+        trustLevel: trustLevel || "REQUEST",
+        revealedPhone: revealedPhone || false,
+        revealedEmail: revealedEmail || false,
+        revealedWork: revealedWork || false,
+        verifiedFingerprint: verifiedFingerprint || null,
+        verifiedAt: verifiedFingerprint ? new Date() : null,
+      },
+    });
+
+    return NextResponse.json({ success: true, trust });
+  } catch (error: any) {
+    console.error("Update contact trust error:", error);
+    return NextResponse.json({ error: "Failed to update trust state" }, { status: 500 });
+  }
+}

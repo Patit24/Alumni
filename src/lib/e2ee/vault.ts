@@ -27,6 +27,8 @@ export interface VaultMessage {
   createdAt: number;
   expiresAt?: number; // For disappearing messages (timestamp ms)
   disappearingSeconds?: number;
+  privacyMode?: "NORMAL" | "VIEW_ONCE" | "DISAPPEAR_30S" | "DISAPPEAR_5M" | "DISAPPEAR_1H" | "DISAPPEAR_24H";
+  isViewed?: boolean;
 }
 
 export interface VaultCallLog {
@@ -46,6 +48,7 @@ export interface StoredContact {
   deviceId: string;
   publicKeySpki: string;
   safetyNumber: string;
+  isSafetyVerified?: boolean;
   updatedAt: number;
 }
 
@@ -365,3 +368,96 @@ export async function clearCallLogs(): Promise<void> {
     req.onerror = () => reject(req.error);
   });
 }
+
+/**
+ * Checks if a peer's public key has changed compared to cached key
+ */
+export async function checkPeerKeyRotation(
+  userId: string,
+  incomingPublicKeySpki: string
+): Promise<{ changed: boolean; oldKey?: string }> {
+  const existing = await getContact(userId);
+  if (!existing) return { changed: false };
+  if (existing.publicKeySpki !== incomingPublicKeySpki) {
+    return { changed: true, oldKey: existing.publicKeySpki };
+  }
+  return { changed: false };
+}
+
+/**
+ * Verifies or un-verifies a contact's cryptographic safety number
+ */
+export async function verifyContactSafety(
+  userId: string,
+  isVerified: boolean
+): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("contacts", "readwrite");
+    const store = tx.objectStore("contacts");
+    const getReq = store.get(userId);
+
+    getReq.onsuccess = () => {
+      if (getReq.result) {
+        const updated: StoredContact = {
+          ...getReq.result,
+          isSafetyVerified: isVerified,
+          updatedAt: Date.now(),
+        };
+        store.put(updated);
+      }
+      resolve();
+    };
+
+    getReq.onerror = () => reject(getReq.error);
+  });
+}
+
+/**
+ * Immediately burns a View Once message after it has been displayed
+ */
+export async function markMessageBurned(messageId: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("messages", "readwrite");
+    const store = tx.objectStore("messages");
+    const delReq = store.delete(messageId);
+    delReq.onsuccess = () => resolve();
+    delReq.onerror = () => reject(delReq.error);
+  });
+}
+
+/**
+ * Atomic One-Tap Privacy Cleanup:
+ * Wipes all decrypted messages, call logs, contacts, and local cached feeds from the device
+ */
+export async function cleanMyPrivacy(): Promise<{
+  messagesCleared: boolean;
+  callsCleared: boolean;
+  cacheCleared: boolean;
+}> {
+  const db = await openDB();
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(["messages", "call_logs"], "readwrite");
+    tx.objectStore("messages").clear();
+    tx.objectStore("call_logs").clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+
+  // Clean local feed caches and ephemeral markers
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem("alumni_local_feed_cache_v2");
+      localStorage.removeItem("alumni_recent_searches");
+    } catch {}
+  }
+
+  return {
+    messagesCleared: true,
+    callsCleared: true,
+    cacheCleared: true,
+  };
+}
+

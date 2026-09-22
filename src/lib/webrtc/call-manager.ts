@@ -301,8 +301,27 @@ export class WebRTCManager {
     }
   }
 
+  private isPrivacyLockActive: boolean = false;
+
+  setPrivacyLock(active: boolean) {
+    this.isPrivacyLockActive = active;
+  }
+
   // Handle incoming call alert
   handleIncomingCall(callId: string, callerId: string, callerName: string, callType: CallType) {
+    if (this.isPrivacyLockActive) {
+      // Privacy Lock active: silently auto-reject call without ringing or exposing presence
+      if (this.onSendSignalCb) {
+        this.onSendSignalCb({
+          callId,
+          senderId: "",
+          type: "REJECT",
+          reason: "PRIVACY_LOCK",
+        });
+      }
+      return;
+    }
+
     if (this.callState !== "IDLE") {
       // Busy: reject incoming request
       if (this.onSendSignalCb) {

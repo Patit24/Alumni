@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from "react";
+import { useEffect, useState, useRef, use, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -21,6 +21,16 @@ import {
   KeyRound,
   ShieldAlert,
   Loader2,
+  Flame,
+  UserCheck,
+  UserX,
+  Share2,
+  Eye,
+  EyeOff,
+  Sparkles,
+  Info,
+  X,
+  Scan,
 } from "lucide-react";
 import {
   getOrCreateDeviceIdentity,
@@ -29,6 +39,9 @@ import {
   deleteLocalMessage,
   clearLocalConversation,
   searchLocalMessages,
+  checkPeerKeyRotation,
+  verifyContactSafety,
+  markMessageBurned,
   VaultMessage,
 } from "@/lib/e2ee/vault";
 import {
@@ -43,11 +56,23 @@ import { webrtcManager } from "@/lib/webrtc/call-manager";
 interface PeerProfile {
   id: string;
   name: string;
+  username?: string | null;
   currentRole: string | null;
   currentCompany: string | null;
   batchYear: number;
   verificationStatus: string;
+  phone?: string | null;
+  email?: string | null;
+  institution?: { name: string } | null;
 }
+
+type MessagePrivacyMode =
+  | "NORMAL"
+  | "VIEW_ONCE"
+  | "DISAPPEAR_30S"
+  | "DISAPPEAR_5M"
+  | "DISAPPEAR_1H"
+  | "DISAPPEAR_24H";
 
 export default function DirectMessageChatPage(props: {
   params: Promise<{ id: string }>;
@@ -67,12 +92,21 @@ export default function DirectMessageChatPage(props: {
   const [safetyNumber, setSafetyNumber] = useState<string | null>(null);
   const [myDeviceId, setMyDeviceId] = useState<string>("");
 
+  // Privacy & Trust States
+  const [trustLevel, setTrustLevel] = useState<"UNKNOWN" | "REQUEST" | "CONNECTED" | "TRUSTED" | "BLOCKED">("REQUEST");
+  const [isSafetyVerified, setIsSafetyVerified] = useState(false);
+  const [keyRotatedWarning, setKeyRotatedWarning] = useState(false);
+  const [peerReveals, setPeerReveals] = useState({ phone: false, email: false, work: false });
+  const [myReveals, setMyReveals] = useState({ phone: false, email: false, work: false });
+  const [messagePrivacy, setMessagePrivacy] = useState<MessagePrivacyMode>("NORMAL");
+  const [screenNotice, setScreenNotice] = useState<string | null>(null);
+
   // Modals & Drawers
   const [showMenu, setShowMenu] = useState(false);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
-  const [disappearingSeconds, setDisappearingSeconds] = useState(0); // 0 = off
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
+  const [showRevealModal, setShowRevealModal] = useState(false);
+  const [showPrivacyPicker, setShowPrivacyPicker] = useState(false);
+  const [viewedOnceSet, setViewedOnceSet] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -81,7 +115,7 @@ export default function DirectMessageChatPage(props: {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // 1. Initialize Cryptographic Identity, Shared Key & Local Vault
+  // 1. Initialize Cryptographic Identity, Shared Key, Trust & Local Vault
   useEffect(() => {
     let unsubscribeMsg: (() => void) | null = null;
     let unsubscribeStatus: (() => void) | null = null;
@@ -102,11 +136,25 @@ export default function DirectMessageChatPage(props: {
         setCurrentUser({ id: user.id, name: user.name });
 
         // Fetch peer profile from directory
-        const peerRes = await fetch(`/api/directory?id=${peerId}`);
+        const [peerRes, trustRes] = await Promise.all([
+          fetch(`/api/directory?id=${peerId}`),
+          fetch(`/api/contacts/trust?contactId=${peerId}`),
+        ]);
+
         if (peerRes.ok) {
           const pData = await peerRes.json();
-          const target = pData.users?.find((u: PeerProfile) => u.id === peerId);
+          const target = pData.alumni?.find((u: PeerProfile) => u.id === peerId) || pData.alumni?.[0];
           if (target) setPeer(target);
+        }
+
+        if (trustRes.ok) {
+          const tData = await trustRes.json();
+          if (tData.success) {
+            setTrustLevel(tData.trustLevel);
+            setIsSafetyVerified(tData.isVerified);
+            if (tData.peerReveals) setPeerReveals(tData.peerReveals);
+            if (tData.myReveals) setMyReveals(tData.myReveals);
+          }
         }
 
         // Get or generate local device E2EE keys
@@ -129,10 +177,17 @@ export default function DirectMessageChatPage(props: {
         const devData = await devRes.json();
         let peerPubKeySpki: string | null = null;
 
-        if (devData.devices && devData.devices.length > 0) {
+        if (devData.devices && devData.devices.length > 0 && devData.devices[0].publicKey) {
           peerPubKeySpki = devData.devices[0].publicKey;
+
+          // Check if peer's public key rotated unexpectedly
+          if (peerPubKeySpki) {
+            const rotCheck = await checkPeerKeyRotation(peerId, peerPubKeySpki);
+            if (rotCheck.changed) {
+              setKeyRotatedWarning(true);
+            }
+          }
         } else {
-          // If peer hasn't registered yet, generate an ephemeral mock identity so chat doesn't fail
           peerPubKeySpki = localIdentity.publicKeySpki;
         }
 
@@ -141,7 +196,7 @@ export default function DirectMessageChatPage(props: {
           const derivedKey = await deriveSharedSessionKey(localIdentity.privateKey, peerKey);
           setSharedKey(derivedKey);
 
-          // Compute safety number fingerprint
+          // Compute 30-digit safety fingerprint
           const fingerprint = await generateSafetyNumber(
             localIdentity.publicKeySpki,
             peerPubKeySpki
@@ -200,6 +255,29 @@ export default function DirectMessageChatPage(props: {
     scrollToBottom();
   }, [messages]);
 
+  // Screen capture & window blur heuristic awareness listener
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // App backgrounded / window minimized
+      }
+    };
+
+    const handleKeydown = (e: KeyboardEvent) => {
+      if (e.key === "PrintScreen" || (e.metaKey && e.shiftKey && (e.key === "3" || e.key === "4"))) {
+        setScreenNotice("Privacy Notice: Screen capture or focus change heuristic detected.");
+        setTimeout(() => setScreenNotice(null), 4000);
+      }
+    };
+
+    window.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("keydown", handleKeydown);
+    return () => {
+      window.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("keydown", handleKeydown);
+    };
+  }, []);
+
   // Handle typing status broadcast
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputText(e.target.value);
@@ -209,6 +287,24 @@ export default function DirectMessageChatPage(props: {
     typingTimeoutRef.current = setTimeout(() => {
       realtimeSignaling.sendTypingStatus(peerId, false);
     }, 1500);
+  };
+
+  // Helper to map privacy mode to expiring seconds
+  const getDisappearingSeconds = (mode: MessagePrivacyMode): number | undefined => {
+    switch (mode) {
+      case "DISAPPEAR_30S":
+        return 30;
+      case "DISAPPEAR_5M":
+        return 300;
+      case "DISAPPEAR_1H":
+        return 3600;
+      case "DISAPPEAR_24H":
+        return 86400;
+      case "VIEW_ONCE":
+        return 1; // Burns immediately
+      default:
+        return undefined;
+    }
   };
 
   // 2. Send End-to-End Encrypted Message
@@ -222,11 +318,13 @@ export default function DirectMessageChatPage(props: {
 
     try {
       const msgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const expiresAt = disappearingSeconds > 0 ? Date.now() + disappearingSeconds * 1000 : undefined;
+      const expireSec = getDisappearingSeconds(messagePrivacy);
+      const expiresAt = expireSec ? Date.now() + expireSec * 1000 : undefined;
 
       const structuredPayload = JSON.stringify({
         text: cleanText,
-        disappearingSeconds: disappearingSeconds > 0 ? disappearingSeconds : undefined,
+        privacyMode: messagePrivacy,
+        disappearingSeconds: expireSec,
       });
 
       // 1. Encrypt locally using AES-256-GCM
@@ -242,7 +340,8 @@ export default function DirectMessageChatPage(props: {
         status: "SENDING",
         createdAt: Date.now(),
         expiresAt,
-        disappearingSeconds: disappearingSeconds > 0 ? disappearingSeconds : undefined,
+        disappearingSeconds: expireSec,
+        privacyMode: messagePrivacy,
       };
 
       await saveLocalMessage(localMsg);
@@ -275,13 +374,90 @@ export default function DirectMessageChatPage(props: {
     }
   };
 
-  // Start Voice Call
+  // View-Once Handler
+  const handleRevealViewOnce = async (msg: VaultMessage) => {
+    setViewedOnceSet((prev) => new Set(prev).add(msg.id));
+    // Burn from local storage after 8 seconds
+    setTimeout(async () => {
+      await markMessageBurned(msg.id);
+      setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    }, 8000);
+  };
+
+  // Trust Handshake Actions
+  const handleUpdateTrust = async (newLevel: "CONNECTED" | "TRUSTED" | "BLOCKED") => {
+    try {
+      const res = await fetch("/api/contacts/trust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId: peerId,
+          trustLevel: newLevel,
+        }),
+      });
+      if (res.ok) {
+        setTrustLevel(newLevel);
+      }
+    } catch (e) {
+      console.error("Failed to update trust level:", e);
+    }
+  };
+
+  // Mark Safety Number Verified
+  const handleConfirmSafetyVerification = async () => {
+    if (!safetyNumber) return;
+    try {
+      await verifyContactSafety(peerId, true);
+      await fetch("/api/contacts/trust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId: peerId,
+          verifiedFingerprint: safetyNumber,
+        }),
+      });
+      setIsSafetyVerified(true);
+      setShowSafetyModal(false);
+    } catch (e) {
+      console.error("Failed to confirm safety number:", e);
+    }
+  };
+
+  // Toggle Mutual Reveal Fields
+  const handleToggleReveal = async (field: "phone" | "email" | "work") => {
+    const updated = { ...myReveals, [field]: !myReveals[field] };
+    setMyReveals(updated);
+    try {
+      await fetch("/api/contacts/trust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId: peerId,
+          revealedPhone: updated.phone,
+          revealedEmail: updated.email,
+          revealedWork: updated.work,
+        }),
+      });
+    } catch (e) {
+      console.error("Failed to update reveal setting:", e);
+    }
+  };
+
+  // Start Voice Call (Enforces Trust Level)
   const handleStartVoiceCall = () => {
+    if (trustLevel === "REQUEST" || trustLevel === "UNKNOWN") {
+      alert("Please accept and connect with this contact before starting voice calls.");
+      return;
+    }
     webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VOICE");
   };
 
-  // Start Video Call
+  // Start Video Call (Enforces Trust Level)
   const handleStartVideoCall = () => {
+    if (trustLevel === "REQUEST" || trustLevel === "UNKNOWN") {
+      alert("Please accept and connect with this contact before starting video calls.");
+      return;
+    }
     webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VIDEO");
   };
 
@@ -294,35 +470,16 @@ export default function DirectMessageChatPage(props: {
     }
   };
 
-  // Block User
-  const handleBlockUser = async () => {
-    if (confirm(`Block ${peer?.name || "this user"}? You will not receive messages or calls from them.`)) {
-      await fetch("/api/privacy/block", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: peerId }),
-      });
-      alert("User blocked");
-      router.push("/messages");
-    }
-  };
-
-  // Report User
-  const handleReportUser = async () => {
-    const reason = prompt("Enter the reason for reporting this user (spam, harassment, impersonation):");
-    if (reason) {
-      await fetch("/api/privacy/report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: peerId, reason }),
-      });
-      alert("Thank you. Report received and under review.");
-      setShowMenu(false);
-    }
-  };
-
   return (
-    <div className="flex flex-col h-screen bg-slate-100 max-w-3xl mx-auto border-x border-slate-200/80 shadow-md">
+    <div className="flex flex-col h-screen bg-slate-100 max-w-3xl mx-auto border-x border-slate-200/80 shadow-md relative">
+      {/* Screen Notice Heuristic Toast */}
+      {screenNotice && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-2xl bg-slate-900/90 text-white text-xs font-medium backdrop-blur shadow-lg flex items-center gap-2">
+          <Scan className="w-3.5 h-3.5 text-amber-400" />
+          <span>{screenNotice}</span>
+        </div>
+      )}
+
       {/* Top Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-3.5 py-2.5 flex items-center justify-between shadow-2xs">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -338,12 +495,18 @@ export default function DirectMessageChatPage(props: {
           </div>
 
           <div className="min-w-0">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <h2 className="text-xs font-bold text-slate-900 truncate">
                 {peer?.name || "Alumni Contact"}
               </h2>
-              {peer?.verificationStatus === "VERIFIED" && (
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              {isSafetyVerified ? (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.2 rounded" title="Cryptographically Verified">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" /> Verified
+                </span>
+              ) : (
+                peer?.verificationStatus === "VERIFIED" && (
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                )
               )}
             </div>
             <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">
@@ -353,8 +516,8 @@ export default function DirectMessageChatPage(props: {
                 <>
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                   <span>End-to-End Encrypted</span>
-                  {disappearingSeconds > 0 && (
-                    <span className="text-amber-600 font-medium">⏳ {disappearingSeconds}s</span>
+                  {messagePrivacy !== "NORMAL" && (
+                    <span className="text-amber-600 font-bold">🔥 Ephemeral</span>
                   )}
                 </>
               )}
@@ -366,16 +529,18 @@ export default function DirectMessageChatPage(props: {
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <button
             onClick={handleStartVoiceCall}
-            className="h-9 w-9 rounded-xl bg-slate-50 hover:bg-emerald-50 hover:text-emerald-600 text-slate-600 flex items-center justify-center transition"
-            title="Voice Call"
+            disabled={trustLevel === "REQUEST" || trustLevel === "UNKNOWN"}
+            className="h-9 w-9 rounded-xl bg-slate-50 hover:bg-emerald-50 hover:text-emerald-600 text-slate-600 flex items-center justify-center transition disabled:opacity-40"
+            title={trustLevel === "REQUEST" ? "Connect to enable calls" : "Voice Call"}
           >
             <Phone className="w-4 h-4" />
           </button>
 
           <button
             onClick={handleStartVideoCall}
-            className="h-9 w-9 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-slate-600 flex items-center justify-center transition"
-            title="Video Call"
+            disabled={trustLevel === "REQUEST" || trustLevel === "UNKNOWN"}
+            className="h-9 w-9 rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-slate-600 flex items-center justify-center transition disabled:opacity-40"
+            title={trustLevel === "REQUEST" ? "Connect to enable calls" : "Video Call"}
           >
             <Video className="w-4 h-4" />
           </button>
@@ -390,6 +555,48 @@ export default function DirectMessageChatPage(props: {
         </div>
       </header>
 
+      {/* Security Identity Changed Alert */}
+      {keyRotatedWarning && (
+        <div className="bg-amber-500 text-white px-4 py-2 text-xs font-semibold flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>⚠️ Security identity changed. Verify safety number before sending sensitive data.</span>
+          </div>
+          <button
+            onClick={() => setShowSafetyModal(true)}
+            className="px-2 py-0.5 rounded bg-white text-amber-900 font-bold text-[10px]"
+          >
+            Verify Fingerprint
+          </button>
+        </div>
+      )}
+
+      {/* Trust Level Handshake Bar (For UNKNOWN / REQUEST Contacts) */}
+      {(trustLevel === "REQUEST" || trustLevel === "UNKNOWN") && (
+        <div className="bg-blue-50 border-b border-blue-200/80 px-4 py-2.5 flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <ShieldAlert className="w-4 h-4 text-blue-600 shrink-0" />
+            <span className="text-blue-900 truncate">
+              <strong>Message Request:</strong> Limited profile visible. Connect to unlock voice/video calls.
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => handleUpdateTrust("CONNECTED")}
+              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition shadow-2xs"
+            >
+              Accept & Connect
+            </button>
+            <button
+              onClick={() => handleUpdateTrust("BLOCKED")}
+              className="px-2 py-1 rounded-lg bg-slate-200 hover:bg-rose-100 hover:text-rose-700 text-slate-700 font-semibold text-[11px] transition"
+            >
+              Block
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Options Dropdown Menu */}
       {showMenu && (
         <div className="absolute top-14 right-4 z-40 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 text-xs divide-y divide-slate-100">
@@ -399,81 +606,122 @@ export default function DirectMessageChatPage(props: {
                 setShowSafetyModal(true);
                 setShowMenu(false);
               }}
-              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+              className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-700"
             >
               <KeyRound className="w-4 h-4 text-indigo-600" />
-              Verify Safety Number
+              <span>Verify Safety Fingerprint</span>
             </button>
-          </div>
-
-          {/* Disappearing Messages Duration Selector */}
-          <div className="px-3.5 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-              <Clock className="w-3 h-3" /> Disappearing Messages
-            </p>
-            <select
-              value={disappearingSeconds}
-              onChange={(e) => setDisappearingSeconds(parseInt(e.target.value, 10))}
-              className="w-full p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium"
+            <button
+              onClick={() => {
+                setShowRevealModal(true);
+                setShowMenu(false);
+              }}
+              className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-700"
             >
-              <option value="0">Off (Keep messages)</option>
-              <option value="30">30 Seconds</option>
-              <option value="60">1 Minute</option>
-              <option value="300">5 Minutes</option>
-              <option value="3600">1 Hour</option>
-              <option value="86400">24 Hours</option>
-              <option value="604800">7 Days</option>
-            </select>
+              <Eye className="w-4 h-4 text-emerald-600" />
+              <span>Reveal More Profile Info</span>
+            </button>
+            {trustLevel !== "TRUSTED" ? (
+              <button
+                onClick={() => {
+                  handleUpdateTrust("TRUSTED");
+                  setShowMenu(false);
+                }}
+                className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-emerald-700"
+              >
+                <UserCheck className="w-4 h-4" />
+                <span>Mark as Trusted Contact</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  handleUpdateTrust("CONNECTED");
+                  setShowMenu(false);
+                }}
+                className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-600"
+              >
+                <Check className="w-4 h-4 text-emerald-600" />
+                <span>Trusted (Tap to Standard)</span>
+              </button>
+            )}
           </div>
 
           <div className="py-1">
             <button
               onClick={handleClearHistory}
-              className="w-full text-left px-3.5 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2"
+              className="w-full text-left px-4 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2 font-medium"
             >
-              <Trash2 className="w-4 h-4" /> Clear Local History
+              <Trash2 className="w-4 h-4" />
+              <span>Clear Local History</span>
             </button>
             <button
-              onClick={handleBlockUser}
-              className="w-full text-left px-3.5 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2"
+              onClick={() => {
+                handleUpdateTrust("BLOCKED");
+                setShowMenu(false);
+              }}
+              className="w-full text-left px-4 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2 font-medium"
             >
-              <ShieldAlert className="w-4 h-4" /> Block Contact
-            </button>
-            <button
-              onClick={handleReportUser}
-              className="w-full text-left px-3.5 py-2 hover:bg-slate-50 text-slate-700 flex items-center gap-2"
-            >
-              <AlertTriangle className="w-4 h-4 text-amber-500" /> Report Spam
+              <UserX className="w-4 h-4" />
+              <span>Block Contact</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Message Stream Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-slate-50 to-slate-100">
-        {/* Top Cryptographic Guarantee Notice */}
-        <div className="p-2.5 rounded-2xl bg-white/80 border border-slate-200/80 text-center max-w-sm mx-auto shadow-2xs">
-          <div className="flex items-center justify-center gap-1.5 text-emerald-700 font-bold text-[11px]">
-            <Lock className="w-3.5 h-3.5" /> End-to-End Encrypted
+      {/* Active Ephemeral Mode Indicator */}
+      {messagePrivacy !== "NORMAL" && (
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-3 py-1 text-[11px] font-bold flex items-center justify-between shadow-2xs">
+          <div className="flex items-center gap-1.5">
+            <Flame className="w-3.5 h-3.5 fill-white text-white" />
+            <span>
+              Ephemeral Active: {messagePrivacy === "VIEW_ONCE" ? "View-Once (burns immediately)" : messagePrivacy.replace("DISAPPEAR_", "Auto-delete in ")}
+            </span>
           </div>
-          <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">
-            Messages to this chat are secured with AES-256-GCM. No one outside of this chat, not even the server, can read them.
-          </p>
+          <button
+            onClick={() => setMessagePrivacy("NORMAL")}
+            className="text-white hover:underline text-[10px]"
+          >
+            Turn Off
+          </button>
         </div>
+      )}
 
+      {/* Messages Stream */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {loading ? (
-          <div className="py-10 flex flex-col items-center justify-center text-slate-400">
-            <Loader2 className="w-6 h-6 animate-spin mb-2" />
-            <span className="text-xs">Establishing secure session...</span>
+          <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-2">
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+            <p className="text-xs">Establishing end-to-end encrypted session...</p>
           </div>
         ) : messages.length === 0 ? (
-          <div className="py-16 text-center text-slate-400">
-            <p className="text-xs font-semibold">No messages yet</p>
-            <p className="text-[11px] mt-1">Send a greeting to start this encrypted chat 👋</p>
+          <div className="flex flex-col items-center justify-center h-full text-center space-y-3 max-w-sm mx-auto">
+            <div className="h-12 w-12 rounded-3xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-xs">
+              <Lock className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-800">
+                End-to-End Encrypted Session Established
+              </p>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                Messages and calls are secured with NIST P-256 ECDH + AES-256-GCM. Plaintext is never stored on our servers.
+              </p>
+            </div>
+
+            {/* Revealed Profile Info Badges if any */}
+            {(peerReveals.phone || peerReveals.email || peerReveals.work) && (
+              <div className="p-3 bg-white rounded-2xl border border-slate-200 text-left text-xs space-y-1 w-full">
+                <p className="text-[10px] uppercase font-bold text-slate-400">Revealed by {peer?.name}:</p>
+                {peerReveals.phone && peer?.phone && <p>📱 {peer.phone}</p>}
+                {peerReveals.email && peer?.email && <p>✉️ {peer.email}</p>}
+                {peerReveals.work && peer?.currentRole && <p>💼 {peer.currentRole} at {peer.currentCompany || "N/A"}</p>}
+              </div>
+            )}
           </div>
         ) : (
           messages.map((m) => {
             const isMe = m.senderId === currentUser?.id;
+            const isViewOnce = m.privacyMode === "VIEW_ONCE";
+            const isBurned = isViewOnce && viewedOnceSet.has(m.id);
 
             return (
               <div
@@ -483,11 +731,28 @@ export default function DirectMessageChatPage(props: {
                 <div
                   className={`max-w-[78%] sm:max-w-[70%] rounded-2xl px-3.5 py-2 text-xs shadow-2xs ${
                     isMe
-                      ? "bg-blue-600 text-white rounded-tr-xs"
-                      : "bg-white text-slate-900 border border-slate-200/80 rounded-tl-xs"
+                      ? "bg-blue-600 text-white rounded-br-xs"
+                      : "bg-white text-slate-900 border border-slate-200/80 rounded-bl-xs"
                   }`}
                 >
-                  <p className="leading-relaxed whitespace-pre-wrap break-words">{m.text}</p>
+                  {isViewOnce && !isMe ? (
+                    isBurned ? (
+                      <div className="flex items-center gap-1.5 italic text-slate-400">
+                        <Flame className="w-3.5 h-3.5 text-amber-500" />
+                        <span>💥 Burned after viewing</span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleRevealViewOnce(m)}
+                        className="py-1 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold flex items-center gap-1.5 transition"
+                      >
+                        <Flame className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Tap to View Once</span>
+                      </button>
+                    )
+                  ) : (
+                    <p className="leading-relaxed whitespace-pre-wrap break-words">{m.text}</p>
+                  )}
 
                   <div
                     className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${
@@ -501,8 +766,9 @@ export default function DirectMessageChatPage(props: {
                       })}
                     </span>
 
+                    {m.privacyMode === "VIEW_ONCE" && <span title="View Once">🔥</span>}
                     {m.disappearingSeconds && (
-                      <span title={`Disappears in ${m.disappearingSeconds}s`}>⏳</span>
+                      <span title={`Auto-deletes in ${m.disappearingSeconds}s`}>⏳</span>
                     )}
 
                     {isMe && (
@@ -524,23 +790,108 @@ export default function DirectMessageChatPage(props: {
       </div>
 
       {/* Bottom Message Input Bar */}
-      <footer className="sticky bottom-0 z-20 bg-white border-t border-slate-200 p-2.5 sm:p-3">
+      <footer className="sticky bottom-0 z-20 bg-white border-t border-slate-200 p-2.5 sm:p-3 space-y-2">
+        {/* Privacy Selector Strip */}
+        {showPrivacyPicker && (
+          <div className="p-2 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center gap-1.5 overflow-x-auto text-[11px] font-semibold text-slate-700">
+            <span className="text-slate-400 shrink-0 text-[10px] uppercase font-bold pl-1">Message Privacy:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setMessagePrivacy("NORMAL");
+                setShowPrivacyPicker(false);
+              }}
+              className={`py-1 px-2.5 rounded-xl transition ${
+                messagePrivacy === "NORMAL" ? "bg-white text-blue-700 shadow-2xs font-bold border border-slate-200" : "hover:bg-slate-200"
+              }`}
+            >
+              Standard E2EE
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMessagePrivacy("VIEW_ONCE");
+                setShowPrivacyPicker(false);
+              }}
+              className={`py-1 px-2.5 rounded-xl transition flex items-center gap-1 ${
+                messagePrivacy === "VIEW_ONCE" ? "bg-amber-500 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
+              }`}
+            >
+              <Flame className="w-3 h-3" /> View Once
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMessagePrivacy("DISAPPEAR_30S");
+                setShowPrivacyPicker(false);
+              }}
+              className={`py-1 px-2.5 rounded-xl transition ${
+                messagePrivacy === "DISAPPEAR_30S" ? "bg-slate-900 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
+              }`}
+            >
+              30s
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMessagePrivacy("DISAPPEAR_5M");
+                setShowPrivacyPicker(false);
+              }}
+              className={`py-1 px-2.5 rounded-xl transition ${
+                messagePrivacy === "DISAPPEAR_5M" ? "bg-slate-900 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
+              }`}
+            >
+              5m
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMessagePrivacy("DISAPPEAR_1H");
+                setShowPrivacyPicker(false);
+              }}
+              className={`py-1 px-2.5 rounded-xl transition ${
+                messagePrivacy === "DISAPPEAR_1H" ? "bg-slate-900 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
+              }`}
+            >
+              1h
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMessagePrivacy("DISAPPEAR_24H");
+                setShowPrivacyPicker(false);
+              }}
+              className={`py-1 px-2.5 rounded-xl transition ${
+                messagePrivacy === "DISAPPEAR_24H" ? "bg-slate-900 text-white shadow-2xs font-bold" : "hover:bg-slate-200"
+              }`}
+            >
+              24h
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-          {/* Quick Emoji Reaction */}
+          {/* Privacy Level Toggle Button */}
           <button
             type="button"
-            onClick={() => setInputText((prev) => prev + "👋")}
-            className="h-9 w-9 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition shrink-0"
-            title="Wave"
+            onClick={() => setShowPrivacyPicker(!showPrivacyPicker)}
+            className={`h-9 w-9 rounded-xl flex items-center justify-center transition shrink-0 ${
+              messagePrivacy !== "NORMAL"
+                ? "bg-amber-100 text-amber-800 font-bold border border-amber-300"
+                : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+            }`}
+            title="Choose per-message privacy level"
           >
-            👋
+            {messagePrivacy === "NORMAL" ? <Lock className="w-4 h-4" /> : <Flame className="w-4 h-4 text-amber-600" />}
           </button>
 
           <input
             type="text"
             placeholder={
-              disappearingSeconds > 0
-                ? `Encrypted message (disappears in ${disappearingSeconds}s)...`
+              messagePrivacy === "VIEW_ONCE"
+                ? "Send View-Once message (burns after viewing)..."
+                : messagePrivacy !== "NORMAL"
+                ? `Message disappears in ${messagePrivacy.replace("DISAPPEAR_", "").toLowerCase()}...`
                 : "Type an encrypted message..."
             }
             value={inputText}
@@ -567,20 +918,101 @@ export default function DirectMessageChatPage(props: {
               <KeyRound className="w-6 h-6" />
             </div>
 
-            <h3 className="text-sm font-bold text-slate-900">Safety Number Verification</h3>
+            <h3 className="text-sm font-bold text-slate-900">Safety Fingerprint Verification</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Verify this fingerprint with <strong>{peer?.name}</strong> in person or via video call to confirm no third party is intercepting your communication:
+              Compare this 30-digit cryptographic fingerprint with <strong>{peer?.name}</strong> in person or over video to confirm no MITM tampering:
             </p>
 
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs font-bold text-slate-800 tracking-wider">
               {safetyNumber || "Calculating fingerprint..."}
             </div>
 
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSafetyModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSafetyVerification}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Mark as Verified</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reveal More Info Modal */}
+      {showRevealModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">Mutual Profile Reveal</h3>
+              <button
+                onClick={() => setShowRevealModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              By default, contacts only see your username and alumni batch. Select what you would like to reveal to <strong>{peer?.name}</strong>:
+            </p>
+
+            <div className="space-y-2.5">
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-800">Phone Number</p>
+                  <p className="text-[10px] text-slate-400">Share your mobile contact</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={myReveals.phone}
+                  onChange={() => handleToggleReveal("phone")}
+                  className="h-4 w-4 text-blue-600 rounded"
+                />
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-800">Email Address</p>
+                  <p className="text-[10px] text-slate-400">Share your email contact</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={myReveals.email}
+                  onChange={() => handleToggleReveal("email")}
+                  className="h-4 w-4 text-blue-600 rounded"
+                />
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-800">Current Role & Company</p>
+                  <p className="text-[10px] text-slate-400">Share your workplace info</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={myReveals.work}
+                  onChange={() => handleToggleReveal("work")}
+                  className="h-4 w-4 text-blue-600 rounded"
+                />
+              </div>
+            </div>
+
             <button
-              onClick={() => setShowSafetyModal(false)}
-              className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition"
+              type="button"
+              onClick={() => setShowRevealModal(false)}
+              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs"
             >
-              Verified & Close
+              Done
             </button>
           </div>
         </div>

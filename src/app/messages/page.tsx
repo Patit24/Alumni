@@ -71,6 +71,7 @@ export default function MessagesHubPage() {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showSmsModal, setShowSmsModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [privacyLockActive, setPrivacyLockActive] = useState(false);
   const [currentUserProfile, setCurrentUserProfile] = useState<{
     id: string;
     name: string;
@@ -102,11 +103,17 @@ export default function MessagesHubPage() {
     async function loadData() {
       try {
         setLoading(true);
-        const [dirRes, calls, meRes] = await Promise.all([
+        const [dirRes, calls, meRes, lockRes] = await Promise.all([
           fetch("/api/directory?limit=50"),
           getCallLogs(),
           fetch("/api/auth/me"),
+          fetch("/api/privacy/lock"),
         ]);
+
+        if (lockRes.ok) {
+          const lData = await lockRes.json();
+          setPrivacyLockActive(lData.privacyLockActive || false);
+        }
 
         if (dirRes.ok) {
           const dirData = await dirRes.json();
@@ -405,6 +412,14 @@ export default function MessagesHubPage() {
             </button>
 
             <Link
+              href="/settings/privacy/dashboard"
+              className="h-9 w-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 flex items-center justify-center text-emerald-700 transition"
+              title="My Privacy Dashboard"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            </Link>
+
+            <Link
               href="/settings/privacy"
               className="h-9 w-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition"
               title="Privacy & Keys"
@@ -424,6 +439,25 @@ export default function MessagesHubPage() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 space-y-4">
+        {/* Emergency Privacy Lock Active Banner */}
+        {privacyLockActive && (
+          <div className="p-3.5 rounded-2xl bg-rose-600 text-white flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <Lock className="w-4 h-4 text-white shrink-0" />
+              <div>
+                <p className="text-xs font-bold">🔒 PRIVACY LOCK ACTIVE</p>
+                <p className="text-[11px] text-rose-100">Identity hidden, incoming calls auto-blocked, ghost mode active.</p>
+              </div>
+            </div>
+            <Link
+              href="/settings/privacy/dashboard"
+              className="px-3 py-1 rounded-xl bg-white text-rose-900 text-xs font-bold hover:bg-rose-50 transition shrink-0 shadow-2xs"
+            >
+              Unlock
+            </Link>
+          </div>
+        )}
+
         {/* E2EE Info Banner */}
         <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-start gap-3">
           <Lock className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />

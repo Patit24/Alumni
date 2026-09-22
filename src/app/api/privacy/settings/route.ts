@@ -53,6 +53,11 @@ export async function PUT(req: Request) {
       lastSeen,
       allowCallsFrom,
       disappearingDefault,
+      ghostNotifications,
+      screenshotAlert,
+      contactDiscoveryEnabled,
+      presenceVisibility,
+      privacyLockActive,
     } = body;
 
     const updated = await db.userPrivacySettings.upsert({
@@ -64,6 +69,11 @@ export async function PUT(req: Request) {
         ...(typeof lastSeen === "boolean" ? { lastSeen } : {}),
         ...(allowCallsFrom ? { allowCallsFrom } : {}),
         ...(typeof disappearingDefault === "number" ? { disappearingDefault } : {}),
+        ...(typeof ghostNotifications === "boolean" ? { ghostNotifications } : {}),
+        ...(typeof screenshotAlert === "boolean" ? { screenshotAlert } : {}),
+        ...(typeof contactDiscoveryEnabled === "boolean" ? { contactDiscoveryEnabled } : {}),
+        ...(presenceVisibility ? { presenceVisibility } : {}),
+        ...(typeof privacyLockActive === "boolean" ? { privacyLockActive } : {}),
       },
       create: {
         userId: user.id,
@@ -73,6 +83,11 @@ export async function PUT(req: Request) {
         lastSeen: lastSeen ?? false,
         allowCallsFrom: allowCallsFrom || "EVERYONE",
         disappearingDefault: disappearingDefault || 0,
+        ghostNotifications: ghostNotifications ?? true,
+        screenshotAlert: screenshotAlert ?? true,
+        contactDiscoveryEnabled: contactDiscoveryEnabled ?? true,
+        presenceVisibility: presenceVisibility || "LIMITED",
+        privacyLockActive: privacyLockActive ?? false,
       },
     });
 
