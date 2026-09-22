@@ -79,6 +79,7 @@ export default function MessagesHubPage() {
 
   // Modals
   const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [newChatSearch, setNewChatSearch] = useState("");
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [showSmsModal, setShowSmsModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
@@ -115,7 +116,7 @@ export default function MessagesHubPage() {
       try {
         setLoading(true);
         const [dirRes, calls, meRes, lockRes] = await Promise.all([
-          fetch("/api/directory?limit=50"),
+          fetch("/api/directory?limit=100&batchScope=all&institutionScope=all"),
           getCallLogs(),
           fetch("/api/auth/me"),
           fetch("/api/privacy/lock"),
@@ -155,7 +156,7 @@ export default function MessagesHubPage() {
           const connectTarget = params.get("connect");
           if (connectTarget) {
             const cleanTarget = connectTarget.trim().replace(/^@/, "");
-            const res = await fetch(`/api/directory?username=${encodeURIComponent(cleanTarget)}`);
+            let res = await fetch(`/api/directory?username=${encodeURIComponent(cleanTarget)}&batchScope=all&institutionScope=all`);
             if (res.ok) {
               const data = await res.json();
               const peer = data.alumni?.[0];
@@ -164,10 +165,19 @@ export default function MessagesHubPage() {
                 return;
               }
             }
-            // Fallback try by ID
-            const idRes = await fetch(`/api/directory?id=${encodeURIComponent(cleanTarget)}`);
+            // Fallback try by ID or name
+            let idRes = await fetch(`/api/directory?id=${encodeURIComponent(cleanTarget)}&batchScope=all&institutionScope=all`);
             if (idRes.ok) {
               const data = await idRes.json();
+              const peer = data.alumni?.[0];
+              if (peer) {
+                router.push(`/messages/${peer.id}`);
+                return;
+              }
+            }
+            let qRes = await fetch(`/api/directory?q=${encodeURIComponent(cleanTarget)}&batchScope=all&institutionScope=all`);
+            if (qRes.ok) {
+              const data = await qRes.json();
               const peer = data.alumni?.[0];
               if (peer) {
                 router.push(`/messages/${peer.id}`);
@@ -195,7 +205,7 @@ export default function MessagesHubPage() {
       setSearchingRemote(true);
       try {
         const cleanQuery = searchQuery.trim();
-        const res = await fetch(`/api/directory?q=${encodeURIComponent(cleanQuery)}&limit=50`);
+        const res = await fetch(`/api/directory?q=${encodeURIComponent(cleanQuery)}&limit=100&batchScope=all&institutionScope=all`);
         if (res.ok && isCurrent) {
           const data = await res.json();
           if (data.alumni) {
@@ -536,7 +546,7 @@ export default function MessagesHubPage() {
               triggerHaptic("medium");
               try {
                 const [dirRes, calls] = await Promise.all([
-                  fetch("/api/directory?limit=50"),
+                  fetch("/api/directory?limit=100&batchScope=all&institutionScope=all"),
                   getCallLogs(),
                 ]);
                 if (dirRes.ok) {
@@ -911,34 +921,67 @@ export default function MessagesHubPage() {
               </button>
             </div>
 
-            <p className="text-xs text-slate-500">
-              Select any alumni contact or search above by <strong>@username</strong>:
-            </p>
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search alumni by name or @username..."
+                value={newChatSearch}
+                onChange={(e) => setNewChatSearch(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+              {newChatSearch && (
+                <button
+                  type="button"
+                  onClick={() => setNewChatSearch("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
             <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
-              {contacts.map((c) => (
-                <div
-                  key={c.id}
-                  onClick={() => {
-                    setShowNewChatModal(false);
-                    router.push(`/messages/${c.id}`);
-                  }}
-                  className="py-2.5 px-2 flex items-center justify-between hover:bg-slate-50 rounded-xl cursor-pointer transition"
-                >
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-bold text-slate-900">{c.name}</p>
-                      {c.username && (
-                        <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
-                          @{c.username}
-                        </span>
-                      )}
+              {contacts
+                .filter((c) => {
+                  if (!newChatSearch.trim()) return true;
+                  const q = newChatSearch.toLowerCase().trim().replace(/^@/, "");
+                  return (
+                    c.name.toLowerCase().includes(q) ||
+                    (c.username && c.username.toLowerCase().includes(q)) ||
+                    (c.currentRole && c.currentRole.toLowerCase().includes(q)) ||
+                    (c.currentCompany && c.currentCompany.toLowerCase().includes(q))
+                  );
+                })
+                .map((c) => (
+                  <div
+                    key={c.id}
+                    onClick={() => {
+                      setShowNewChatModal(false);
+                      setNewChatSearch("");
+                      router.push(`/messages/${c.id}`);
+                    }}
+                    className="py-2.5 px-2 flex items-center justify-between hover:bg-slate-50 rounded-xl cursor-pointer transition"
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-slate-900">{c.name}</p>
+                        {c.username && (
+                          <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
+                            @{c.username}
+                          </span>
+                        )}
+                        {c.verificationStatus === "VERIFIED" && (
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        {c.currentRole || "Alumni"} {c.currentCompany ? `at ${c.currentCompany}` : ""} • Class of {c.batchYear}
+                      </p>
                     </div>
-                    <p className="text-[10px] text-slate-400">Class of {c.batchYear}</p>
+                    <span className="text-[11px] text-blue-600 font-bold">Start →</span>
                   </div>
-                  <span className="text-[11px] text-blue-600 font-bold">Start →</span>
-                </div>
-              ))}
+                ))}
             </div>
           </div>
         </div>

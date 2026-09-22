@@ -14,6 +14,8 @@ import {
   ArrowRight,
   ExternalLink,
   Lock,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -96,12 +98,18 @@ export default function QRCodeModal({
     }
   };
 
-  const handleConnectManual = (e: React.FormEvent) => {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const handleConnectManual = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = manualInput.trim();
     if (!clean) return;
 
     setResolving(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
     let target = clean;
     if (target.includes("connect=")) {
       const match = target.match(/connect=([^&]+)/);
@@ -109,8 +117,34 @@ export default function QRCodeModal({
     }
     target = target.replace(/^@/, "").trim();
 
-    onClose();
-    router.push(`/messages?connect=${encodeURIComponent(target)}`);
+    try {
+      // 1. Direct username lookup
+      let res = await fetch(`/api/directory?username=${encodeURIComponent(target)}&batchScope=all&institutionScope=all`);
+      let data = await res.json();
+      let peer = data.alumni?.[0];
+
+      // 2. Fallback query search by ID, phone, or name
+      if (!peer) {
+        res = await fetch(`/api/directory?q=${encodeURIComponent(target)}&batchScope=all&institutionScope=all`);
+        data = await res.json();
+        peer = data.alumni?.[0];
+      }
+
+      if (peer) {
+        setSuccessMessage(`Found ${peer.name} (@${peer.username || "alumni"})! Opening chat...`);
+        setTimeout(() => {
+          onClose();
+          router.push(`/messages/${peer.id}`);
+        }, 400);
+      } else {
+        setErrorMessage(`No alumni found with username or name "@${target}". Check the spelling or ask them to share their QR code.`);
+        setResolving(false);
+      }
+    } catch (err: any) {
+      console.error("Connect error:", err);
+      setErrorMessage("Network error while resolving profile. Please check connection.");
+      setResolving(false);
+    }
   };
 
   return (
@@ -247,13 +281,36 @@ export default function QRCodeModal({
                 />
               </div>
 
+              {errorMessage && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {successMessage && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] flex items-start gap-2">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>{successMessage}</span>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={!manualInput.trim() || resolving}
                 className="w-full py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
               >
-                <span>Connect & Start Chat</span>
-                <ArrowRight className="w-4 h-4" />
+                {resolving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Resolving Alumni Identity...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Connect & Start Chat</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
 

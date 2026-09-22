@@ -23,19 +23,26 @@ export async function GET(req: Request) {
     if (id) {
       where.id = id;
     } else if (usernameParam) {
-      const cleanUsername = usernameParam.startsWith("@") ? usernameParam.slice(1) : usernameParam;
-      where.username = cleanUsername;
+      const cleanUsername = usernameParam.startsWith("@") ? usernameParam.slice(1).trim() : usernameParam.trim();
+      where.OR = [
+        { username: { equals: cleanUsername } },
+        { username: { contains: cleanUsername } },
+        { name: { contains: cleanUsername } },
+      ];
     } else {
-      // 1. Institution filter
-      if (institutionScope === "my" && currentUser?.institutionId) {
-        where.institutionId = currentUser.institutionId;
-      }
+      // Only filter by batch/institution if NOT searching by query and NOT requesting "all"
+      if (!q) {
+        // 1. Institution filter
+        if (institutionScope === "my" && currentUser?.institutionId) {
+          where.institutionId = currentUser.institutionId;
+        }
 
-      // 2. Batch year filter
-      if (batchScope === "my" && currentUser?.batchYear) {
-        where.batchYear = currentUser.batchYear;
-      } else if (batchScope !== "all" && batchScope !== "my" && !isNaN(parseInt(batchScope, 10))) {
-        where.batchYear = parseInt(batchScope, 10);
+        // 2. Batch year filter
+        if (batchScope === "my" && currentUser?.batchYear) {
+          where.batchYear = currentUser.batchYear;
+        } else if (batchScope !== "all" && batchScope !== "my" && !isNaN(parseInt(batchScope, 10))) {
+          where.batchYear = parseInt(batchScope, 10);
+        }
       }
 
       // 3. City filter
@@ -50,15 +57,16 @@ export async function GET(req: Request) {
         };
       }
 
-      // 5. Search query
+      // 5. Search query (searches across all alumni globally)
       if (q) {
-        const cleanQ = q.startsWith("@") ? q.slice(1) : q;
+        const cleanQ = q.startsWith("@") ? q.slice(1).trim() : q.trim();
         where.OR = [
           { name: { contains: q } },
           { username: { contains: cleanQ } },
           { currentCompany: { contains: q } },
           { currentRole: { contains: q } },
           { city: { contains: q } },
+          { phone: { contains: cleanQ } },
         ];
       }
     }
