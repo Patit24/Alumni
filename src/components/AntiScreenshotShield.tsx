@@ -171,6 +171,7 @@ export default function AntiScreenshotShield() {
     window.addEventListener("keyup", handleKeyDown, true);
     window.addEventListener("blur", handleBlur);
     window.addEventListener("focus", handleFocus);
+    window.addEventListener("pagehide", handleBlur);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     document.documentElement.addEventListener("mouseleave", handleMouseLeave);
     document.addEventListener("contextmenu", handleContextMenu);
@@ -181,6 +182,7 @@ export default function AntiScreenshotShield() {
       window.removeEventListener("keyup", handleKeyDown, true);
       window.removeEventListener("blur", handleBlur);
       window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("pagehide", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
       document.removeEventListener("contextmenu", handleContextMenu);
@@ -197,15 +199,15 @@ export default function AntiScreenshotShield() {
 
   return (
     <>
-      {/* Indelible Forensic Anti-Leak Watermark (visible across page to deter screenshots and camera photos) */}
+      {/* Indelible Forensic Anti-Leak Watermark (rendered at z-[998] so it sits ON TOP of all content, headers, and messages) */}
       <div
         aria-hidden="true"
-        className="fixed inset-0 pointer-events-none z-30 overflow-hidden select-none opacity-[0.07] dark:opacity-[0.10] flex flex-wrap gap-24 p-8 justify-around content-around anti-screenshot-watermark"
+        className="fixed inset-0 pointer-events-none z-[998] overflow-hidden select-none flex flex-wrap gap-x-12 gap-y-16 p-4 justify-around content-around anti-screenshot-watermark"
       >
-        {Array.from({ length: 24 }).map((_, i) => (
+        {Array.from({ length: 36 }).map((_, i) => (
           <div
             key={i}
-            className="text-[11px] font-mono font-bold text-slate-900 dark:text-white tracking-widest -rotate-24 select-none whitespace-nowrap"
+            className="text-[12px] font-mono font-black text-slate-800/[0.16] dark:text-white/[0.20] tracking-wider -rotate-24 select-none whitespace-nowrap"
           >
             {userWatermark} • {todayStr} • CONFIDENTIAL
           </div>
