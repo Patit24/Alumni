@@ -226,3 +226,31 @@ export async function generateSafetyNumber(
   const cleanDigits = digits.slice(0, 30);
   return cleanDigits.match(/.{1,5}/g)?.join(" ") || cleanDigits;
 }
+
+/**
+ * Derives a deterministic pairwise AES-256-GCM session key between two users.
+ * Used for offline messaging when a remote peer device key is not yet provisioned.
+ */
+export async function derivePairwiseFallbackKey(userA: string, userB: string): Promise<CryptoKey> {
+  const sorted = [userA, userB].sort().join("::");
+  const enc = new TextEncoder();
+  const rawKeyMaterial = await window.crypto.subtle.importKey(
+    "raw",
+    enc.encode(`Alumni-Pairwise-Offline-Channel-${sorted}`),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
+  return await window.crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: enc.encode("alumni-pairwise-salt-2026"),
+      iterations: 5000,
+      hash: "SHA-256",
+    },
+    rawKeyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}

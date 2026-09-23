@@ -19,6 +19,7 @@ export interface VaultMessage {
   id: string;
   peerId: string;
   senderId: string;
+  senderName?: string;
   text: string;
   type: "TEXT" | "EMOJI" | "SIGNALING";
   replyToId?: string;

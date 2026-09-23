@@ -144,6 +144,16 @@ export default function GlobalRealtimeProvider() {
         // 4. Drain any pending offline messages from server queue
         await realtimeSignaling.drainPendingQueue();
 
+        // 0. Register Service Worker & Request Notification Permission for offline mobile alerts
+        if (typeof window !== "undefined") {
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("/sw.js").catch(() => {});
+          }
+          if ("Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission().catch(() => {});
+          }
+        }
+
         // 5. Global Message Received Listener
         // Read window.location.pathname live so we never need to re-subscribe on navigation.
         const unsubMsg = realtimeSignaling.onMessageReceived((msg: VaultMessage) => {
@@ -155,14 +165,60 @@ export default function GlobalRealtimeProvider() {
           // If user is NOT currently inside the specific chat with this sender
           const isCurrentlyInChat = window.location.pathname === `/messages/${msg.senderId}`;
           if (!isCurrentlyInChat) {
+            const senderName = msg.senderName || "A user";
+            const notificationTitle = `${senderName} is sms you`;
+            const notificationBody = "Tap and see sms";
+
+            // In-app interactive toast
             showNotificationToast({
               id: `toast_${Date.now()}`,
               type: "MESSAGE",
-              title: "New Encrypted Message",
-              subtitle: msg.text.slice(0, 50) || "Encrypted content",
+              title: notificationTitle,
+              subtitle: notificationBody,
               actionUrl: `/messages/${msg.senderId}`,
-              actionLabel: "Reply",
+              actionLabel: "Open",
             });
+
+            // Native mobile OS notification
+            if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+              if ("serviceWorker" in navigator) {
+                navigator.serviceWorker.ready.then((reg) => {
+                  reg.showNotification(notificationTitle, {
+                    body: notificationBody,
+                    icon: "/icons/icon-192x192.png",
+                    badge: "/icons/icon-192x192.png",
+                    vibrate: [200, 100, 200],
+                    tag: `chat_${msg.senderId}`,
+                    renotify: true,
+                    data: {
+                      url: `/messages/${msg.senderId}`,
+                    },
+                  } as any);
+                }).catch(() => {
+                  try {
+                    const notif = new Notification(notificationTitle, {
+                      body: notificationBody,
+                      icon: "/icons/icon-192x192.png",
+                    });
+                    notif.onclick = () => {
+                      window.focus();
+                      router.push(`/messages/${msg.senderId}`);
+                    };
+                  } catch {}
+                });
+              } else {
+                try {
+                  const notif = new Notification(notificationTitle, {
+                    body: notificationBody,
+                    icon: "/icons/icon-192x192.png",
+                  });
+                  notif.onclick = () => {
+                    window.focus();
+                    router.push(`/messages/${msg.senderId}`);
+                  };
+                } catch {}
+              }
+            }
           }
         });
         unsubs.push(unsubMsg);

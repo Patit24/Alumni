@@ -56,8 +56,14 @@ export async function POST(req: Request) {
       }),
     ]).catch(() => {});
 
-    // 7 days auto-expiration for undelivered encrypted payloads
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    // 2 days auto-expiration for undelivered encrypted payloads - automatically vanishes after 48 hours
+    const expiresAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+
+    // Proactively vanish any expired messages from the database
+    const now = new Date();
+    db.encryptedMessageQueue.deleteMany({
+      where: { expiresAt: { lte: now } },
+    }).catch(() => {});
 
     const serializedPayload =
       typeof encryptedPayload === "string"
@@ -85,19 +91,14 @@ export async function POST(req: Request) {
       },
     });
 
-    // Create ghost / privacy-respecting notification for recipient (zero plaintext stored!)
-    const recipientSettings = await db.userPrivacySettings.findUnique({
-      where: { userId: recipientId },
-    });
-
-    const isGhost = recipientSettings?.ghostNotifications !== false;
+    // Create instant notification record for recipient
     await db.appNotification.create({
       data: {
         userId: recipientId,
         actorId: user.id,
         type: "MESSAGE",
-        title: isGhost ? "New Message" : `New message from ${user.name}`,
-        body: isGhost ? "You received an encrypted message." : `${user.name} sent you an end-to-end encrypted message.`,
+        title: `New message from ${user.name}`,
+        body: `${user.name} sent you a message. Tap to open chat.`,
         data: JSON.stringify({
           queueId: queuedItem.id,
           senderId: user.id,
@@ -110,6 +111,7 @@ export async function POST(req: Request) {
     const deliveredRealtime = await sendRealtimeBroadcast(`p2p-signal:${recipientId}`, "encrypted-message", {
       queueId: queuedItem.id,
       senderId: user.id,
+      senderName: user.name,
       senderDeviceId,
       encryptedPayload: parsedPayloadObj,
       messageType,
@@ -147,7 +149,15 @@ export async function GET() {
       take: 100,
     });
 
-    // Clean up any expired messages asynchronously
+    // Fetch sender names for enriched notification and vault display
+    const senderIds = Array.from(new Set(pending.map((p) => p.senderId)));
+    const senders = await db.user.findMany({
+      where: { id: { in: senderIds } },
+      select: { id: true, name: true },
+    });
+    const senderMap = new Map(senders.map((s) => [s.id, s.name]));
+
+    // Clean up any expired messages asynchronously (older than 2 days)
     db.encryptedMessageQueue.deleteMany({
       where: {
         expiresAt: { lte: now },
@@ -159,6 +169,7 @@ export async function GET() {
       messages: pending.map((p) => ({
         id: p.id,
         senderId: p.senderId,
+        senderName: senderMap.get(p.senderId) || "Alumni Contact",
         senderDeviceId: p.senderDeviceId,
         encryptedPayload: p.encryptedPayload,
         messageType: p.messageType,

@@ -49,6 +49,7 @@ import {
 import {
   importPeerPublicKey,
   deriveSharedSessionKey,
+  derivePairwiseFallbackKey,
   encryptE2EEMessage,
   generateSafetyNumber,
 } from "@/lib/e2ee/crypto";
@@ -238,6 +239,10 @@ export default function DirectMessageChatPage(props: {
             peerPubKeySpki
           );
           setSafetyNumber(fingerprint);
+        } else {
+          // Auto-derive pairwise offline channel key so user can immediately send messages
+          const fallbackKey = await derivePairwiseFallbackKey(user.id, peerId);
+          setSharedKey(fallbackKey);
         }
 
         // Initialize Realtime Signaling
@@ -405,10 +410,12 @@ export default function DirectMessageChatPage(props: {
     }
 
     if (!activeSharedKey) {
-      // Peer hasn't opened the app yet — their key isn't registered.
-      // Show a brief notice rather than silently doing nothing.
-      alert("Peer device key not yet available. Ask them to open the app first.");
-      return;
+      try {
+        activeSharedKey = await derivePairwiseFallbackKey(currentUser.id, peerId);
+        setSharedKey(activeSharedKey);
+      } catch (err) {
+        console.warn("Fallback offline key derivation error:", err);
+      }
     }
 
     if (replyingTo) {
@@ -427,9 +434,15 @@ export default function DirectMessageChatPage(props: {
       const structuredPayload = JSON.stringify({
         id: msgId,
         text: cleanText,
+        senderName: currentUser.name,
         privacyMode: messagePrivacy,
         disappearingSeconds: expireSec,
       });
+
+      if (!activeSharedKey) {
+        activeSharedKey = await derivePairwiseFallbackKey(currentUser.id, peerId);
+        setSharedKey(activeSharedKey);
+      }
 
       // 1. Encrypt locally using AES-256-GCM
       const encrypted = await encryptE2EEMessage(activeSharedKey, structuredPayload);

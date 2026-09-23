@@ -15,6 +15,7 @@ import {
   deriveSharedSessionKey,
   importPeerPublicKey,
   decryptE2EEMessage,
+  derivePairwiseFallbackKey,
   EncryptedMessagePayload,
 } from "./crypto";
 
@@ -82,12 +83,14 @@ class RealtimeSignalingService {
       const {
         queueId,
         senderId,
+        senderName,
         encryptedPayload,
         messageType,
         createdAt,
       } = event.payload as {
         queueId?: string;
         senderId: string;
+        senderName?: string;
         senderDeviceId: string;
         encryptedPayload: EncryptedMessagePayload;
         messageType: string;
@@ -97,7 +100,7 @@ class RealtimeSignalingService {
       try {
         const payloadObj = typeof encryptedPayload === "string" ? JSON.parse(encryptedPayload) : encryptedPayload;
         const decryptedText = await this.decryptFromPeer(senderId, payloadObj);
-        let parsedData: { id?: string; text: string; replyToId?: string; replySnippet?: string; disappearingSeconds?: number } = {
+        let parsedData: { id?: string; text: string; senderName?: string; replyToId?: string; replySnippet?: string; disappearingSeconds?: number } = {
           text: decryptedText,
         };
 
@@ -116,6 +119,7 @@ class RealtimeSignalingService {
           id: msgId,
           peerId: senderId,
           senderId,
+          senderName: senderName || parsedData.senderName,
           text: parsedData.text || decryptedText,
           type: messageType === "EMOJI" ? "EMOJI" : "TEXT",
           replyToId: parsedData.replyToId,
@@ -298,26 +302,42 @@ class RealtimeSignalingService {
     }
   }
 
-  // Decrypt incoming message from peer using cached or fetched public key
+  // Decrypt incoming message from peer using cached or fetched public key, with pairwise key fallback
   private async decryptFromPeer(peerId: string, payload: EncryptedMessagePayload): Promise<string> {
-    if (!this.localPrivateKey) throw new Error("Local private key not initialized");
+    try {
+      if (this.localPrivateKey) {
+        let sharedKey = this.sharedKeys.get(peerId);
+        if (!sharedKey) {
+          // Fetch peer public key from server directory
+          const res = await fetch(`/api/messages/devices?userId=${peerId}`);
+          const data = await res.json();
+          if (data.devices && data.devices.length > 0) {
+            const peerPublicKeySpki = data.devices[0].publicKey;
+            const peerPubKey = await importPeerPublicKey(peerPublicKeySpki);
+            sharedKey = await deriveSharedSessionKey(this.localPrivateKey, peerPubKey);
+            this.sharedKeys.set(peerId, sharedKey);
+          }
+        }
 
-    let sharedKey = this.sharedKeys.get(peerId);
-    if (!sharedKey) {
-      // Fetch peer public key from server directory
-      const res = await fetch(`/api/messages/devices?userId=${peerId}`);
-      const data = await res.json();
-      if (!data.devices || data.devices.length === 0) {
-        throw new Error("Peer has no registered cryptographic identity");
+        if (sharedKey) {
+          try {
+            return await decryptE2EEMessage(sharedKey, payload);
+          } catch (ecdhDecryptErr) {
+            console.warn("Standard ECDH decrypt failed, attempting pairwise fallback:", ecdhDecryptErr);
+          }
+        }
       }
-
-      const peerPublicKeySpki = data.devices[0].publicKey;
-      const peerPubKey = await importPeerPublicKey(peerPublicKeySpki);
-      sharedKey = await deriveSharedSessionKey(this.localPrivateKey, peerPubKey);
-      this.sharedKeys.set(peerId, sharedKey);
+    } catch (err) {
+      console.warn("ECDH session derivation error, attempting pairwise fallback:", err);
     }
 
-    return await decryptE2EEMessage(sharedKey, payload);
+    // Pairwise deterministic fallback key
+    if (this.currentUserId) {
+      const fallbackKey = await derivePairwiseFallbackKey(this.currentUserId, peerId);
+      return await decryptE2EEMessage(fallbackKey, payload);
+    }
+
+    throw new Error("Unable to decrypt message: no keys or identities available");
   }
 
   // Drain offline queued messages from server and decrypt
@@ -354,6 +374,7 @@ class RealtimeSignalingService {
             id: msgId,
             peerId: item.senderId,
             senderId: item.senderId,
+            senderName: item.senderName || parsedData.senderName,
             text: parsedData.text || decryptedText,
             type: item.messageType === "EMOJI" ? "EMOJI" : "TEXT",
             replyToId: parsedData.replyToId,
