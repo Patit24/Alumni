@@ -154,6 +154,32 @@ export async function GET(req: Request) {
     const targetUserId = searchParams.get("targetUserId");
     let mutualCount = 0;
     if (targetUserId) {
+      // Direct authoritative check: is this specific user-target pair connected?
+      // This is the primary fix for statusMap missing the targetUserId after accept.
+      const [directTrust, directRequest] = await Promise.all([
+        db.contactTrust.findFirst({
+          where: {
+            OR: [
+              { userId: user.id, contactId: targetUserId, trustLevel: { in: ["CONNECTED", "TRUSTED"] } },
+              { userId: targetUserId, contactId: user.id, trustLevel: { in: ["CONNECTED", "TRUSTED"] } },
+            ],
+          },
+        }),
+        db.connectionRequest.findFirst({
+          where: {
+            OR: [
+              { senderId: user.id, receiverId: targetUserId, status: { in: ["ACCEPTED", "CONNECTED"] } },
+              { senderId: targetUserId, receiverId: user.id, status: { in: ["ACCEPTED", "CONNECTED"] } },
+            ],
+          },
+        }),
+      ]);
+
+      // If either source confirms connection, mark as CONNECTED in statusMap
+      if (directTrust || directRequest) {
+        statusMap[targetUserId] = "CONNECTED";
+      }
+
       const targetTrusts = await db.contactTrust.findMany({
         where: {
           OR: [{ userId: targetUserId }, { contactId: targetUserId }],

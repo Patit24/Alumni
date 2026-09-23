@@ -117,6 +117,25 @@ export async function POST(req: Request) {
       },
     });
 
+    // If setting to CONNECTED or TRUSTED, also write the reverse trust record so both
+    // users see each other as connected on any subsequent page load (bidirectional persistence).
+    if (trustLevel === "CONNECTED" || trustLevel === "TRUSTED") {
+      await db.contactTrust.upsert({
+        where: {
+          userId_contactId: {
+            userId: contactId,
+            contactId: user.id,
+          },
+        },
+        update: { trustLevel },
+        create: {
+          userId: contactId,
+          contactId: user.id,
+          trustLevel,
+        },
+      }).catch(() => {}); // non-fatal if reverse record can't be created
+    }
+
     return NextResponse.json({ success: true, trust });
   } catch (error: any) {
     console.error("Update contact trust error:", error);

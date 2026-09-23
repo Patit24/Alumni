@@ -187,10 +187,11 @@ export default function DirectMessageChatPage(props: {
         setCurrentUser({ id: user.id, name: user.name });
 
         // Fetch peer profile from directory, trust, and connection relationship
+        // cache: 'no-store' prevents stale data from showing wrong connection status after accept
         const [peerRes, trustRes, connRes] = await Promise.all([
-          fetch(`/api/directory?id=${peerId}`),
-          fetch(`/api/contacts/trust?contactId=${peerId}`),
-          fetch(`/api/contacts/requests?targetUserId=${peerId}`),
+          fetch(`/api/directory?id=${peerId}`, { cache: "no-store" }),
+          fetch(`/api/contacts/trust?contactId=${peerId}`, { cache: "no-store" }),
+          fetch(`/api/contacts/requests?targetUserId=${peerId}`, { cache: "no-store" }),
         ]);
 
         let relStatus: "CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE" = "NONE";
@@ -205,6 +206,7 @@ export default function DirectMessageChatPage(props: {
           const tData = await trustRes.json();
           if (tData.success) {
             setTrustLevel(tData.trustLevel);
+            // Trust level from contactTrust table is authoritative — override statusMap if CONNECTED/TRUSTED
             if (tData.trustLevel === "CONNECTED" || tData.trustLevel === "TRUSTED") {
               relStatus = "CONNECTED";
             }
