@@ -302,8 +302,45 @@ class RealtimeSignalingService {
     }
   }
 
-  // Decrypt incoming message from peer using cached or fetched public key, with pairwise key fallback
+  // Broadcast encrypted message directly to peer's private channel (instant delivery via open WebSocket)
+  async sendEncryptedMessage(peerId: string, payload: {
+    queueId: string;
+    encryptedPayload: EncryptedMessagePayload;
+    messageType: string;
+    createdAt: string;
+  }) {
+    if (!this.currentUserId) return;
+    try {
+      const peerChannel = this.getPeerChannel(peerId);
+      await peerChannel.send({
+        type: "broadcast",
+        event: "encrypted-message",
+        payload: {
+          ...payload,
+          senderId: this.currentUserId,
+          senderName: this.currentUserName,
+        },
+      });
+    } catch (err) {
+      console.warn("Direct peer broadcast of encrypted message failed:", err);
+    }
+  }
+
+  // Decrypt incoming message from peer using pairwise key or ECDH shared key
   private async decryptFromPeer(peerId: string, payload: EncryptedMessagePayload): Promise<string> {
+    const errors: string[] = [];
+
+    // Attempt 1: Pairwise deterministic key (fast, reliable, identical on both devices)
+    if (this.currentUserId) {
+      try {
+        const fallbackKey = await derivePairwiseFallbackKey(this.currentUserId, peerId);
+        return await decryptE2EEMessage(fallbackKey, payload);
+      } catch (err: any) {
+        errors.push(`Pairwise: ${err?.message || err}`);
+      }
+    }
+
+    // Attempt 2: Standard ECDH device key derivation
     try {
       if (this.localPrivateKey) {
         let sharedKey = this.sharedKeys.get(peerId);
@@ -320,24 +357,14 @@ class RealtimeSignalingService {
         }
 
         if (sharedKey) {
-          try {
-            return await decryptE2EEMessage(sharedKey, payload);
-          } catch (ecdhDecryptErr) {
-            console.warn("Standard ECDH decrypt failed, attempting pairwise fallback:", ecdhDecryptErr);
-          }
+          return await decryptE2EEMessage(sharedKey, payload);
         }
       }
-    } catch (err) {
-      console.warn("ECDH session derivation error, attempting pairwise fallback:", err);
+    } catch (err: any) {
+      errors.push(`ECDH: ${err?.message || err}`);
     }
 
-    // Pairwise deterministic fallback key
-    if (this.currentUserId) {
-      const fallbackKey = await derivePairwiseFallbackKey(this.currentUserId, peerId);
-      return await decryptE2EEMessage(fallbackKey, payload);
-    }
-
-    throw new Error("Unable to decrypt message: no keys or identities available");
+    throw new Error(`Unable to decrypt message from peer ${peerId}: ${errors.join("; ")}`);
   }
 
   // Drain offline queued messages from server and decrypt

@@ -30,9 +30,20 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "Cannot communicate with this user" }, { status: 403 });
       }
 
-      // Fetch peer devices and public keys
-      let peerDevices = await db.userDevice.findMany({
-        where: { userId: peerUserId },
+      // Clean up any previously generated dummy devices that lack client private keys
+      await db.userDevice.deleteMany({
+        where: {
+          userId: peerUserId,
+          deviceId: { startsWith: "primary_" },
+        },
+      }).catch(() => {});
+
+      // Fetch peer devices and public keys registered by real client devices
+      const peerDevices = await db.userDevice.findMany({
+        where: {
+          userId: peerUserId,
+          NOT: { deviceId: { startsWith: "primary_" } },
+        },
         select: {
           id: true,
           deviceId: true,
@@ -42,52 +53,6 @@ export async function GET(req: Request) {
         },
         orderBy: { lastActiveAt: "desc" },
       });
-
-      // If peer has not logged in on a device yet, auto-provision an initial P-256 keypair
-      // so the sender can immediately encrypt and send messages while peer is offline
-      if (peerDevices.length === 0) {
-        try {
-          const { webcrypto } = await import("node:crypto");
-          const keyPair = await webcrypto.subtle.generateKey(
-            { name: "ECDH", namedCurve: "P-256" },
-            true,
-            ["deriveKey", "deriveBits"]
-          );
-          const spkiBuf = await webcrypto.subtle.exportKey("spki", keyPair.publicKey);
-          const pkcs8Buf = await webcrypto.subtle.exportKey("pkcs8", keyPair.privateKey);
-          const publicKey = Buffer.from(spkiBuf).toString("base64");
-          const initialPrivate = Buffer.from(pkcs8Buf).toString("base64");
-
-          const autoDevice = await db.userDevice.create({
-            data: {
-              userId: peerUserId,
-              deviceId: `primary_${peerUserId}`,
-              deviceName: JSON.stringify({ name: "Primary Mobile Device", initialKey: initialPrivate }),
-              publicKey,
-              lastActiveAt: new Date(),
-            },
-            select: {
-              id: true,
-              deviceId: true,
-              deviceName: true,
-              publicKey: true,
-              lastActiveAt: true,
-            },
-          });
-
-          peerDevices = [
-            {
-              id: autoDevice.id,
-              deviceId: autoDevice.deviceId,
-              deviceName: "Primary Mobile Device",
-              publicKey: autoDevice.publicKey,
-              lastActiveAt: autoDevice.lastActiveAt,
-            },
-          ];
-        } catch (e) {
-          console.error("Auto-provision device key error:", e);
-        }
-      }
 
       return NextResponse.json({ devices: peerDevices });
     }
