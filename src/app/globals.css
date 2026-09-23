@@ -126,25 +126,40 @@ input, textarea, select {
 
 /* Obfuscate screen capture when active */
 .screenshot-shield-active {
-  filter: blur(28px) brightness(0.2) contrast(1.5) !important;
+  filter: blur(35px) brightness(0.15) contrast(1.4) !important;
   pointer-events: none !important;
   user-select: none !important;
+  transition: filter 0.08s ease-in-out !important;
+}
+
+/* Traceable Security Watermark Overlay */
+.anti-screenshot-watermark {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(148, 163, 184, 0.035) 0px,
+    rgba(148, 163, 184, 0.035) 120px,
+    transparent 120px,
+    transparent 240px
+  );
+  pointer-events: none;
 }
 
 @media print {
-  body.screenshot-blocked,
-  body.screenshot-blocked * {
+  html,
+  body,
+  body * {
     display: none !important;
     visibility: hidden !important;
   }
 
-  body.screenshot-blocked::before {
-    content: "Screen capture and printing are protected and prohibited in this secret alumni conversation.";
+  body::before {
+    content: "Screen capture and printing are protected and prohibited on this platform.";
     display: block !important;
-    font-size: 24px !important;
+    visibility: visible !important;
+    font-size: 22px !important;
     font-weight: bold !important;
-    color: red !important;
+    color: #e11d48 !important;
     text-align: center !important;
-    padding: 100px 20px !important;
+    padding: 120px 20px !important;
   }
 }

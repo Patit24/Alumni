@@ -73,17 +73,26 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   }
 }
 
-export async function getCurrentUser() {
+export async function getCurrentUser(explicitToken?: string | null) {
   try {
     const cookieStore = await cookies();
-    const token =
-      cookieStore.get(SESSION_COOKIE_NAME)?.value ||
-      cookieStore.get("session_token")?.value;
-    if (!token) {
-      return null;
+    let payload: SessionPayload | null = null;
+
+    // 1. Try explicit token first if provided and non-empty
+    if (explicitToken && explicitToken !== "null" && explicitToken !== "undefined" && explicitToken.trim()) {
+      payload = await verifySessionToken(explicitToken.trim());
     }
 
-    const payload = await verifySessionToken(token);
+    // 2. If explicit token is missing or failed verification, fall back to cookies
+    if (!payload) {
+      const cookieToken =
+        cookieStore.get(SESSION_COOKIE_NAME)?.value ||
+        cookieStore.get("session_token")?.value;
+      if (cookieToken) {
+        payload = await verifySessionToken(cookieToken);
+      }
+    }
+
     if (!payload?.userId && !payload?.email) {
       return null;
     }
@@ -105,11 +114,17 @@ export async function getCurrentUser() {
       }
     }
 
-    // 2. If not found by userId, try finding by email
+    // 2. If not found by userId, try finding by email (case-insensitive)
     if (!user && payload.email) {
       try {
+        const cleanEmail = payload.email.trim().toLowerCase();
         user = await db.user.findFirst({
-          where: { email: payload.email.trim().toLowerCase() },
+          where: {
+            OR: [
+              { email: cleanEmail },
+              { email: payload.email.trim() },
+            ],
+          },
           include: {
             institution: true,
             department: true,
@@ -233,42 +248,59 @@ export async function getCurrentUser() {
         });
       }
 
-      // Upsert user in this container's SQLite DB
-      user = await db.user.upsert({
-        where: { id: targetUserId },
-        update: {
-          email: targetEmail,
-          username: payload.username || undefined,
-          name: userName,
-          institutionId: inst.id,
-          batchId: batch.id,
-          batchYear,
-          avatarUrl: payload.avatarUrl || undefined,
-          coverUrl: payload.coverUrl || undefined,
-        },
-        create: {
-          id: targetUserId,
-          email: targetEmail,
-          username: payload.username || null,
-          phone: payload.phone || null,
-          name: userName,
-          avatarUrl: payload.avatarUrl || null,
-          coverUrl: payload.coverUrl || null,
-          role: payload.role || "USER",
-          verificationStatus: payload.verificationStatus || "UNVERIFIED",
-          institutionId: inst.id,
-          batchId: batch.id,
-          batchYear,
-          currentCompany: payload.currentCompany || null,
-          currentRole: payload.currentRole || null,
-          city: payload.city || null,
-        },
-        include: {
-          institution: true,
-          department: true,
-          batch: true,
-        },
-      });
+      // Check if user already exists in SQLite under another ID with this email
+      const existingByEmail = targetEmail
+        ? await db.user.findFirst({
+            where: {
+              OR: [
+                { email: targetEmail },
+                { email: payload.email?.trim() || "" },
+              ],
+            },
+            include: { institution: true, department: true, batch: true },
+          })
+        : null;
+
+      if (existingByEmail) {
+        user = existingByEmail;
+      } else {
+        // Upsert user in this container's SQLite DB
+        user = await db.user.upsert({
+          where: { id: targetUserId },
+          update: {
+            email: targetEmail,
+            username: payload.username || undefined,
+            name: userName,
+            institutionId: inst.id,
+            batchId: batch.id,
+            batchYear,
+            avatarUrl: payload.avatarUrl || undefined,
+            coverUrl: payload.coverUrl || undefined,
+          },
+          create: {
+            id: targetUserId,
+            email: targetEmail,
+            username: payload.username || null,
+            phone: payload.phone || null,
+            name: userName,
+            avatarUrl: payload.avatarUrl || null,
+            coverUrl: payload.coverUrl || null,
+            role: payload.role || "USER",
+            verificationStatus: payload.verificationStatus || "UNVERIFIED",
+            institutionId: inst.id,
+            batchId: batch.id,
+            batchYear,
+            currentCompany: payload.currentCompany || null,
+            currentRole: payload.currentRole || null,
+            city: payload.city || null,
+          },
+          include: {
+            institution: true,
+            department: true,
+            batch: true,
+          },
+        });
+      }
 
       return user;
     } catch (dbErr) {

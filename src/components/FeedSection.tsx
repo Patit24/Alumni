@@ -23,6 +23,8 @@ import {
   X,
   Loader2,
   Trash2,
+  Bookmark,
+  BookmarkCheck,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
@@ -49,6 +51,10 @@ interface FeedItemData {
   likesCount: number;
   commentsCount: number;
   sharesCount: number;
+  hasSaved?: boolean;
+  savesCount?: number;
+  isFriend?: boolean;
+  isMutualInstitution?: boolean;
   comments?: CommentData[];
   actor: {
     id: string;
@@ -161,7 +167,7 @@ export default function FeedSection({
 }: FeedSectionProps) {
   const [feed, setFeed] = useState<FeedItemData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"ALL" | "BATCH" | "JOBS" | "MENTORSHIP">("ALL");
+  const [filter, setFilter] = useState<"ALL" | "BATCH" | "JOBS" | "MENTORSHIP" | "SAVED">("ALL");
   const [newPostText, setNewPostText] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -304,6 +310,31 @@ export default function FeedSection({
   // Initial load on filter change
   useEffect(() => {
     fetchFeed(filter);
+  }, [filter, fetchFeed]);
+
+  // Rock-solid live synchronization: silent 6-second polling + visibility/focus instant refresh
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchFeed(filter, true);
+    }, 6000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchFeed(filter, true);
+      }
+    };
+    const handleFocus = () => {
+      fetchFeed(filter, true);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [filter, fetchFeed]);
 
   // Supabase Realtime Channel Subscription
@@ -497,6 +528,59 @@ export default function FeedSection({
     }
   }
 
+  // Save / Bookmark Toggle Handler with Optimistic UI & Local Sync
+  async function toggleSave(postId: string) {
+    const currentPost = feed.find((p) => p.id === postId);
+    const nextHasSaved = currentPost ? !currentPost.hasSaved : true;
+    const nextCount = currentPost
+      ? Math.max(0, (currentPost.savesCount || 0) + (nextHasSaved ? 1 : -1))
+      : 1;
+
+    // Optimistically update React state
+    setFeed((prev) =>
+      prev.map((item) => {
+        if (item.id === postId) {
+          return {
+            ...item,
+            hasSaved: nextHasSaved,
+            savesCount: nextCount,
+          };
+        }
+        return item;
+      })
+    );
+
+    // Optimistically update local cache
+    updateLocalFeedPost(postId, (p) => ({
+      ...p,
+      hasSaved: nextHasSaved,
+      savesCount: nextCount,
+    }));
+
+    try {
+      const res = await fetch(`/api/feed/${postId}/save`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        updateLocalFeedPost(postId, (p) => ({
+          ...p,
+          hasSaved: data.saved,
+          savesCount: data.savesCount,
+        }));
+        setFeed((prev) =>
+          prev.map((item) =>
+            item.id === postId
+              ? { ...item, hasSaved: data.saved, savesCount: data.savesCount }
+              : item
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Error toggling save:", err);
+    }
+  }
+
   // Add Comment Handler
   async function handleAddComment(postId: string) {
     const text = commentInputs[postId]?.trim();
@@ -587,7 +671,7 @@ export default function FeedSection({
       {/* Feed Category Filter Header & Live Realtime Badge */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full">
-          {(["ALL", "BATCH", "JOBS", "MENTORSHIP"] as const).map((tab) => {
+          {(["ALL", "BATCH", "JOBS", "MENTORSHIP", "SAVED"] as const).map((tab) => {
             const label =
               tab === "ALL"
                 ? "All Activity"
@@ -595,7 +679,9 @@ export default function FeedSection({
                 ? `Class of ${batchYear}`
                 : tab === "JOBS"
                 ? "Hiring & Referrals"
-                : "Mentorship";
+                : tab === "MENTORSHIP"
+                ? "Mentorship"
+                : "Saved";
             const isActive = filter === tab;
 
             return (
@@ -603,13 +689,16 @@ export default function FeedSection({
                 key={tab}
                 whileTap={{ scale: 0.96 }}
                 onClick={() => setFilter(tab)}
-                className={`text-xs font-semibold px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap ${
+                className={`text-xs font-semibold px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 ${
                   isActive
                     ? "bg-slate-900 text-white shadow-xs"
                     : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
                 }`}
               >
-                {label}
+                {tab === "SAVED" && (
+                  <Bookmark className={`w-3 h-3 ${isActive ? "fill-white text-white" : "text-slate-400"}`} />
+                )}
+                <span>{label}</span>
               </motion.button>
             );
           })}
@@ -835,9 +924,19 @@ export default function FeedSection({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                    {item.isMutualInstitution && (item.type === "JOB_POSTED" || item.type === "MENTORSHIP_AVAILABLE") && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 shrink-0">
+                        Mutual School / College
+                      </span>
+                    )}
+                    {item.isFriend && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80 shrink-0">
+                        Friend
+                      </span>
+                    )}
                     {item.metadata.badge && (
-                      <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80 shrink-0">
+                      <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0">
                         {item.metadata.badge}
                       </span>
                     )}
@@ -947,7 +1046,7 @@ export default function FeedSection({
 
                 {/* Counts Bar */}
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-semibold text-slate-600">{item.likesCount}</span>
                     <span>{item.likesCount === 1 ? "like" : "likes"}</span>
                     <span>•</span>
@@ -960,6 +1059,13 @@ export default function FeedSection({
                       <span className="font-semibold text-slate-600">{item.commentsCount}</span>{" "}
                       {item.commentsCount === 1 ? "comment" : "comments"}
                     </button>
+                    {(item.savesCount ?? 0) > 0 && (
+                      <>
+                        <span>•</span>
+                        <span className="font-semibold text-slate-600">{item.savesCount}</span>
+                        <span>{item.savesCount === 1 ? "saved" : "saves"}</span>
+                      </>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -968,7 +1074,7 @@ export default function FeedSection({
                   </div>
                 </div>
 
-                {/* Action Bar (Like, Comment, Share) */}
+                {/* Action Bar (Like, Comment, Share, Save) */}
                 <div className="pt-1.5 flex items-center justify-between gap-1">
                   <motion.button
                     whileTap={{ scale: 0.88 }}
@@ -1006,6 +1112,22 @@ export default function FeedSection({
                     <Share2 className="w-4 h-4" />
                     <span>Share</span>
                   </button>
+
+                  <motion.button
+                    whileTap={{ scale: 0.88 }}
+                    onClick={() => toggleSave(item.id)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl transition ${
+                      item.hasSaved
+                        ? "bg-amber-50 text-amber-600 border border-amber-200"
+                        : "text-slate-600 hover:bg-slate-50 border border-transparent"
+                    }`}
+                    title={item.hasSaved ? "Saved to your bookmarks" : "Save post"}
+                  >
+                    <Bookmark
+                      className={`w-4 h-4 ${item.hasSaved ? "fill-amber-600 text-amber-600" : ""}`}
+                    />
+                    <span>{item.hasSaved ? "Saved" : "Save"}</span>
+                  </motion.button>
                 </div>
 
                 {/* Inline Real-Time Comments Section */}

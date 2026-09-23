@@ -3,6 +3,7 @@ import "./globals.css";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import CallModal from "@/components/CallModal";
 import GlobalRealtimeProvider from "@/components/GlobalRealtimeProvider";
+import AntiScreenshotShield from "@/components/AntiScreenshotShield";
 
 export const metadata: Metadata = {
   title: "Samparka | Connect. Chat. Belong.",
@@ -33,6 +34,7 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 selection:bg-blue-100 selection:text-blue-900">
         <GlobalRealtimeProvider />
+        <AntiScreenshotShield />
         {children}
         <CallModal />
         <MobileBottomNav />

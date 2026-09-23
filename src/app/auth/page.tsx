@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   GraduationCap, Loader2, Search, Phone, Mail,
   ArrowRight, ArrowLeft, CheckCircle2, Zap,
-  Building2, X,
+  Building2, X, School,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { getOrCreateDeviceIdentity } from "@/lib/e2ee/vault";
@@ -69,6 +69,7 @@ export default function AuthPage() {
   const [slideDir, setSlideDir] = useState(1);
 
   /* ─── WIZARD FIELDS ─── */
+  const [instType, setInstType] = useState<"COLLEGE" | "SCHOOL">("COLLEGE");
   const [wName, setWName] = useState("");
   const [wUsername, setWUsername] = useState("");
   const [userEditedUsername, setUserEditedUsername] = useState(false);
@@ -200,6 +201,7 @@ export default function AuthPage() {
           institutionId: wInstId || undefined,
           institutionName: chosenCollege || undefined,
           customInstitutionName: chosenCollege || undefined,
+          customInstitutionType: instType,
           publicKey: localIdentity.publicKeySpki,
           deviceId: localIdentity.deviceId,
         }),
@@ -270,11 +272,11 @@ export default function AuthPage() {
   const handleGoogleOnboardSubmit = async () => {
     const chosenCollege = (wInstName || wCustomInstName || instQuery).trim();
     if (!chosenCollege) {
-      setError("Please search or enter your college name.");
+      setError(instType === "SCHOOL" ? "Please search or enter your school name." : "Please search or enter your college name.");
       return;
     }
     if (!wBatchYear) {
-      setError("Please select your graduation year.");
+      setError(instType === "SCHOOL" ? "Please select your passing year." : "Please select your graduation year.");
       return;
     }
     setLoading(true);
@@ -290,6 +292,7 @@ export default function AuthPage() {
           institutionId: wInstId || undefined,
           institutionName: chosenCollege,
           newInstitutionName: chosenCollege,
+          newInstitutionType: instType,
           batchYear: parseInt(wBatchYear, 10),
           departmentName: wDept.trim() || undefined,
           avatarUrl: googleAvatar || undefined,
@@ -427,28 +430,64 @@ export default function AuthPage() {
                       onClick={() => go(1)}
                       className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-blue-600 text-white text-sm font-bold shadow-md shadow-blue-500/20 hover:bg-blue-700 transition disabled:opacity-40 active:scale-[0.98]"
                     >
-                      Next — Choose College <ArrowRight className="w-4 h-4" />
+                      Next — Choose {instType === "SCHOOL" ? "School" : "College"} <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
                 )}
 
-                {/* STEP 1 — College */}
+                {/* STEP 1 — College or School */}
                 {wizardStep === 1 && (
                   <div className="space-y-4">
-                    <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-3 mb-2">
                       <button onClick={() => go(0)} className="h-8 w-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition shrink-0">
                         <ArrowLeft className="w-4 h-4" />
                       </button>
                       <div>
-                        <h2 className="text-base font-bold text-slate-900">Your college</h2>
-                        <p className="text-xs text-slate-500">Search and select your institution</p>
+                        <h2 className="text-base font-bold text-slate-900">
+                          {instType === "SCHOOL" ? "Your School" : "Your College"}
+                        </h2>
+                        <p className="text-xs text-slate-500">
+                          {instType === "SCHOOL" ? "Search and select your school" : "Search and select your institution"}
+                        </p>
                       </div>
+                    </div>
+
+                    {/* School vs College Selector */}
+                    <div className="flex rounded-xl bg-slate-100 p-1">
+                      <button
+                        type="button"
+                        onClick={() => { setInstType("COLLEGE"); setWInstId(""); setWInstName(""); setInstQuery(""); }}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                          instType === "COLLEGE"
+                            ? "bg-white text-blue-700 shadow-xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <GraduationCap className="w-3.5 h-3.5" />
+                        <span>College</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setInstType("SCHOOL"); setWInstId(""); setWInstName(""); setInstQuery(""); }}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                          instType === "SCHOOL"
+                            ? "bg-white text-blue-700 shadow-xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span>School</span>
+                      </button>
                     </div>
 
                     {/* Selected institution pill */}
                     {(wInstId || wInstName) && (
                       <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-200">
-                        <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
+                        {instType === "SCHOOL" ? (
+                          <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
+                        ) : (
+                          <GraduationCap className="w-4 h-4 text-blue-600 shrink-0" />
+                        )}
                         <span className="text-sm font-bold text-blue-900 flex-1 truncate">{wInstName || wCustomInstName || instQuery}</span>
                         <button
                           type="button"
@@ -472,7 +511,7 @@ export default function AuthPage() {
                             setInstQuery(e.target.value);
                             setWCustomInstName(e.target.value);
                           }}
-                          placeholder="Search college, university, school..."
+                          placeholder={instType === "SCHOOL" ? "Search school name (e.g. DPS, St. Xavier's, KV)..." : "Search college, university, campus..."}
                           autoFocus
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-10 text-sm text-slate-900 outline-none focus:border-blue-600 focus:bg-white transition"
                         />
@@ -487,6 +526,7 @@ export default function AuthPage() {
                                   setWInstName(inst.name);
                                   setInstQuery(inst.name);
                                   setInstResults([]);
+                                  if (inst.type === "SCHOOL") setInstType("SCHOOL");
                                 }}
                                 className="w-full text-left px-4 py-3 hover:bg-blue-50 transition flex items-start gap-3 border-b border-slate-100 last:border-0"
                               >
@@ -510,7 +550,9 @@ export default function AuthPage() {
                                 className="w-full text-left px-4 py-3 hover:bg-amber-50 transition flex items-center gap-3 text-amber-700 bg-amber-50/50"
                               >
                                 <Building2 className="w-4 h-4 shrink-0" />
-                                <span className="text-sm font-semibold">Add "{instQuery.trim()}" as new institution</span>
+                                <span className="text-sm font-semibold">
+                                  Add &quot;{instQuery.trim()}&quot; as new {instType === "SCHOOL" ? "school" : "institution"}
+                                </span>
                               </button>
                             )}
                           </div>
@@ -518,7 +560,7 @@ export default function AuthPage() {
                         {/* If typed but no results show and no selection */}
                         {!instLoading && instQuery.trim().length >= 2 && instResults.length === 0 && !wInstId && (
                           <p className="text-[11px] text-slate-400 mt-1.5 px-1">
-                            No match found — your college name will be added as entered.
+                            No match found — your {instType === "SCHOOL" ? "school" : "college"} name will be added as entered.
                           </p>
                         )}
                       </div>
@@ -530,12 +572,12 @@ export default function AuthPage() {
                       onClick={() => go(2)}
                       className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-blue-600 text-white text-sm font-bold shadow-md shadow-blue-500/20 hover:bg-blue-700 transition disabled:opacity-40 active:scale-[0.98]"
                     >
-                      Next — Batch Year <ArrowRight className="w-4 h-4" />
+                      Next — {instType === "SCHOOL" ? "Passing Year" : "Batch Year"} <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
                 )}
 
-                {/* STEP 2 — Batch + Department */}
+                {/* STEP 2 — Batch + Department / Class */}
                 {wizardStep === 2 && (
                   <div className="space-y-4">
                     <div className="flex items-center gap-3 mb-4">
@@ -543,18 +585,24 @@ export default function AuthPage() {
                         <ArrowLeft className="w-4 h-4" />
                       </button>
                       <div>
-                        <h2 className="text-base font-bold text-slate-900">Batch & department</h2>
+                        <h2 className="text-base font-bold text-slate-900">
+                          {instType === "SCHOOL" ? "Passing Year & Class" : "Batch & department"}
+                        </h2>
                         <p className="text-xs text-slate-500">Almost done!</p>
                       </div>
                     </div>
 
                     {/* Summary chip */}
                     <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
-                      <GraduationCap className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      {instType === "SCHOOL" ? (
+                        <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      ) : (
+                        <GraduationCap className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      )}
                       <span className="truncate font-medium">{wInstName || wCustomInstName || instQuery}</span>
                     </div>
 
-                    <Field label="Graduation year *">
+                    <Field label={instType === "SCHOOL" ? "Passing year / Class of *" : "Graduation year *"}>
                       <select
                         value={wBatchYear}
                         onChange={e => setWBatchYear(e.target.value)}
@@ -570,12 +618,15 @@ export default function AuthPage() {
                       </select>
                     </Field>
 
-                    <Field label="Department / Stream" hint="e.g. Computer Science, MCA, BBA — optional">
+                    <Field
+                      label={instType === "SCHOOL" ? "Class / Stream" : "Department / Stream"}
+                      hint={instType === "SCHOOL" ? "e.g. 10th Standard, 12th Science / Commerce / Arts — optional" : "e.g. Computer Science, MCA, BBA — optional"}
+                    >
                       <input
                         type="text"
                         value={wDept}
                         onChange={e => setWDept(e.target.value)}
-                        placeholder="e.g. Computer Science"
+                        placeholder={instType === "SCHOOL" ? "e.g. 12th Science or Class of 2024" : "e.g. Computer Science"}
                         className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm text-slate-900 outline-none focus:border-blue-600 focus:bg-white transition"
                       />
                     </Field>
@@ -640,12 +691,40 @@ export default function AuthPage() {
                     <span className="truncate max-w-[220px]">{emailInput || "Verified account"}</span>
                   </div>
                   <p className="text-xs text-slate-500 mt-2">
-                    Almost there! Select your college and graduation year to complete your profile:
+                    Almost there! Select your {instType === "SCHOOL" ? "school and passing year" : "college and graduation year"} to complete your profile:
                   </p>
                 </div>
 
-                {/* College selection with autocomplete */}
-                <Field label="College / University *">
+                {/* School vs College Selector */}
+                <div className="flex rounded-xl bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => { setInstType("COLLEGE"); setWInstId(""); setWInstName(""); setInstQuery(""); }}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                      instType === "COLLEGE"
+                        ? "bg-white text-blue-700 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    <span>College</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setInstType("SCHOOL"); setWInstId(""); setWInstName(""); setInstQuery(""); }}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                      instType === "SCHOOL"
+                        ? "bg-white text-blue-700 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>School</span>
+                  </button>
+                </div>
+
+                {/* College / School selection with autocomplete */}
+                <Field label={instType === "SCHOOL" ? "School Name *" : "College / University *"}>
                   {(wInstId || wInstName) ? (
                     <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-200">
                       <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
@@ -678,7 +757,7 @@ export default function AuthPage() {
                           setInstQuery(e.target.value);
                           setWCustomInstName(e.target.value);
                         }}
-                        placeholder="Search college, university, school..."
+                        placeholder={instType === "SCHOOL" ? "Search school name (e.g. DPS, St. Xavier's, KV)..." : "Search college, university, school..."}
                         autoFocus
                         className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-10 text-sm text-slate-900 outline-none focus:border-blue-600 focus:bg-white transition"
                       />
@@ -693,6 +772,7 @@ export default function AuthPage() {
                                 setWInstName(inst.name);
                                 setInstQuery(inst.name);
                                 setInstResults([]);
+                                if (inst.type === "SCHOOL") setInstType("SCHOOL");
                               }}
                               className="w-full text-left px-4 py-3 hover:bg-blue-50 transition flex items-start gap-3 border-b border-slate-100 last:border-0"
                             >
@@ -719,7 +799,7 @@ export default function AuthPage() {
                             >
                               <Building2 className="w-4 h-4 shrink-0" />
                               <span className="text-sm font-semibold">
-                                Add "{instQuery.trim()}" as new institution
+                                Add &quot;{instQuery.trim()}&quot; as new {instType === "SCHOOL" ? "school" : "institution"}
                               </span>
                             </button>
                           )}
@@ -730,15 +810,15 @@ export default function AuthPage() {
                         instResults.length === 0 &&
                         !wInstId && (
                           <p className="text-[11px] text-slate-400 mt-1.5 px-1">
-                            College will be saved as entered.
+                            {instType === "SCHOOL" ? "School" : "College"} will be saved as entered.
                           </p>
                         )}
                     </div>
                   )}
                 </Field>
 
-                {/* Graduation Year */}
-                <Field label="Graduation year *">
+                {/* Graduation / Passing Year */}
+                <Field label={instType === "SCHOOL" ? "Passing year / Class of *" : "Graduation year *"}>
                   <select
                     value={wBatchYear}
                     onChange={e => setWBatchYear(e.target.value)}
@@ -754,12 +834,15 @@ export default function AuthPage() {
                 </Field>
 
                 {/* Department / Stream */}
-                <Field label="Department / Stream" hint="e.g. Computer Science, BCA, B.Tech, MBA (optional)">
+                <Field
+                  label={instType === "SCHOOL" ? "Class / Stream" : "Department / Stream"}
+                  hint={instType === "SCHOOL" ? "e.g. 10th Standard, 12th Science / Commerce / Arts (optional)" : "e.g. Computer Science, BCA, B.Tech, MBA (optional)"}
+                >
                   <input
                     type="text"
                     value={wDept}
                     onChange={e => setWDept(e.target.value)}
-                    placeholder="e.g. Computer Science"
+                    placeholder={instType === "SCHOOL" ? "e.g. 12th Science or Class of 2024" : "e.g. Computer Science"}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm text-slate-900 outline-none focus:border-blue-600 focus:bg-white transition"
                   />
                 </Field>

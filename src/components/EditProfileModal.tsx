@@ -90,12 +90,46 @@ export default function EditProfileModal({
   const [batchYear, setBatchYear] = useState<string>(
     currentUser.batchYear ? String(currentUser.batchYear) : ""
   );
+  const [instType, setInstType] = useState<"COLLEGE" | "SCHOOL">(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (currentUser as any).institution?.type === "SCHOOL" ? "SCHOOL" : "COLLEGE"
+  );
   const [avatarUrl, setAvatarUrl] = useState<string | null>(currentUser.avatarUrl || null);
   const [coverUrl, setCoverUrl] = useState<string | null>(currentUser.coverUrl || null);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Sync form fields when modal opens or currentUser updates
+  useEffect(() => {
+    if (isOpen) {
+      setName(currentUser.name || "");
+      setCurrentRole(currentUser.currentRole || "");
+      setCurrentCompany(currentUser.currentCompany || "");
+      setCity(currentUser.city || "");
+      setBio(currentUser.bio || "");
+      setLinkedinUrl(currentUser.linkedinUrl || "");
+      setInstitutionName(currentUser.institution?.name || currentUser.institutionName || "");
+      setDepartmentName(currentUser.department?.name || currentUser.departmentName || "");
+      setCourse(currentUser.course || "");
+      setBatchYear(currentUser.batchYear ? String(currentUser.batchYear) : "");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setInstType((currentUser as any).institution?.type === "SCHOOL" ? "SCHOOL" : "COLLEGE");
+
+      const cachedAvatar = typeof window !== "undefined" && currentUser?.id
+        ? localStorage.getItem(`alumni_avatar_${currentUser.id}`)
+        : null;
+      setAvatarUrl(currentUser.avatarUrl || cachedAvatar || null);
+
+      const cachedCover = typeof window !== "undefined" && currentUser?.id
+        ? localStorage.getItem(`alumni_cover_${currentUser.id}`)
+        : null;
+      setCoverUrl(currentUser.coverUrl || cachedCover || null);
+      setError(null);
+      setSuccess(false);
+    }
+  }, [isOpen, currentUser]);
 
   // Institution suggestions
   const [instSuggestions, setInstSuggestions] = useState<any[]>([]);
@@ -124,28 +158,42 @@ export default function EditProfileModal({
     return () => clearTimeout(timer);
   }, [institutionName]);
 
-  // Compress & convert selected file to base64
-  const processImageFile = (file: File, maxWidth: number, maxHeight: number, callback: (dataUrl: string) => void) => {
+  // Compress & center-crop selected file to base64
+  const processImageFile = (file: File, isSquare: boolean, callback: (dataUrl: string) => void) => {
     const reader = new FileReader();
+    reader.onerror = () => {
+      setError("Failed to read image file. Please try another image.");
+    };
     reader.onload = (e) => {
       const img = new Image();
+      img.onerror = () => {
+        setError("Failed to process image. Please select a valid JPG, PNG, or WebP file.");
+      };
       img.onload = () => {
-        let { width, height } = img;
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-        if (height > maxHeight) {
-          width = Math.round((width * maxHeight) / height);
-          height = maxHeight;
-        }
-
         const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
         const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
+        if (!ctx) return;
+
+        if (isSquare) {
+          const minDim = Math.min(img.width, img.height);
+          const startX = (img.width - minDim) / 2;
+          const startY = (img.height - minDim) / 2;
+          canvas.width = 400;
+          canvas.height = 400;
+          ctx.drawImage(img, startX, startY, minDim, minDim, 0, 0, 400, 400);
+          const compressed = canvas.toDataURL("image/jpeg", 0.85);
+          callback(compressed);
+        } else {
+          const targetW = 1200;
+          const targetH = 460;
+          const scale = Math.max(targetW / img.width, targetH / img.height);
+          const scaledW = img.width * scale;
+          const scaledH = img.height * scale;
+          const offsetX = (targetW - scaledW) / 2;
+          const offsetY = (targetH - scaledH) / 2;
+          canvas.width = targetW;
+          canvas.height = targetH;
+          ctx.drawImage(img, offsetX, offsetY, scaledW, scaledH);
           const compressed = canvas.toDataURL("image/jpeg", 0.82);
           callback(compressed);
         }
@@ -158,19 +206,21 @@ export default function EditProfileModal({
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      processImageFile(file, 400, 400, (dataUrl) => {
+      processImageFile(file, true, (dataUrl) => {
         setAvatarUrl(dataUrl);
       });
     }
+    e.target.value = "";
   };
 
   const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      processImageFile(file, 1200, 500, (dataUrl) => {
+      processImageFile(file, false, (dataUrl) => {
         setCoverUrl(dataUrl);
       });
     }
+    e.target.value = "";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -185,9 +235,16 @@ export default function EditProfileModal({
     setSuccess(false);
 
     try {
+      const localToken = typeof window !== "undefined" ? localStorage.getItem("alumni_session_token") : null;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (localToken && localToken !== "null" && localToken !== "undefined") {
+        headers["Authorization"] = `Bearer ${localToken}`;
+      }
+
       const res = await fetch("/api/profile", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers,
+        credentials: "include",
         body: JSON.stringify({
           name: name.trim(),
           avatarUrl,
@@ -198,6 +255,7 @@ export default function EditProfileModal({
           city: city.trim() || null,
           linkedinUrl: linkedinUrl.trim() || null,
           institutionName: institutionName.trim() || null,
+          institutionType: instType,
           departmentName: departmentName.trim() || null,
           course: course.trim() || null,
           batchYear: batchYear.trim() && !isNaN(Number(batchYear.trim())) ? parseInt(batchYear.trim(), 10) : null,
@@ -209,24 +267,35 @@ export default function EditProfileModal({
         throw new Error(data.error || "Failed to update profile");
       }
 
-      if (typeof window !== "undefined" && currentUser?.id) {
-        if (avatarUrl) localStorage.setItem(`alumni_avatar_${currentUser.id}`, avatarUrl);
-        if (coverUrl) localStorage.setItem(`alumni_cover_${currentUser.id}`, coverUrl);
-        const savedInstName = data.user?.institution?.name || institutionName.trim();
-        if (savedInstName) {
-          localStorage.setItem(`alumni_inst_${currentUser.id}`, savedInstName);
+      if (typeof window !== "undefined") {
+        if (data.token) {
+          localStorage.setItem("alumni_session_token", data.token);
         }
-        window.dispatchEvent(
-          new CustomEvent("profile-updated", {
-            detail: {
-              ...(data.user || {}),
-              institution: data.user?.institution || { name: savedInstName, city: city.trim() || null },
-              institutionName: savedInstName,
-              avatarUrl: avatarUrl || data.user?.avatarUrl,
-              coverUrl: coverUrl || data.user?.coverUrl,
-            },
-          })
-        );
+        if (currentUser?.id) {
+          if (avatarUrl) localStorage.setItem(`alumni_avatar_${currentUser.id}`, avatarUrl);
+          if (coverUrl) localStorage.setItem(`alumni_cover_${currentUser.id}`, coverUrl);
+          try {
+            const stored = JSON.parse(localStorage.getItem("alumni_user") || "{}");
+            if (avatarUrl) stored.avatarUrl = avatarUrl;
+            if (coverUrl) stored.coverUrl = coverUrl;
+            localStorage.setItem("alumni_user", JSON.stringify(stored));
+          } catch {}
+          const savedInstName = data.user?.institution?.name || institutionName.trim();
+          if (savedInstName) {
+            localStorage.setItem(`alumni_inst_${currentUser.id}`, savedInstName);
+          }
+          window.dispatchEvent(
+            new CustomEvent("profile-updated", {
+              detail: {
+                ...(data.user || {}),
+                institution: data.user?.institution || { name: savedInstName, city: city.trim() || null },
+                institutionName: savedInstName,
+                avatarUrl: avatarUrl || data.user?.avatarUrl,
+                coverUrl: coverUrl || data.user?.coverUrl,
+              },
+            })
+          );
+        }
       }
 
       setSuccess(true);
@@ -365,19 +434,31 @@ export default function EditProfileModal({
             </label>
 
             <div className="flex items-center gap-4">
-              <div className="relative">
-                <div className="h-20 w-20 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center font-black text-2xl shadow-md overflow-hidden ring-4 ring-slate-100">
+              <div
+                onClick={() => avatarInputRef.current?.click()}
+                className="relative cursor-pointer group shrink-0"
+              >
+                <div className="h-20 w-20 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center font-black text-2xl shadow-md overflow-hidden ring-4 ring-slate-100 transition group-hover:ring-blue-300">
                   {avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="Avatar Preview" className="w-full h-full object-cover" />
+                    <img src={avatarUrl} alt="Avatar Preview" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                   ) : (
                     name.charAt(0).toUpperCase() || "A"
                   )}
                 </div>
+                <div
+                  className="absolute inset-0 rounded-2xl bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[1px]"
+                  title="Upload profile photo"
+                >
+                  <Camera className="w-5 h-5 drop-shadow-sm" />
+                </div>
                 <button
                   type="button"
-                  onClick={() => avatarInputRef.current?.click()}
-                  className="absolute -bottom-1 -right-1 p-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-md transition"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    avatarInputRef.current?.click();
+                  }}
+                  className="absolute -bottom-1 -right-1 p-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-md transition hover:scale-110 active:scale-95 cursor-pointer"
                   title="Upload profile photo"
                 >
                   <Camera className="w-3.5 h-3.5" />
@@ -385,7 +466,7 @@ export default function EditProfileModal({
                 <input
                   ref={avatarInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/png,image/jpeg,image/webp,image/jpg"
                   onChange={handleAvatarChange}
                   className="hidden"
                 />
@@ -396,22 +477,23 @@ export default function EditProfileModal({
                   <button
                     type="button"
                     onClick={() => avatarInputRef.current?.click()}
-                    className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition active:scale-98 cursor-pointer shadow-xs"
                   >
-                    Select Photo
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Upload Photo</span>
                   </button>
                   {avatarUrl && (
                     <button
                       type="button"
                       onClick={() => setAvatarUrl(null)}
-                      className="px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 text-xs font-semibold transition"
+                      className="px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 text-xs font-semibold transition active:scale-98 cursor-pointer border border-rose-200/60"
                     >
                       Remove
                     </button>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  JPG or PNG. Square images work best.
+                  JPG, PNG, or WebP. Square photo works best.
                 </p>
               </div>
             </div>
@@ -520,18 +602,53 @@ export default function EditProfileModal({
 
             {/* Academic & Institution Discovery */}
             <div className="space-y-3 pt-3 border-t border-slate-100">
-              <div>
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <GraduationCap className="w-4 h-4 text-blue-600" /> College / School Discovery
-                </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Institution affiliation is a discovery attribute to connect with peers. No ID upload or verification required.
-                </p>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    {instType === "SCHOOL" ? (
+                      <School className="w-4 h-4 text-blue-600" />
+                    ) : (
+                      <GraduationCap className="w-4 h-4 text-blue-600" />
+                    )}
+                    <span>{instType === "SCHOOL" ? "School Details" : "College / University Details"}</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Institution affiliation helps alumni and classmates discover you.
+                  </p>
+                </div>
+
+                {/* School vs College Selector */}
+                <div className="flex rounded-xl bg-slate-100 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setInstType("COLLEGE")}
+                    className={`py-1 px-2.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                      instType === "COLLEGE"
+                        ? "bg-white text-blue-700 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <GraduationCap className="w-3 h-3" />
+                    <span>College</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInstType("SCHOOL")}
+                    className={`py-1 px-2.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                      instType === "SCHOOL"
+                        ? "bg-white text-blue-700 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <School className="w-3 h-3" />
+                    <span>School</span>
+                  </button>
+                </div>
               </div>
 
               <div className="relative">
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  College / University / School Name *
+                  {instType === "SCHOOL" ? "School Name *" : "College / University / Campus Name *"}
                 </label>
                 <div className="relative">
                   <School className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
@@ -546,7 +663,7 @@ export default function EditProfileModal({
                       setShowSuggestions(true);
                     }}
                     onFocus={() => setShowSuggestions(true)}
-                    placeholder="e.g. Kalyani Government Engineering College, Jadavpur University"
+                    placeholder={instType === "SCHOOL" ? "e.g. DPS, St. Xavier's School, Kendriya Vidyalaya" : "e.g. Kalyani Government Engineering College, Jadavpur University"}
                     className="w-full pl-9 pr-8 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
                     required
                   />
@@ -562,6 +679,7 @@ export default function EditProfileModal({
                         onClick={() => {
                           setInstitutionName(inst.name);
                           setShowSuggestions(false);
+                          if (inst.type === "SCHOOL") setInstType("SCHOOL");
                         }}
                         className="w-full text-left px-3.5 py-2 text-xs hover:bg-blue-50 transition flex items-center justify-between border-b border-slate-100 last:border-0"
                       >
@@ -579,7 +697,7 @@ export default function EditProfileModal({
                         }}
                         className="w-full text-left px-3.5 py-2 text-xs bg-amber-50/70 hover:bg-amber-100 text-amber-800 transition flex items-center gap-1.5 font-semibold border-t border-amber-200/50"
                       >
-                        <span>✓ Use &quot;{institutionName.trim()}&quot; as custom institution</span>
+                        <span>✓ Use &quot;{institutionName.trim()}&quot; as custom {instType === "SCHOOL" ? "school" : "institution"}</span>
                       </button>
                     )}
                   </div>
@@ -588,7 +706,7 @@ export default function EditProfileModal({
                 {!loadingSuggestions && institutionName.trim().length >= 2 && instSuggestions.length === 0 && (
                   <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1">
                     <span className="text-emerald-600 font-bold">✓</span>
-                    <span>&quot;{institutionName.trim()}&quot; will be saved as your custom institution.</span>
+                    <span>&quot;{institutionName.trim()}&quot; will be saved as your custom {instType === "SCHOOL" ? "school" : "institution"}.</span>
                   </p>
                 )}
               </div>
@@ -596,7 +714,7 @@ export default function EditProfileModal({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Department / Stream
+                    {instType === "SCHOOL" ? "Class / Stream" : "Department / Stream"}
                   </label>
                   <div className="relative">
                     <School className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
@@ -604,7 +722,7 @@ export default function EditProfileModal({
                       type="text"
                       value={departmentName}
                       onChange={(e) => setDepartmentName(e.target.value)}
-                      placeholder="e.g. MCA, CSE, IT"
+                      placeholder={instType === "SCHOOL" ? "e.g. 10th Standard, 12th Science" : "e.g. MCA, CSE, IT"}
                       className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                     />
                   </div>
@@ -612,7 +730,7 @@ export default function EditProfileModal({
 
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Course / Degree
+                    {instType === "SCHOOL" ? "Board / Section" : "Course / Degree"}
                   </label>
                   <div className="relative">
                     <BookOpen className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
@@ -620,7 +738,7 @@ export default function EditProfileModal({
                       type="text"
                       value={course}
                       onChange={(e) => setCourse(e.target.value)}
-                      placeholder="e.g. B.Tech, BCA, MCA"
+                      placeholder={instType === "SCHOOL" ? "e.g. CBSE, ICSE, State Board" : "e.g. B.Tech, BCA, MCA"}
                       className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                     />
                   </div>
@@ -628,7 +746,7 @@ export default function EditProfileModal({
 
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
-                    Graduation Year / Class
+                    {instType === "SCHOOL" ? "Passing Year / Class of" : "Graduation Year / Class"}
                   </label>
                   <div className="relative">
                     <GraduationCap className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />

@@ -109,6 +109,7 @@ model User {
   postLikes           PostLike[]
   postComments        PostComment[]
   postShares          PostShare[]
+  postSaves           PostSave[]
   createdGroups       Group[]              @relation("CreatedGroups")
   groupMemberships    GroupMember[]
   chatMessages        ChatMessage[]
@@ -251,6 +252,7 @@ model FeedItem {
   likes         PostLike[]
   comments      PostComment[]
   shares        PostShare[]
+  saves         PostSave[]
 
   createdAt     DateTime    @default(now())
 }
@@ -264,6 +266,19 @@ model PostLike {
   createdAt  DateTime @default(now())
 
   @@unique([feedItemId, userId])
+  @@index([feedItemId])
+}
+
+model PostSave {
+  id         String   @id @default(cuid())
+  feedItemId String
+  feedItem   FeedItem @relation(fields: [feedItemId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([feedItemId, userId])
+  @@index([userId])
   @@index([feedItemId])
 }
 

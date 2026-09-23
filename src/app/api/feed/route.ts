@@ -6,7 +6,7 @@ import { broadcastFeedEvent } from "@/lib/supabase-broadcast";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/feed - Fetch LinkedIn-style posts with live like, comment, and share counts
+// GET /api/feed - Fetch LinkedIn-style posts with live like, comment, share, and save counts
 export async function GET(req: Request) {
   try {
     const user = await getCurrentUser();
@@ -15,20 +15,85 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const filter = searchParams.get("filter") || "ALL"; // "ALL", "JOBS", "MENTORSHIP", "BATCH"
+    const filter = searchParams.get("filter") || "ALL"; // "ALL", "SAVED", "JOBS", "MENTORSHIP", "BATCH"
 
+    // 1. Resolve user's accepted friends / connections
+    const [acceptedRequests, connectedTrusts] = await Promise.all([
+      db.connectionRequest.findMany({
+        where: {
+          OR: [
+            { senderId: user.id, status: "ACCEPTED" },
+            { receiverId: user.id, status: "ACCEPTED" },
+          ],
+        },
+        select: { senderId: true, receiverId: true },
+      }),
+      db.contactTrust.findMany({
+        where: {
+          userId: user.id,
+          trustLevel: { in: ["CONNECTED", "TRUSTED"] },
+        },
+        select: { contactId: true },
+      }),
+    ]);
+
+    const friendIdsSet = new Set<string>();
+    friendIdsSet.add(user.id); // User can always see their own posts
+    acceptedRequests.forEach((r) => {
+      if (r.senderId && r.senderId !== user.id) friendIdsSet.add(r.senderId);
+      if (r.receiverId && r.receiverId !== user.id) friendIdsSet.add(r.receiverId);
+    });
+    connectedTrusts.forEach((t) => {
+      if (t.contactId && t.contactId !== user.id) friendIdsSet.add(t.contactId);
+    });
+    const friendIds = Array.from(friendIdsSet);
+
+    // 2. Build where filter according to visibility rules:
+    // - Regular posts / alumni updates: only friends' updates show
+    // - Job update or mentorship posts: show to mutual school and college users OR friends
+    // - SAVED: show posts bookmarked by the user
     const where: Prisma.FeedItemWhereInput = {};
 
-    if (filter === "JOBS") {
+    if (filter === "SAVED") {
+      where.saves = {
+        some: { userId: user.id },
+      };
+    } else if (filter === "JOBS") {
       where.type = "JOB_POSTED";
+      where.OR = [
+        { institutionId: user.institutionId },
+        { actorId: { in: friendIds } },
+      ];
     } else if (filter === "MENTORSHIP") {
       where.type = "MENTORSHIP_AVAILABLE";
+      where.OR = [
+        { institutionId: user.institutionId },
+        { actorId: { in: friendIds } },
+      ];
     } else if (filter === "BATCH") {
       where.actor = {
         batchYear: user.batchYear,
+        OR: [
+          { institutionId: user.institutionId },
+          { id: { in: friendIds } },
+        ],
       };
-    } else if (filter === "CAMPUS" && user.institutionId) {
-      where.institutionId = user.institutionId;
+    } else {
+      // "ALL" (Default feed):
+      where.OR = [
+        // a) Any post by a friend or user themselves
+        { actorId: { in: friendIds } },
+        // b) Job updates from mutual school/college
+        {
+          type: "JOB_POSTED",
+          institutionId: user.institutionId,
+        },
+        // c) Mentorship updates from mutual school/college
+        {
+          type: "MENTORSHIP_AVAILABLE",
+          institutionId: user.institutionId,
+        },
+      ];
     }
 
     const items = await db.feedItem.findMany({
@@ -44,9 +109,16 @@ export async function GET(req: Request) {
             batchYear: true,
             verificationStatus: true,
             department: { select: { name: true } },
+            institutionId: true,
+            institution: { select: { name: true, type: true } },
           },
         },
         likes: {
+          select: {
+            userId: true,
+          },
+        },
+        saves: {
           select: {
             userId: true,
           },
@@ -86,9 +158,16 @@ export async function GET(req: Request) {
       }
 
       const hasLiked = item.likes.some((l) => l.userId === user.id);
+      const hasSaved = item.saves.some((s) => s.userId === user.id);
       const likesCount = item.likes.length;
+      const savesCount = item.saves.length;
       const commentsCount = item.comments.length;
       const sharesCount = item.shares.length;
+
+      const isFriend = friendIdsSet.has(item.actorId) && item.actorId !== user.id;
+      const isMutualInstitution = Boolean(
+        user.institutionId && item.institutionId === user.institutionId
+      );
 
       return {
         id: item.id,
@@ -96,13 +175,18 @@ export async function GET(req: Request) {
         createdAt: item.createdAt,
         actor: item.actor,
         hasLiked,
+        hasSaved,
         likesCount,
+        savesCount,
         commentsCount,
         sharesCount,
+        isFriend,
+        isMutualInstitution,
         comments: item.comments,
         metadata: {
           ...meta,
           likes: likesCount,
+          savesCount,
           commentsCount,
           sharesCount,
         },
@@ -117,6 +201,7 @@ export async function GET(req: Request) {
         batchYear: user.batchYear,
         institutionName: user.institution.name,
         institutionId: user.institutionId,
+        institutionType: user.institution.type,
       },
       feed: parsedItems,
     });

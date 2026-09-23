@@ -5,9 +5,11 @@ import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const user = await getCurrentUser();
+    const authHeader = req.headers.get("Authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+    const user = await getCurrentUser(bearerToken);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -21,7 +23,9 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   try {
-    const user = await getCurrentUser();
+    const authHeader = req.headers.get("Authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+    const user = await getCurrentUser(bearerToken);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -55,27 +59,21 @@ export async function PUT(req: NextRequest) {
     if (typeof city === "string" || city === null) dataToUpdate.city = city;
     if (typeof linkedinUrl === "string" || linkedinUrl === null) dataToUpdate.linkedinUrl = linkedinUrl;
     if (typeof isPhoneVisible === "boolean") dataToUpdate.isPhoneVisible = isPhoneVisible;
-
-    // Institution selection (discovery attribute - no verification roadblock)
-    let targetInst = null;
-    if (institutionId) {
-      targetInst = await db.institution.findUnique({ where: { id: institutionId } });
+    if (course !== undefined) {
+      dataToUpdate.course = typeof course === "string" && course.trim() ? course.trim() : null;
     }
 
-    if (!targetInst && institutionName && typeof institutionName === "string" && institutionName.trim()) {
+    // Only update institution if explicitly sent in body
+    let targetInstId = institutionId;
+    if (!targetInstId && institutionName && typeof institutionName === "string" && institutionName.trim()) {
       const trimmedName = institutionName.trim();
       const allInsts = await db.institution.findMany({ take: 200 });
-      targetInst =
-        allInsts.find(
-          (i) =>
-            i.name.toLowerCase() === trimmedName.toLowerCase() ||
-            (institutionId && i.id.toLowerCase() === institutionId.toLowerCase()) ||
-            (institutionId && i.slug.toLowerCase() === institutionId.toLowerCase())
-        ) || null;
-
-      if (!targetInst) {
+      let matched = allInsts.find(
+        (i) => i.name.toLowerCase() === trimmedName.toLowerCase()
+      );
+      if (!matched) {
         const slugBase = trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-        targetInst = await db.institution.create({
+        matched = await db.institution.create({
           data: {
             name: trimmedName,
             slug: `${slugBase || "inst"}-${Date.now().toString(36)}`,
@@ -83,81 +81,137 @@ export async function PUT(req: NextRequest) {
           },
         });
       }
+      targetInstId = matched.id;
     }
 
-    if (targetInst) {
-      dataToUpdate.institutionId = targetInst.id;
+    if (targetInstId) {
+      dataToUpdate.institutionId = targetInstId;
     }
 
-    if (course !== undefined) {
-      dataToUpdate.course = typeof course === "string" && course.trim() ? course.trim() : null;
-    }
+    // Only update batch if batchYear or institution was explicitly sent
+    if (batchYear !== undefined || targetInstId !== undefined) {
+      const effectiveInstId = targetInstId || user.institutionId;
+      const effectiveBatchYear =
+        batchYear && !isNaN(Number(batchYear))
+          ? parseInt(String(batchYear), 10)
+          : user.batchYear || new Date().getFullYear();
 
-    const effectiveInstId = dataToUpdate.institutionId || user.institutionId;
+      dataToUpdate.batchYear = effectiveBatchYear;
 
-    // Always ensure valid batch for effectiveInstId
-    const effectiveBatchYear =
-      batchYear && !isNaN(Number(batchYear))
-        ? parseInt(String(batchYear), 10)
-        : user.batchYear || new Date().getFullYear();
-
-    dataToUpdate.batchYear = effectiveBatchYear;
-
-    let batch = await db.batch.findUnique({
-      where: {
-        institutionId_year: {
-          institutionId: effectiveInstId,
-          year: effectiveBatchYear,
-        },
-      },
-    });
-
-    if (!batch) {
-      batch = await db.batch.create({
-        data: {
-          institutionId: effectiveInstId,
-          year: effectiveBatchYear,
-          estimatedSize: 60,
-        },
-      });
-    }
-    dataToUpdate.batchId = batch.id;
-
-    // Handle department
-    if (departmentName !== undefined) {
-      if (departmentName && typeof departmentName === "string" && departmentName.trim()) {
-        const trimmedDept = departmentName.trim();
-        const existingDepts = await db.department.findMany({
-          where: { institutionId: effectiveInstId },
+      try {
+        let batch = await db.batch.findUnique({
+          where: {
+            institutionId_year: {
+              institutionId: effectiveInstId,
+              year: effectiveBatchYear,
+            },
+          },
         });
-        let dept = existingDepts.find(
-          (d) => d.name.toLowerCase() === trimmedDept.toLowerCase()
-        );
-        if (!dept) {
-          dept = await db.department.create({
+
+        if (!batch) {
+          batch = await db.batch.create({
             data: {
               institutionId: effectiveInstId,
-              name: trimmedDept,
+              year: effectiveBatchYear,
+              estimatedSize: 60,
             },
           });
         }
-        dataToUpdate.departmentId = dept.id;
+        dataToUpdate.batchId = batch.id;
+      } catch (batchErr) {
+        console.warn("Batch resolution notice:", batchErr);
+      }
+    }
+
+    // Only update department if explicitly sent
+    if (departmentName !== undefined) {
+      const effectiveInstId = targetInstId || user.institutionId;
+      if (departmentName && typeof departmentName === "string" && departmentName.trim()) {
+        const trimmedDept = departmentName.trim();
+        try {
+          const existingDepts = await db.department.findMany({
+            where: { institutionId: effectiveInstId },
+          });
+          let dept = existingDepts.find(
+            (d) => d.name.toLowerCase() === trimmedDept.toLowerCase()
+          );
+          if (!dept) {
+            dept = await db.department.create({
+              data: {
+                institutionId: effectiveInstId,
+                name: trimmedDept,
+              },
+            });
+          }
+          dataToUpdate.departmentId = dept.id;
+        } catch (deptErr) {
+          console.warn("Department resolution notice:", deptErr);
+        }
       } else {
         dataToUpdate.departmentId = null;
       }
     }
 
-    const updatedUser = await db.user.update({
-      where: { id: user.id },
-      data: dataToUpdate,
-      include: {
-        institution: true,
-        department: true,
-        batch: true,
-      },
-    });
+    // Locate target user in local SQLite DB by id or email
+    let targetDbUser = await db.user.findUnique({ where: { id: user.id } });
+    if (!targetDbUser && user.email) {
+      targetDbUser = await db.user.findFirst({
+        where: {
+          OR: [{ email: user.email }, { email: user.email.toLowerCase() }],
+        },
+      });
+    }
 
-    // Refresh the session cookie with updated fields (strictly keeping cookie < 1KB)
+    let updatedUser: any;
+    if (targetDbUser) {
+      updatedUser = await db.user.update({
+        where: { id: targetDbUser.id },
+        data: dataToUpdate,
+        include: {
+          institution: true,
+          department: true,
+          batch: true,
+        },
+      });
+    } else {
+      // Re-create user record in this container if it was missing from local SQLite
+      const targetEmail = user.email ? user.email.toLowerCase().trim() : null;
+      let inst = await db.institution.findFirst();
+      if (!inst) {
+        inst = await db.institution.create({
+          data: { name: "Campus Network", slug: "campus-network", type: "COLLEGE" },
+        });
+      }
+      let batch = await db.batch.findFirst({ where: { institutionId: inst.id } });
+      if (!batch) {
+        batch = await db.batch.create({
+          data: { institutionId: inst.id, year: 2026, estimatedSize: 60 },
+        });
+      }
+
+      updatedUser = await db.user.create({
+        data: {
+          id: user.id,
+          email: targetEmail,
+          name: dataToUpdate.name || user.name || "Alumni Member",
+          avatarUrl: dataToUpdate.avatarUrl !== undefined ? dataToUpdate.avatarUrl : user.avatarUrl,
+          coverUrl: dataToUpdate.coverUrl !== undefined ? dataToUpdate.coverUrl : user.coverUrl,
+          institutionId: dataToUpdate.institutionId || inst.id,
+          batchId: dataToUpdate.batchId || batch.id,
+          batchYear: dataToUpdate.batchYear || 2026,
+          city: dataToUpdate.city !== undefined ? dataToUpdate.city : user.city,
+          currentCompany: dataToUpdate.currentCompany !== undefined ? dataToUpdate.currentCompany : user.currentCompany,
+          currentRole: dataToUpdate.currentRole !== undefined ? dataToUpdate.currentRole : user.currentRole,
+        },
+        include: {
+          institution: true,
+          department: true,
+          batch: true,
+        },
+      });
+    }
+
+    // Refresh the session cookie with updated fields
     let newSessionToken: string | null = null;
     try {
       const safeAvatar =
@@ -196,7 +250,11 @@ export async function PUT(req: NextRequest) {
       console.warn("Could not refresh session cookie:", e);
     }
 
-    const response = NextResponse.json({ success: true, user: updatedUser });
+    const response = NextResponse.json({
+      success: true,
+      user: updatedUser,
+      token: newSessionToken,
+    });
     if (newSessionToken) {
       response.cookies.set(AUTH_COOKIE.name, newSessionToken, AUTH_COOKIE.options);
       response.cookies.set("session_token", newSessionToken, AUTH_COOKIE.options);

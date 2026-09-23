@@ -22,6 +22,7 @@ import FeedSection from "@/components/FeedSection";
 import ClientAuthRedirect from "@/components/ClientAuthRedirect";
 import AlumniPassportCard from "@/components/AlumniPassportCard";
 import InstitutionDiscoverySection from "@/components/InstitutionDiscoverySection";
+import NavbarUserAvatar from "@/components/NavbarUserAvatar";
 
 import { redirect } from "next/navigation";
 
@@ -263,14 +264,11 @@ export default async function HomePage(props: {
               className="h-9 px-2.5 sm:px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-2 text-xs font-semibold transition shrink-0"
               title="My Profile"
             >
-              <div className="h-6 w-6 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-[10px] font-bold overflow-hidden shrink-0">
-                {user.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
-                ) : (
-                  user.name.charAt(0).toUpperCase()
-                )}
-              </div>
+              <NavbarUserAvatar
+                name={user.name}
+                userId={user.id}
+                initialAvatarUrl={user.avatarUrl}
+              />
               <span className="hidden sm:inline font-medium">Profile</span>
             </Link>
 

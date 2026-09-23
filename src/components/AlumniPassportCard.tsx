@@ -47,32 +47,47 @@ interface AlumniPassportCardProps {
 }
 
 export default function AlumniPassportCard({ user: initialUser }: AlumniPassportCardProps) {
-  const [user, setUser] = useState(initialUser);
+  const [user, setUser] = useState(() => {
+    const cachedAvatar = typeof window !== "undefined" && initialUser?.id
+      ? localStorage.getItem(`alumni_avatar_${initialUser.id}`)
+      : null;
+    const cachedCover = typeof window !== "undefined" && initialUser?.id
+      ? localStorage.getItem(`alumni_cover_${initialUser.id}`)
+      : null;
+    return {
+      ...initialUser,
+      avatarUrl: initialUser.avatarUrl || cachedAvatar || null,
+      coverUrl: initialUser.coverUrl || cachedCover || null,
+    };
+  });
+
   const [showQrModal, setShowQrModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   const quickAvatarInputRef = useRef<HTMLInputElement | null>(null);
   const quickCoverInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Sync state when initialUser changes
+  // Sync state when initialUser changes without wiping out cached avatar/cover
   useEffect(() => {
-    setUser(initialUser);
+    const cachedAvatar = typeof window !== "undefined" && initialUser?.id
+      ? localStorage.getItem(`alumni_avatar_${initialUser.id}`)
+      : null;
+    const cachedCover = typeof window !== "undefined" && initialUser?.id
+      ? localStorage.getItem(`alumni_cover_${initialUser.id}`)
+      : null;
+
+    setUser((prev) => ({
+      ...initialUser,
+      avatarUrl: initialUser.avatarUrl || cachedAvatar || prev.avatarUrl,
+      coverUrl: initialUser.coverUrl || cachedCover || prev.coverUrl,
+    }));
   }, [initialUser]);
 
-  // Sync with client-side localStorage fallback so avatar/cover NEVER vanishes on refresh
+  // Sync with client-side profile-updated events
   useEffect(() => {
-    if (typeof window === "undefined" || !initialUser?.id) return;
-    const cachedAvatar = localStorage.getItem(`alumni_avatar_${initialUser.id}`);
-    const cachedCover = localStorage.getItem(`alumni_cover_${initialUser.id}`);
-    if ((cachedAvatar && !initialUser.avatarUrl) || (cachedCover && !initialUser.coverUrl)) {
-      setUser((prev) => ({
-        ...prev,
-        avatarUrl: prev.avatarUrl || cachedAvatar,
-        coverUrl: prev.coverUrl || cachedCover,
-      }));
-    }
-
     const handleProfileUpdate = (e: any) => {
       if (e.detail) {
         setUser((prev) => ({ ...prev, ...e.detail }));
@@ -80,7 +95,7 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
     };
     window.addEventListener("profile-updated", handleProfileUpdate);
     return () => window.removeEventListener("profile-updated", handleProfileUpdate);
-  }, [initialUser?.id, initialUser?.avatarUrl, initialUser?.coverUrl]);
+  }, []);
 
   const isVerified = user.verificationStatus === "VERIFIED";
 
@@ -89,92 +104,176 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
     ? user.city.charAt(0).toUpperCase() + user.city.slice(1).toLowerCase()
     : null;
 
-  // Direct fast cover upload
+  // Center-cropped landscape cover upload
   const handleQuickCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setUploadingCover(true);
     const reader = new FileReader();
+    reader.onerror = () => {
+      setUploadingCover(false);
+      alert("Failed to read the image file. Please try another image.");
+    };
     reader.onload = async (event) => {
       const img = new Image();
+      img.onerror = () => {
+        setUploadingCover(false);
+        alert("Failed to process image. Please choose a valid JPG or PNG file.");
+      };
       img.onload = async () => {
-        const maxWidth = 1200;
-        let { width, height } = img;
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", 0.78);
-          setUser((prev) => ({ ...prev, coverUrl: compressed }));
-          if (typeof window !== "undefined") {
-            localStorage.setItem(`alumni_cover_${user.id}`, compressed);
-            window.dispatchEvent(new CustomEvent("profile-updated", { detail: { coverUrl: compressed } }));
-          }
+        try {
+          const targetW = 1200;
+          const targetH = 460;
+          const scale = Math.max(targetW / img.width, targetH / img.height);
+          const scaledW = img.width * scale;
+          const scaledH = img.height * scale;
+          const offsetX = (targetW - scaledW) / 2;
+          const offsetY = (targetH - scaledH) / 2;
 
-          try {
-            await fetch("/api/profile", {
+          const canvas = document.createElement("canvas");
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, offsetX, offsetY, scaledW, scaledH);
+            const compressed = canvas.toDataURL("image/jpeg", 0.82);
+
+            // 1. Immediately update UI state
+            setUser((prev) => ({ ...prev, coverUrl: compressed }));
+
+            // 2. Persist in local storage
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`alumni_cover_${user.id}`, compressed);
+              try {
+                const stored = JSON.parse(localStorage.getItem("alumni_user") || "{}");
+                stored.coverUrl = compressed;
+                localStorage.setItem("alumni_user", JSON.stringify(stored));
+              } catch {}
+              window.dispatchEvent(
+                new CustomEvent("profile-updated", { detail: { coverUrl: compressed } })
+              );
+            }
+
+            // 3. Save to server database with Bearer auth header
+            const localToken = typeof window !== "undefined" ? localStorage.getItem("alumni_session_token") : null;
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (localToken && localToken !== "null" && localToken !== "undefined") {
+              headers["Authorization"] = `Bearer ${localToken}`;
+            }
+
+            const res = await fetch("/api/profile", {
               method: "PUT",
-              headers: { "Content-Type": "application/json" },
+              headers,
+              credentials: "include",
               body: JSON.stringify({ coverUrl: compressed }),
             });
-          } catch (err) {
-            console.warn("Failed to persist cover upload:", err);
+
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              console.warn("Cover update notice:", errData.error || res.statusText);
+            } else {
+              const resData = await res.json().catch(() => ({}));
+              if (resData.token && typeof window !== "undefined") {
+                localStorage.setItem("alumni_session_token", resData.token);
+              }
+            }
           }
+        } catch (err) {
+          console.warn("Cover photo upload error:", err);
+        } finally {
+          setUploadingCover(false);
         }
       };
       img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
-  // Direct fast avatar upload
+  // Center-cropped square avatar upload
   const handleQuickAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setUploadingAvatar(true);
     const reader = new FileReader();
+    reader.onerror = () => {
+      setUploadingAvatar(false);
+      alert("Failed to read profile picture file. Please try another image.");
+    };
     reader.onload = async (event) => {
       const img = new Image();
+      img.onerror = () => {
+        setUploadingAvatar(false);
+        alert("Failed to process profile picture. Please select a valid JPG, PNG, or WebP image.");
+      };
       img.onload = async () => {
-        const maxWidth = 400;
-        let { width, height } = img;
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", 0.78);
-          setUser((prev) => ({ ...prev, avatarUrl: compressed }));
-          if (typeof window !== "undefined") {
-            localStorage.setItem(`alumni_avatar_${user.id}`, compressed);
-            window.dispatchEvent(new CustomEvent("profile-updated", { detail: { avatarUrl: compressed } }));
-          }
+        try {
+          // Crop square from center of image
+          const minDim = Math.min(img.width, img.height);
+          const startX = (img.width - minDim) / 2;
+          const startY = (img.height - minDim) / 2;
 
-          try {
-            await fetch("/api/profile", {
+          const canvas = document.createElement("canvas");
+          canvas.width = 400;
+          canvas.height = 400;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, startX, startY, minDim, minDim, 0, 0, 400, 400);
+            const compressed = canvas.toDataURL("image/jpeg", 0.85);
+
+            // 1. Immediately update UI state
+            setUser((prev) => ({ ...prev, avatarUrl: compressed }));
+
+            // 2. Persist in local storage
+            if (typeof window !== "undefined") {
+              localStorage.setItem(`alumni_avatar_${user.id}`, compressed);
+              try {
+                const stored = JSON.parse(localStorage.getItem("alumni_user") || "{}");
+                stored.avatarUrl = compressed;
+                localStorage.setItem("alumni_user", JSON.stringify(stored));
+              } catch {}
+              window.dispatchEvent(
+                new CustomEvent("profile-updated", { detail: { avatarUrl: compressed } })
+              );
+            }
+
+            // 3. Save to server database with Bearer auth header & cookie
+            const localToken = typeof window !== "undefined" ? localStorage.getItem("alumni_session_token") : null;
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (localToken && localToken !== "null" && localToken !== "undefined") {
+              headers["Authorization"] = `Bearer ${localToken}`;
+            }
+
+            const res = await fetch("/api/profile", {
               method: "PUT",
-              headers: { "Content-Type": "application/json" },
+              headers,
+              credentials: "include",
               body: JSON.stringify({ avatarUrl: compressed }),
             });
-          } catch (err) {
-            console.warn("Failed to persist avatar upload:", err);
+
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              console.warn("Avatar update server notice:", errData.error || res.statusText);
+            } else {
+              const resData = await res.json().catch(() => ({}));
+              if (resData.token && typeof window !== "undefined") {
+                localStorage.setItem("alumni_session_token", resData.token);
+              }
+            }
           }
+        } catch (err) {
+          console.warn("Avatar upload error:", err);
+          alert("Something went wrong while processing the photo. Please try again.");
+        } finally {
+          setUploadingAvatar(false);
         }
       };
       img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   return (
@@ -235,52 +334,67 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
         <div className="px-5 sm:px-8 pb-6 pt-0">
           <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 -mt-12 sm:-mt-16 mb-4">
             {/* Avatar with Camera Overlay & Floating Verified Check Badge */}
-            <div className="relative group">
-              <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl ring-4 ring-white bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center font-black text-3xl sm:text-4xl shadow-lg shadow-slate-900/15 shrink-0 overflow-hidden select-none">
+            <div className="relative group shrink-0">
+              <div
+                onClick={() => quickAvatarInputRef.current?.click()}
+                className="h-24 w-24 sm:h-28 sm:w-28 rounded-2xl ring-4 ring-white bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center font-black text-3xl sm:text-4xl shadow-lg shadow-slate-900/15 shrink-0 overflow-hidden select-none cursor-pointer"
+              >
                 {user.avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={user.avatarUrl}
                     alt={user.name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : (
                   user.name.charAt(0).toUpperCase()
                 )}
               </div>
 
-              {/* Instant Avatar Upload Button */}
-              <button
-                type="button"
-                onClick={() => quickAvatarInputRef.current?.click()}
-                className="absolute inset-0 rounded-2xl bg-black/40 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer backdrop-blur-2xs"
-                title="Change profile picture"
-              >
-                <Camera className="w-6 h-6" />
-                <span className="text-[10px] font-bold mt-1">Change</span>
-              </button>
+              {/* Uploading Spinner Overlay */}
+              {uploadingAvatar && (
+                <div className="absolute inset-0 rounded-2xl bg-black/65 text-white flex flex-col items-center justify-center backdrop-blur-xs z-20">
+                  <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="text-[10px] font-semibold mt-1.5">Uploading...</span>
+                </div>
+              )}
+
+              {/* Instant Avatar Upload Button (Desktop Hover Overlay) */}
+              {!uploadingAvatar && (
+                <button
+                  type="button"
+                  onClick={() => quickAvatarInputRef.current?.click()}
+                  className="absolute inset-0 rounded-2xl bg-black/40 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer backdrop-blur-[2px] z-10"
+                  title="Upload profile picture"
+                >
+                  <Camera className="w-6 h-6 drop-shadow-sm" />
+                  <span className="text-[10px] font-bold mt-1 tracking-wide drop-shadow-sm">Change Photo</span>
+                </button>
+              )}
+
               <input
                 ref={quickAvatarInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/png,image/jpeg,image/webp,image/jpg"
                 onChange={handleQuickAvatarUpload}
                 className="hidden"
               />
 
-              {/* Mobile Camera Indicator Badge */}
+              {/* Always-Visible Camera Badge (Bottom-Left) */}
               <button
                 type="button"
                 onClick={() => quickAvatarInputRef.current?.click()}
-                className="sm:hidden absolute bottom-0 left-0 p-1.5 rounded-full bg-slate-900 text-white ring-2 ring-white shadow-xs"
+                disabled={uploadingAvatar}
+                className="absolute -bottom-1 -left-1 p-2 rounded-xl bg-slate-900/90 hover:bg-slate-900 text-white ring-2 ring-white shadow-md hover:scale-110 active:scale-95 transition cursor-pointer flex items-center justify-center z-15 disabled:opacity-50"
                 title="Change profile picture"
               >
-                <Camera className="w-3 h-3" />
+                <Camera className="w-3.5 h-3.5 text-white" />
               </button>
 
-              {/* Verified Badge */}
+              {/* Verified Badge (Bottom-Right) */}
               {isVerified && (
                 <div
-                  className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-emerald-500 text-white ring-2 ring-white flex items-center justify-center shadow-xs"
+                  className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-emerald-500 text-white ring-2 ring-white flex items-center justify-center shadow-xs z-15"
                   title="Verified Alumni Member"
                 >
                   <CheckCircle2 className="w-4 h-4 text-white" />

@@ -5,10 +5,17 @@ import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const authHeader = req.headers.get("Authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+
     const cookieStore = await cookies();
-    const token = cookieStore.get("alumni_session")?.value || cookieStore.get("session_token")?.value;
+    const cookieToken =
+      cookieStore.get("alumni_session")?.value ||
+      cookieStore.get("session_token")?.value;
+
+    const token = cookieToken || bearerToken;
     const allCookies = cookieStore.getAll().map((c) => c.name);
 
     let tokenPayload = null;
@@ -29,17 +36,39 @@ export async function GET() {
       }
     }
 
-    const user = await getCurrentUser();
+    const user = await getCurrentUser(token);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       authenticated: !!user,
       hasToken: !!token,
+      token: token || undefined,
       availableCookies: allCookies,
       tokenPayload,
       dbUserFound: !!dbUser,
       dbError,
       user,
     });
+
+    // If authenticated via bearer token but cookies were missing/dropped by browser/iframe,
+    // re-hydrate the cookies on this response
+    if (token && user && !cookieToken) {
+      response.cookies.set("alumni_session", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60,
+      });
+      response.cookies.set("session_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60,
+      });
+    }
+
+    return response;
   } catch (error: unknown) {
     return NextResponse.json(
       {
