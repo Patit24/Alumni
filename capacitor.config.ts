@@ -11,6 +11,7 @@ const config: CapacitorConfig = {
   plugins: {
     PrivacyScreen: {
       enable: true,
+      preventScreenshots: true,
     },
   },
 };
