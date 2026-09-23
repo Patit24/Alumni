@@ -12,6 +12,9 @@ import {
   CheckCircle2,
   RefreshCw,
   MessageSquare,
+  UserPlus,
+  Clock,
+  Lock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { addLocalConnectedPeer } from "@/lib/e2ee/vault";
@@ -49,6 +52,9 @@ export default function QRScannerModal({
     batchYear?: number | null;
     avatarUrl?: string | null;
   } | null>(null);
+  const [scannedRelStatus, setScannedRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">("NONE");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   // Stop camera stream
   const stopCamera = useCallback(() => {
@@ -112,6 +118,17 @@ export default function QRScannerModal({
 
       if (peer) {
         setScannedPeer(peer);
+        setActionNotice(null);
+        fetch(`/api/contacts/requests?targetUserId=${peer.id}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.statusMap && data.statusMap[peer.id]) {
+              setScannedRelStatus(data.statusMap[peer.id]);
+            } else {
+              setScannedRelStatus("NONE");
+            }
+          })
+          .catch(() => setScannedRelStatus("NONE"));
       } else {
         setCameraError(`Could not find alumni matching "${target}". Check if the QR code is valid.`);
       }
@@ -281,19 +298,55 @@ export default function QRScannerModal({
     }
   };
 
-  const handleConnectAndChat = async (peer: { id: string }) => {
+  const handleSendConnectionRequest = async (peerId: string) => {
+    setActionLoading(true);
+    setActionNotice(null);
     try {
-      addLocalConnectedPeer(peer.id);
-      fetch("/api/contacts/connect", {
+      const res = await fetch("/api/contacts/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: peer.id, action: "REQUEST" }),
-      }).catch(() => {});
+        body: JSON.stringify({ targetUserId: peerId, action: "REQUEST" }),
+      });
+      const data = await res.json();
+      if (data.status === "CONNECTED" || data.status === "ACCEPTED") {
+        setScannedRelStatus("CONNECTED");
+        setActionNotice("Connected! You can now send messages.");
+      } else {
+        setScannedRelStatus("PENDING_OUTGOING");
+        setActionNotice("Connection request sent! Once accepted, messaging will be unlocked.");
+      }
+      window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (e) {
-      console.warn("Failed to connect peer:", e);
+      console.warn("Connect request error:", e);
+    } finally {
+      setActionLoading(false);
     }
+  };
+
+  const handleAcceptConnectionRequest = async (peerId: string) => {
+    setActionLoading(true);
+    setActionNotice(null);
+    try {
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: peerId, action: "ACCEPT" }),
+      });
+      if (res.ok) {
+        setScannedRelStatus("CONNECTED");
+        setActionNotice("Connection accepted! You can now send messages.");
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+      }
+    } catch (e) {
+      console.warn("Accept request error:", e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenMessages = (peerId: string) => {
     onClose();
-    router.push(`/messages/${peer.id}`);
+    router.push(`/messages/${peerId}`);
   };
 
   const handleViewProfile = (peer: { id: string }) => {
@@ -333,7 +386,7 @@ export default function QRScannerModal({
 
         {/* Successful Scan Card */}
         {scannedPeer ? (
-          <div className="p-5 bg-emerald-50/70 border border-emerald-200 rounded-3xl space-y-4 text-center">
+          <div className="p-5 bg-slate-50/90 border border-slate-200 rounded-3xl space-y-4 text-center">
             <div className="h-16 w-16 mx-auto rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-2xl font-black shadow-md overflow-hidden">
               {scannedPeer.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -344,9 +397,9 @@ export default function QRScannerModal({
             </div>
 
             <div>
-              <div className="inline-flex items-center gap-1 text-emerald-800 text-xs font-bold bg-emerald-100/80 px-2.5 py-0.5 rounded-full mb-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                Alumni Verified & Found
+              <div className="inline-flex items-center gap-1 text-blue-800 text-xs font-bold bg-blue-100/80 px-2.5 py-0.5 rounded-full mb-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                Alumni QR Found
               </div>
               <h3 className="text-base font-black text-slate-900">{scannedPeer.name}</h3>
               {scannedPeer.username && (
@@ -359,16 +412,73 @@ export default function QRScannerModal({
               </p>
             </div>
 
-            <div className="space-y-2 pt-2">
-              <button
-                type="button"
-                onClick={() => handleConnectAndChat(scannedPeer)}
-                className="w-full py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm shadow-blue-500/25 cursor-pointer active:scale-98"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>Connect for Chat</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+            {/* Action notification notice */}
+            {actionNotice && (
+              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs font-medium text-center">
+                {actionNotice}
+              </div>
+            )}
+
+            <div className="space-y-2 pt-1">
+              {scannedRelStatus === "CONNECTED" ? (
+                <button
+                  type="button"
+                  onClick={() => handleOpenMessages(scannedPeer.id)}
+                  className="w-full py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm shadow-blue-500/25 cursor-pointer active:scale-98"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Open Messages</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : scannedRelStatus === "PENDING_OUTGOING" ? (
+                <div className="space-y-2">
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs flex items-center justify-center gap-2 font-medium">
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Connection Request Pending</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Waiting for {scannedPeer.name} to accept your request. Once accepted, both of you can chat.
+                  </p>
+                </div>
+              ) : scannedRelStatus === "PENDING_INCOMING" ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleAcceptConnectionRequest(scannedPeer.id)}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-98 disabled:opacity-50"
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4" />
+                    )}
+                    <span>Accept Connection Request</span>
+                  </button>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    {scannedPeer.name} already sent you a request! Accept to start chatting.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleSendConnectionRequest(scannedPeer.id)}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm shadow-blue-500/25 cursor-pointer active:scale-98 disabled:opacity-50"
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <UserPlus className="w-4 h-4" />
+                    )}
+                    <span>Send Connection Request</span>
+                  </button>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Send a connection request to {scannedPeer.name}. Once accepted, both of you can chat.
+                  </p>
+                </div>
+              )}
 
               <button
                 type="button"

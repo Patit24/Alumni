@@ -23,6 +23,7 @@ import {
   Loader2,
   Flame,
   UserCheck,
+  UserPlus,
   UserX,
   Share2,
   Eye,
@@ -105,6 +106,9 @@ export default function DirectMessageChatPage(props: {
 
   // Privacy & Trust States
   const [trustLevel, setTrustLevel] = useState<"UNKNOWN" | "REQUEST" | "CONNECTED" | "TRUSTED" | "BLOCKED">("REQUEST");
+  const [connectionStatus, setConnectionStatus] = useState<"CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE">("NONE");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [isSafetyVerified, setIsSafetyVerified] = useState(false);
   const [keyRotatedWarning, setKeyRotatedWarning] = useState(false);
   const [peerReveals, setPeerReveals] = useState({ phone: false, email: false, work: false });
@@ -182,19 +186,18 @@ export default function DirectMessageChatPage(props: {
         setActiveVaultUser(user.id);
         setCurrentUser({ id: user.id, name: user.name });
 
-        // Fetch peer profile from directory
-        const [peerRes, trustRes] = await Promise.all([
+        // Fetch peer profile from directory, trust, and connection relationship
+        const [peerRes, trustRes, connRes] = await Promise.all([
           fetch(`/api/directory?id=${peerId}`),
           fetch(`/api/contacts/trust?contactId=${peerId}`),
+          fetch(`/api/contacts/requests?targetUserId=${peerId}`),
         ]);
 
-        if (peerRes.ok) {
-          const pData = await peerRes.json();
-          const target = pData.alumni?.find((u: PeerProfile) => u.id === peerId) || pData.alumni?.[0];
-          if (target) {
-            setPeer(target);
-            addLocalConnectedPeer(peerId, user.id);
-            window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+        let relStatus: "CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE" = "NONE";
+        if (connRes.ok) {
+          const cData = await connRes.json();
+          if (cData.statusMap && cData.statusMap[peerId]) {
+            relStatus = cData.statusMap[peerId];
           }
         }
 
@@ -202,9 +205,27 @@ export default function DirectMessageChatPage(props: {
           const tData = await trustRes.json();
           if (tData.success) {
             setTrustLevel(tData.trustLevel);
+            if (tData.trustLevel === "CONNECTED" || tData.trustLevel === "TRUSTED") {
+              relStatus = "CONNECTED";
+            }
             setIsSafetyVerified(tData.isVerified);
             if (tData.peerReveals) setPeerReveals(tData.peerReveals);
             if (tData.myReveals) setMyReveals(tData.myReveals);
+          }
+        }
+
+        setConnectionStatus(relStatus);
+
+        if (peerRes.ok) {
+          const pData = await peerRes.json();
+          const target = pData.alumni?.find((u: PeerProfile) => u.id === peerId) || pData.alumni?.[0];
+          if (target) {
+            setPeer(target);
+            // Only mark as locally connected peer in encrypted vault if CONNECTED
+            if (relStatus === "CONNECTED") {
+              addLocalConnectedPeer(peerId, user.id);
+              window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+            }
           }
         }
 
@@ -479,6 +500,11 @@ export default function DirectMessageChatPage(props: {
 
     if (!cleanText || !currentUser) return;
 
+    if (connectionStatus !== "CONNECTED") {
+      alert("Messaging is locked until the connection request is accepted.");
+      return;
+    }
+
     // Lazily fetch shared key if not yet derived (peer may have registered their key
     // after this chat was opened, or the initial fetch returned empty devices).
     let activeSharedKey = sharedKey;
@@ -606,6 +632,59 @@ export default function DirectMessageChatPage(props: {
     }, 8000);
   };
 
+  // Connection Request Actions (QR and Direct Message Protection)
+  const handleSendConnectionRequest = async () => {
+    if (!currentUser || actionLoading) return;
+    setActionLoading(true);
+    setActionNotice(null);
+    try {
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: peerId, action: "REQUEST" }),
+      });
+      const data = await res.json();
+      if (data.status === "CONNECTED" || data.status === "ACCEPTED") {
+        setConnectionStatus("CONNECTED");
+        setTrustLevel("CONNECTED");
+        addLocalConnectedPeer(peerId, currentUser.id);
+        setActionNotice("Connected! You can now send messages.");
+      } else {
+        setConnectionStatus("PENDING_OUTGOING");
+        setActionNotice("Connection request sent! Once accepted, messaging will be unlocked.");
+      }
+      window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+    } catch (e) {
+      console.warn("Connect request error:", e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAcceptConnectionRequest = async () => {
+    if (!currentUser || actionLoading) return;
+    setActionLoading(true);
+    setActionNotice(null);
+    try {
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: peerId, action: "ACCEPT" }),
+      });
+      if (res.ok) {
+        setConnectionStatus("CONNECTED");
+        setTrustLevel("CONNECTED");
+        addLocalConnectedPeer(peerId, currentUser.id);
+        setActionNotice("Connection accepted! Messaging is now unlocked.");
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+      }
+    } catch (e) {
+      console.warn("Accept request error:", e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Trust Handshake Actions
   const handleUpdateTrust = async (newLevel: "CONNECTED" | "TRUSTED" | "BLOCKED") => {
     try {
@@ -619,6 +698,19 @@ export default function DirectMessageChatPage(props: {
       });
       if (res.ok) {
         setTrustLevel(newLevel);
+        if (newLevel === "CONNECTED" || newLevel === "TRUSTED") {
+          setConnectionStatus("CONNECTED");
+          if (currentUser) {
+            addLocalConnectedPeer(peerId, currentUser.id);
+          }
+          // Sync to /api/contacts/connect so connectionRequest table is marked ACCEPTED
+          await fetch("/api/contacts/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ targetUserId: peerId, action: "ACCEPT" }),
+          }).catch(() => {});
+          window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+        }
       }
     } catch (e) {
       console.error("Failed to update trust level:", e);
@@ -820,18 +912,18 @@ export default function DirectMessageChatPage(props: {
 
           <button
             onClick={handleStartVoiceCall}
-            disabled={trustLevel === "REQUEST" || trustLevel === "UNKNOWN"}
+            disabled={trustLevel === "REQUEST" || trustLevel === "UNKNOWN" || connectionStatus !== "CONNECTED"}
             className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-emerald-50 hover:text-emerald-600 text-slate-600 flex items-center justify-center transition disabled:opacity-40"
-            title={trustLevel === "REQUEST" ? "Connect to enable calls" : "Voice Call"}
+            title={connectionStatus !== "CONNECTED" ? "Connect to enable calls" : "Voice Call"}
           >
             <Phone className="w-4 h-4" />
           </button>
 
           <button
             onClick={handleStartVideoCall}
-            disabled={trustLevel === "REQUEST" || trustLevel === "UNKNOWN"}
+            disabled={trustLevel === "REQUEST" || trustLevel === "UNKNOWN" || connectionStatus !== "CONNECTED"}
             className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-blue-50 hover:text-blue-600 text-slate-600 flex items-center justify-center transition disabled:opacity-40"
-            title={trustLevel === "REQUEST" ? "Connect to enable calls" : "Video Call"}
+            title={connectionStatus !== "CONNECTED" ? "Connect to enable calls" : "Video Call"}
           >
             <Video className="w-4 h-4" />
           </button>
@@ -1088,17 +1180,87 @@ export default function DirectMessageChatPage(props: {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Tactile Message Composer */}
-      <MessageComposer
-        inputText={inputText}
-        onInputChange={handleInputChange}
-        onSend={(text) => handleSendMessage(text)}
-        replyingTo={replyingTo}
-        onCancelReply={() => setReplyingTo(null)}
-        privacyMode={messagePrivacy}
-        onPrivacyModeChange={setMessagePrivacy}
-        disabled={trustLevel === "BLOCKED"}
-      />
+      {/* Tactile Message Composer or Connection Request Guard */}
+      {connectionStatus === "CONNECTED" ? (
+        <MessageComposer
+          inputText={inputText}
+          onInputChange={handleInputChange}
+          onSend={(text) => handleSendMessage(text)}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
+          privacyMode={messagePrivacy}
+          onPrivacyModeChange={setMessagePrivacy}
+          disabled={trustLevel === "BLOCKED"}
+        />
+      ) : (
+        <div className="sticky bottom-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 p-4 pb-6 transition-all">
+          <div className="max-w-md mx-auto rounded-2xl border p-4 shadow-xs text-center space-y-3 bg-slate-50/80 border-slate-200/80">
+            {connectionStatus === "PENDING_OUTGOING" && (
+              <>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">
+                  <Clock className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: "3s" }} />
+                  Connection Request Pending
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  You sent a connection request to <strong className="font-semibold text-slate-900">{peer?.name || "this alumni"}</strong>. Once they accept your request, both of you can chat.
+                </p>
+                <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+                  <Lock className="w-3 h-3" />
+                  <span>Messaging will automatically unlock upon acceptance</span>
+                </div>
+              </>
+            )}
+
+            {connectionStatus === "PENDING_INCOMING" && (
+              <>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-100 text-indigo-800 text-xs font-semibold">
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Incoming Connection Request
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  <strong className="font-semibold text-slate-900">{peer?.name || "This alumni"}</strong> sent you a connection request. Accept to start messaging.
+                </p>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <button
+                    onClick={handleAcceptConnectionRequest}
+                    disabled={actionLoading}
+                    className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                    Accept Request &amp; Start Chat
+                  </button>
+                </div>
+              </>
+            )}
+
+            {connectionStatus === "NONE" && (
+              <>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-200 text-slate-700 text-xs font-semibold">
+                  <Lock className="w-3.5 h-3.5" />
+                  Messaging Locked
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Send a connection request to <strong className="font-semibold text-slate-900">{peer?.name || "this alumni"}</strong>. Once accepted, both of you will be able to message.
+                </p>
+                <button
+                  onClick={handleSendConnectionRequest}
+                  disabled={actionLoading}
+                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                  Send Connection Request
+                </button>
+              </>
+            )}
+
+            {actionNotice && (
+              <p className="text-[11px] font-medium text-indigo-600 mt-1">
+                {actionNotice}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 2026 Immersive Call HUD Overlay */}
       <CallOverlay

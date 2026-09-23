@@ -420,29 +420,64 @@ export default function ProfileHeaderCard({
 
   return (
     <>
-      {/* Auto Connect scanned banner */}
+      {/* QR Code Scanned Connection Banner */}
       {autoConnect && !isOwnProfile && (
-        <div className="p-4 rounded-3xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md flex items-center justify-between gap-3 animate-in fade-in duration-300">
+        <div className="p-4 rounded-3xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-300">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0">
               <Sparkles className="w-5 h-5 text-yellow-300 animate-pulse" />
             </div>
             <div>
-              <p className="text-xs font-bold">QR Code Scanned Successfully</p>
+              <p className="text-xs font-bold">Alumni QR Code Scanned</p>
               <p className="text-[11px] text-white/80">
-                You found {user.name}&apos;s profile! Connect below to start encrypted chat.
+                {relStatus === "CONNECTED"
+                  ? `You and ${user.name} are connected peers!`
+                  : relStatus === "PENDING_OUTGOING"
+                  ? `Connection request sent to ${user.name}. Messaging unlocks upon acceptance.`
+                  : relStatus === "PENDING_INCOMING"
+                  ? `${user.name} sent you a connection request! Accept to start chatting.`
+                  : `Send a connection request to ${user.name} to connect and chat.`}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleConnectForChat}
-            disabled={connecting}
-            className="px-4 py-2 rounded-xl bg-white text-blue-700 text-xs font-bold shadow-xs hover:bg-blue-50 transition shrink-0 flex items-center gap-1.5 cursor-pointer active:scale-95"
-          >
-            <MessageSquare className="w-4 h-4" />
-            <span>Connect & Chat</span>
-          </button>
+
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            {relStatus === "CONNECTED" ? (
+              <button
+                type="button"
+                onClick={handleGoToChat}
+                className="px-4 py-2 rounded-xl bg-white text-blue-700 text-xs font-bold shadow-xs hover:bg-blue-50 transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Open Messages</span>
+              </button>
+            ) : relStatus === "PENDING_OUTGOING" ? (
+              <span className="px-3.5 py-2 rounded-xl bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 border border-white/30">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Request Pending</span>
+              </span>
+            ) : relStatus === "PENDING_INCOMING" ? (
+              <button
+                type="button"
+                onClick={handleAcceptConnect}
+                disabled={connecting}
+                className="px-4 py-2 rounded-xl bg-white text-emerald-700 text-xs font-bold shadow-xs hover:bg-emerald-50 transition flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>{connecting ? "Accepting..." : "Accept Request"}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSendConnect}
+                disabled={connecting}
+                className="px-4 py-2 rounded-xl bg-white text-blue-700 text-xs font-bold shadow-xs hover:bg-blue-50 transition flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                <UserPlus className="w-4 h-4 text-blue-600" />
+                <span>{connecting ? "Sending..." : "Send Connection Request"}</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
