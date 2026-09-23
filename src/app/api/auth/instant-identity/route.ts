@@ -30,8 +30,10 @@ export async function POST(req: Request) {
 
     const displayName = (name || "").trim() || "Anonymous Alumni";
     const year = parseInt(String(batchYear), 10) || new Date().getFullYear();
+    const customInstName = (body.customInstitutionName || "").trim();
+    const customInstType = body.customInstitutionType || "COLLEGE";
 
-    // 1. Resolve or default Institution
+    // 1. Resolve Institution (required — no Brainware fallback)
     let institution = null;
     if (institutionId) {
       institution = await db.institution.findUnique({
@@ -40,39 +42,55 @@ export async function POST(req: Request) {
       });
     }
 
-    if (!institution) {
-      institution = await db.institution.findFirst({
-        where: { name: "Brainware University" },
-        include: { departments: true },
+    if (!institution && customInstName) {
+      // Create or find by custom name (case-insensitive search via JS)
+      const slug = customInstName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const allInsts = await db.institution.findMany({
+        where: {},
+        select: { id: true, name: true },
+        take: 200,
       });
+      const found = allInsts.find(
+        (i) => i.name.toLowerCase() === customInstName.toLowerCase()
+      );
+      if (found) {
+        institution = await db.institution.findUnique({
+          where: { id: found.id },
+          include: { departments: true },
+        });
+      } else {
+        institution = await db.institution.create({
+          data: {
+            name: customInstName,
+            slug: `${slug}-${Math.random().toString(36).substring(2, 6)}`,
+            type: customInstType,
+            country: "India",
+          },
+          include: { departments: true },
+        });
+      }
     }
 
     if (!institution) {
-      institution = await db.institution.create({
-        data: {
-          name: "Brainware University",
-          slug: "brainware-university",
-          type: "UNIVERSITY",
-          country: "India",
-          city: "Kolkata",
-        },
-        include: { departments: true },
-      });
+      return NextResponse.json(
+        { error: "Please select your college, university, or school." },
+        { status: 400 }
+      );
     }
 
     // 2. Resolve Department
     let departmentId = null;
     if (departmentName && departmentName.trim()) {
       const trimmedDept = departmentName.trim();
-      let dept = institution.departments.find(
-        (d) => d.name.toLowerCase() === trimmedDept.toLowerCase()
+      const existingDepts = await db.department.findMany({
+        where: { institutionId: institution.id },
+      });
+      let dept = existingDepts.find(
+        (d: { name: string }) => d.name.toLowerCase() === trimmedDept.toLowerCase()
       );
       if (!dept) {
         dept = await db.department.create({
-          data: {
-            name: trimmedDept,
-            institutionId: institution.id,
-          },
+          data: { name: trimmedDept, institutionId: institution.id },
         });
       }
       departmentId = dept.id;
@@ -130,8 +148,6 @@ export async function POST(req: Request) {
         batchId: batch.id,
         batchYear: year,
         departmentId,
-        currentRole: currentRole?.trim() || null,
-        currentCompany: currentCompany?.trim() || null,
         city: city?.trim() || null,
       },
       include: {

@@ -9,7 +9,6 @@ import {
   Building,
   GraduationCap,
   MapPin,
-  Briefcase,
   ShieldCheck,
   Sparkles,
   ChevronRight,
@@ -70,9 +69,16 @@ export default function DirectoryPage() {
     fetch("/api/contacts/requests")
       .then((r) => r.json())
       .then((data) => {
-        if (data.statusMap) {
-          setStatusMap(data.statusMap);
+        const merged: Record<string, "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED"> = {
+          ...(data.statusMap || {}),
+        };
+        // Also mark all server-confirmed connected peers as CONNECTED
+        if (Array.isArray(data.connectedPeerIds)) {
+          for (const pid of data.connectedPeerIds) {
+            if (pid) merged[pid] = "CONNECTED";
+          }
         }
+        setStatusMap(merged);
       })
       .catch(() => {});
   };
@@ -433,35 +439,26 @@ export default function DirectoryPage() {
                           )}
                         </div>
 
-                        {/* Current Role & Company */}
-                        <p className="text-xs font-medium text-slate-700 flex items-center gap-1">
-                          <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span>
-                            {person.currentRole || "Alumni Member"}
-                            {person.currentCompany && ` • ${person.currentCompany}`}
+                        {/* Institution + Batch + Department */}
+                        <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-500">
+                          <span className="flex items-center gap-1 font-medium">
+                            <Building className="w-3 h-3 text-blue-500 shrink-0" />
+                            {person.institution.name}
                           </span>
-                        </p>
-
-                        {/* Batch, Dept, Location */}
-                        <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
+                          <span className="text-slate-300">·</span>
                           <span className="flex items-center gap-1">
                             <GraduationCap className="w-3 h-3 text-slate-400" />
-                            Class of {person.batchYear}{" "}
-                            {person.department?.name && `(${person.department.name})`}
+                            Class of {person.batchYear}
+                            {person.department?.name && ` • ${person.department.name}`}
                           </span>
-
                           {person.city && (
-                            <span className="flex items-center gap-1">
-                              <MapPin className="w-3 h-3 text-slate-400" />
-                              {person.city}
-                            </span>
-                          )}
-
-                          {institutionScope === "all" && (
-                            <span className="flex items-center gap-1 font-medium text-slate-500">
-                              <Building className="w-3 h-3" />
-                              {person.institution.name}
-                            </span>
+                            <>
+                              <span className="text-slate-300">·</span>
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-slate-400" />
+                                {person.city}
+                              </span>
+                            </>
                           )}
                         </div>
                       </div>
