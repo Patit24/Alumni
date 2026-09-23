@@ -119,6 +119,25 @@ export default function DirectMessageChatPage(props: {
   const [showPrivacyPicker, setShowPrivacyPicker] = useState(false);
   const [viewedOnceSet, setViewedOnceSet] = useState<Set<string>>(new Set());
   const [replyingTo, setReplyingTo] = useState<VaultMessage | null>(null);
+  const [isConfidentialMode, setIsConfidentialMode] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("samparka_chat_confidential");
+      if (saved === "true") setIsConfidentialMode(true);
+    } catch {}
+  }, []);
+
+  const toggleConfidentialMode = () => {
+    setIsConfidentialMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("samparka_chat_confidential", String(next));
+      } catch {}
+      triggerHaptic("medium");
+      return next;
+    });
+  };
 
   // WebRTC Call Overlay States
   const [activeCall, setActiveCall] = useState<{
@@ -723,8 +742,20 @@ export default function DirectMessageChatPage(props: {
           </div>
         </div>
 
-        {/* Action Buttons: Voice Call, Video Call, Menu */}
+        {/* Action Buttons: Confidential Shield, Voice Call, Video Call, Menu */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 pl-1">
+          <button
+            onClick={toggleConfidentialMode}
+            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl flex items-center justify-center transition ${
+              isConfidentialMode
+                ? "bg-amber-500 text-white shadow-xs"
+                : "bg-slate-100/80 hover:bg-slate-200/80 text-slate-600"
+            }`}
+            title={isConfidentialMode ? "Confidential Shield Active (Hover/tap to reveal)" : "Enable Confidential Anti-Screenshot Shield"}
+          >
+            {isConfidentialMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+
           <button
             onClick={handleStartVoiceCall}
             disabled={trustLevel === "REQUEST" || trustLevel === "UNKNOWN"}
@@ -752,6 +783,22 @@ export default function DirectMessageChatPage(props: {
           </button>
         </div>
       </header>
+
+      {/* Confidential Anti-Screenshot Shield Active Banner */}
+      {isConfidentialMode && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-1.5 text-[11px] text-amber-900 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-semibold">
+            <EyeOff className="w-3.5 h-3.5 text-amber-600" />
+            <span>Confidential Shield Active • Messages blurred until hovered or held</span>
+          </div>
+          <button
+            onClick={toggleConfidentialMode}
+            className="text-[10px] font-bold text-amber-700 hover:underline ml-2"
+          >
+            Turn Off
+          </button>
+        </div>
+      )}
 
       {/* Security Identity Changed Alert */}
       {keyRotatedWarning && (
@@ -799,6 +846,25 @@ export default function DirectMessageChatPage(props: {
       {showMenu && (
         <div className="absolute top-14 right-4 z-40 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 text-xs divide-y divide-slate-100">
           <div className="py-1">
+            <button
+              onClick={() => {
+                toggleConfidentialMode();
+                setShowMenu(false);
+              }}
+              className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-700"
+            >
+              {isConfidentialMode ? (
+                <>
+                  <Eye className="w-4 h-4 text-amber-600" />
+                  <span>Disable Confidential Shield</span>
+                </>
+              ) : (
+                <>
+                  <EyeOff className="w-4 h-4 text-slate-600" />
+                  <span>Enable Confidential Shield</span>
+                </>
+              )}
+            </button>
             <button
               onClick={() => {
                 setShowSafetyModal(true);
@@ -936,6 +1002,7 @@ export default function DirectMessageChatPage(props: {
                 isMe={isMe}
                 isViewOnce={isViewOnce}
                 isBurned={isBurned}
+                isConfidential={isConfidentialMode}
                 onRevealViewOnce={handleRevealViewOnce}
                 onReply={(msg) => {
                   setReplyingTo(msg);

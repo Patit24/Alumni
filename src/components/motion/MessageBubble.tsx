@@ -20,6 +20,7 @@ interface MessageBubbleProps {
   isMe: boolean;
   isViewOnce?: boolean;
   isBurned?: boolean;
+  isConfidential?: boolean;
   onRevealViewOnce?: (msg: VaultMessage) => void;
   onReply?: (msg: VaultMessage) => void;
   onDelete?: (id: string) => void;
@@ -33,6 +34,7 @@ export default function MessageBubble({
   isMe,
   isViewOnce = false,
   isBurned = false,
+  isConfidential = false,
   onRevealViewOnce,
   onReply,
   onDelete,
@@ -41,6 +43,7 @@ export default function MessageBubble({
   const [showMenu, setShowMenu] = useState(false);
   const [dragX, setDragX] = useState(0);
   const [reactions, setReactions] = useState<string[]>([]);
+  const [isRevealed, setIsRevealed] = useState(false);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const handleDrag = (_: any, info: PanInfo) => {
@@ -114,8 +117,20 @@ export default function MessageBubble({
         className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
       >
         <div
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
+          onTouchStart={() => {
+            setIsRevealed(true);
+            handleTouchStart();
+          }}
+          onTouchEnd={() => {
+            setIsRevealed(false);
+            handleTouchEnd();
+          }}
+          onMouseEnter={() => {
+            if (isConfidential) setIsRevealed(true);
+          }}
+          onMouseLeave={() => {
+            if (isConfidential) setIsRevealed(false);
+          }}
           onContextMenu={(e) => {
             e.preventDefault();
             triggerHaptic("medium");
@@ -145,7 +160,24 @@ export default function MessageBubble({
               </motion.button>
             )
           ) : (
-            <p className="leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>
+            <div className="relative">
+              <p
+                className={`leading-relaxed whitespace-pre-wrap break-words transition-all duration-200 ${
+                  isConfidential && !isRevealed
+                    ? "filter blur-[6px] select-none pointer-events-none opacity-60"
+                    : ""
+                }`}
+              >
+                {message.text}
+              </p>
+              {isConfidential && !isRevealed && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <span className="text-[10px] font-bold tracking-tight opacity-75 bg-black/20 text-white px-2 py-0.5 rounded-md backdrop-blur-xs">
+                    Hover or hold to view
+                  </span>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Time & Delivery Status Checkmarks */}

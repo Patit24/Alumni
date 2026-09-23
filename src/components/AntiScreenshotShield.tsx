@@ -8,11 +8,12 @@ import { motion, AnimatePresence } from "framer-motion";
 export default function AntiScreenshotShield() {
   const [isShieldActive, setIsShieldActive] = useState(false);
   const [alertToast, setAlertToast] = useState<string | null>(null);
-  const [userWatermark, setUserWatermark] = useState<string>("");
+  const [userWatermark, setUserWatermark] = useState<string>("Samparka Secure");
   const unshieldTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load user identity for traceable visual watermark
   useEffect(() => {
+    // 1. Try local storage first
     try {
       const stored = localStorage.getItem("alumni_user");
       if (stored) {
@@ -21,6 +22,18 @@ export default function AntiScreenshotShield() {
         setUserWatermark(identifier);
       }
     } catch {}
+
+    // 2. Fetch authenticated user from API if available
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.authenticated && data.user) {
+          const u = data.user;
+          const identifier = u.username ? `@${u.username}` : u.name || u.phone || "Verified Alumni";
+          setUserWatermark(identifier);
+        }
+      })
+      .catch(() => {});
 
     // Enforce native OS hardware protection if running inside Capacitor Android/iOS
     setNativeScreenshotAllowed(false);
@@ -43,7 +56,7 @@ export default function AntiScreenshotShield() {
     };
 
     // 2. Trigger instant obfuscation shield
-    const triggerShield = (reason: string, durationMs = 3000) => {
+    const triggerShield = (reason: string, durationMs = 3500) => {
       setIsShieldActive(true);
       secureClipboard();
       setAlertToast(reason);
@@ -57,13 +70,29 @@ export default function AntiScreenshotShield() {
 
     // 3. Listen to keyboard shortcuts for screenshot, snip, print, devtools
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Pre-emptive detection: On macOS, Cmd+Shift is the prefix for Cmd+Shift+3/4/5.
+      // On Windows, Ctrl+Shift is the prefix for snipping shortcuts.
+      const isMetaShift =
+        (e.metaKey && (e.shiftKey || e.key === "Shift")) ||
+        (e.shiftKey && (e.metaKey || e.key === "Meta"));
+
+      const isCtrlShift =
+        (e.ctrlKey && (e.shiftKey || e.key === "Shift")) ||
+        (e.shiftKey && (e.ctrlKey || e.key === "Control"));
+
+      if (isMetaShift || isCtrlShift) {
+        triggerShield("Screen capture shortcut detected. Content protected.", 3500);
+        return;
+      }
+
       const key = e.key;
       const isPrintScreen =
         key === "PrintScreen" ||
         e.code === "PrintScreen" ||
-        key === "Snapshot";
+        key === "Snapshot" ||
+        e.keyCode === 44;
 
-      const isMacScreenshot =
+      const isMacScreenshotKey =
         Boolean(e.metaKey) &&
         Boolean(e.shiftKey) &&
         ["3", "4", "5", "6", "$", "%", "^"].includes(key);
@@ -77,17 +106,17 @@ export default function AntiScreenshotShield() {
         (e.ctrlKey || e.metaKey) &&
         (key.toLowerCase() === "p" || e.code === "KeyP");
 
-      if (isPrintScreen || isMacScreenshot || isWindowsSnip) {
+      if (isPrintScreen || isMacScreenshotKey || isWindowsSnip) {
         e.preventDefault();
         e.stopPropagation();
-        triggerShield("Screen capture shortcut detected. Content protected.", 3000);
+        triggerShield("Screen capture shortcut detected. Content protected.", 3500);
         return false;
       }
 
       if (isPrint) {
         e.preventDefault();
         e.stopPropagation();
-        triggerShield("Printing and PDF export are restricted.", 2500);
+        triggerShield("Printing and PDF export are restricted.", 3000);
         return false;
       }
     };
@@ -104,7 +133,7 @@ export default function AntiScreenshotShield() {
       if (unshieldTimerRef.current) clearTimeout(unshieldTimerRef.current);
       unshieldTimerRef.current = setTimeout(() => {
         setIsShieldActive(false);
-      }, 350);
+      }, 400);
     };
 
     const handleVisibilityChange = () => {
@@ -115,7 +144,14 @@ export default function AntiScreenshotShield() {
       }
     };
 
-    // 5. Prevent context menu & drag on restricted media
+    // 5. Detect mouse leaving to browser menubar / top bar
+    const handleMouseLeave = (e: MouseEvent) => {
+      if (e.clientY <= 0) {
+        triggerShield("Screen focus lost.", 2000);
+      }
+    };
+
+    // 6. Prevent context menu & drag on restricted media
     const handleContextMenu = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target?.closest(".screenshot-restricted") || target?.tagName === "IMG") {
@@ -136,6 +172,7 @@ export default function AntiScreenshotShield() {
     window.addEventListener("blur", handleBlur);
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.documentElement.addEventListener("mouseleave", handleMouseLeave);
     document.addEventListener("contextmenu", handleContextMenu);
     document.addEventListener("dragstart", handleDragStart);
 
@@ -145,30 +182,35 @@ export default function AntiScreenshotShield() {
       window.removeEventListener("blur", handleBlur);
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
       document.removeEventListener("contextmenu", handleContextMenu);
       document.removeEventListener("dragstart", handleDragStart);
       if (unshieldTimerRef.current) clearTimeout(unshieldTimerRef.current);
     };
   }, []);
 
+  const todayStr = new Date().toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
   return (
     <>
-      {/* Subtle Traceable Anti-Leak Watermark (visible across page to deter phone camera photos) */}
-      {userWatermark && (
-        <div
-          aria-hidden="true"
-          className="fixed inset-0 pointer-events-none z-30 overflow-hidden select-none opacity-[0.035] flex flex-wrap gap-20 p-10 justify-around content-around anti-screenshot-watermark"
-        >
-          {Array.from({ length: 16 }).map((_, i) => (
-            <div
-              key={i}
-              className="text-xs font-mono font-bold text-slate-900 tracking-wider -rotate-24 select-none whitespace-nowrap"
-            >
-              {userWatermark} • Samparka Secure
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Indelible Forensic Anti-Leak Watermark (visible across page to deter screenshots and camera photos) */}
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none z-30 overflow-hidden select-none opacity-[0.07] dark:opacity-[0.10] flex flex-wrap gap-24 p-8 justify-around content-around anti-screenshot-watermark"
+      >
+        {Array.from({ length: 24 }).map((_, i) => (
+          <div
+            key={i}
+            className="text-[11px] font-mono font-bold text-slate-900 dark:text-white tracking-widest -rotate-24 select-none whitespace-nowrap"
+          >
+            {userWatermark} • {todayStr} • CONFIDENTIAL
+          </div>
+        ))}
+      </div>
 
       {/* Instant Obfuscation Shield (triggers on window blur, snipping tool, or shortcut) */}
       <AnimatePresence>
@@ -177,22 +219,22 @@ export default function AntiScreenshotShield() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            className="fixed inset-0 z-[9999] bg-slate-950/90 backdrop-blur-2xl flex flex-col items-center justify-center p-6 text-center select-none"
+            transition={{ duration: 0.1 }}
+            className="fixed inset-0 z-[99999] bg-slate-950/95 backdrop-blur-3xl flex flex-col items-center justify-center p-6 text-center select-none"
           >
             <div className="max-w-xs space-y-3">
-              <div className="h-12 w-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 mx-auto flex items-center justify-center shadow-lg">
-                <Lock className="w-6 h-6" />
+              <div className="h-14 w-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 mx-auto flex items-center justify-center shadow-lg">
+                <Lock className="w-7 h-7" />
               </div>
-              <h3 className="text-sm font-bold text-white tracking-wide">
+              <h3 className="text-base font-bold text-white tracking-wide">
                 Protected View Active
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Screen capture and window recording are restricted on this platform to safeguard alumni conversations and data.
+                Screen capture and recording are restricted on this platform to safeguard alumni conversations and data.
               </p>
               <div className="pt-2">
-                <span className="text-[11px] font-semibold text-slate-500 bg-slate-900/80 px-3 py-1.5 rounded-full border border-slate-800">
-                  Focus browser tab to resume
+                <span className="text-[11px] font-semibold text-slate-400 bg-slate-900/90 px-3.5 py-1.5 rounded-full border border-slate-800">
+                  Click or focus tab to resume
                 </span>
               </div>
             </div>
@@ -207,7 +249,7 @@ export default function AntiScreenshotShield() {
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[10000] bg-rose-950/90 text-rose-100 border border-rose-500/40 px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-semibold backdrop-blur-md"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] bg-rose-950/90 text-rose-100 border border-rose-500/40 px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-semibold backdrop-blur-md"
           >
             <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{alertToast}</span>
