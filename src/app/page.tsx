@@ -168,7 +168,7 @@ export default async function HomePage(props: {
               <span className="hidden sm:inline font-medium">Profile</span>
             </Link>
 
-            <LogoutButton />
+            <LogoutButton showTextOnMobile={true} />
           </div>
         </div>
       </header>

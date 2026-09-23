@@ -8,6 +8,7 @@ import {
   Eye,
 } from "lucide-react";
 import ProfileHeaderCard from "@/components/ProfileHeaderCard";
+import LogoutButton from "@/components/LogoutButton";
 
 export const dynamic = "force-dynamic";
 
@@ -76,9 +77,12 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
           </Link>
 
           {isOwnProfile ? (
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80">
-              Your Profile
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80">
+                Your Profile
+              </span>
+              <LogoutButton showTextOnMobile={true} />
+            </div>
           ) : (
             <Link
               href={`/messages/${user.id}`}
@@ -186,6 +190,17 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
             </div>
           </div>
         </div>
+
+        {/* Account Session & Sign Out */}
+        {isOwnProfile && (
+          <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold text-slate-800">Account Session</p>
+              <p className="text-[11px] text-slate-500">Sign out of your account on this device</p>
+            </div>
+            <LogoutButton variant="prominent" />
+          </div>
+        )}
       </main>
     </div>
   );
