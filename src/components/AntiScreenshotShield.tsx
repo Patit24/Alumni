@@ -8,33 +8,9 @@ import { motion, AnimatePresence } from "framer-motion";
 export default function AntiScreenshotShield() {
   const [isShieldActive, setIsShieldActive] = useState(false);
   const [alertToast, setAlertToast] = useState<string | null>(null);
-  const [userWatermark, setUserWatermark] = useState<string>("Samparka Secure");
   const unshieldTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load user identity for traceable visual watermark
   useEffect(() => {
-    // 1. Try local storage first
-    try {
-      const stored = localStorage.getItem("alumni_user");
-      if (stored) {
-        const u = JSON.parse(stored);
-        const identifier = u.username ? `@${u.username}` : u.name || u.phone || "Verified Alumni";
-        setUserWatermark(identifier);
-      }
-    } catch {}
-
-    // 2. Fetch authenticated user from API if available
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.authenticated && data.user) {
-          const u = data.user;
-          const identifier = u.username ? `@${u.username}` : u.name || u.phone || "Verified Alumni";
-          setUserWatermark(identifier);
-        }
-      })
-      .catch(() => {});
-
     // Enforce native OS hardware protection if running inside Capacitor Android/iOS
     setNativeScreenshotAllowed(false);
 
@@ -60,6 +36,13 @@ export default function AntiScreenshotShield() {
       setIsShieldActive(true);
       secureClipboard();
       setAlertToast(reason);
+
+      // Broadcast screenshot event across the app (for chat Snapchat-style notification)
+      window.dispatchEvent(
+        new CustomEvent("samparka:screenshot-detected", {
+          detail: { reason, timestamp: Date.now() },
+        })
+      );
 
       if (unshieldTimerRef.current) clearTimeout(unshieldTimerRef.current);
       unshieldTimerRef.current = setTimeout(() => {
@@ -191,29 +174,8 @@ export default function AntiScreenshotShield() {
     };
   }, []);
 
-  const todayStr = new Date().toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-
   return (
     <>
-      {/* Indelible Forensic Anti-Leak Watermark (rendered at z-[998] so it sits ON TOP of all content, headers, and messages) */}
-      <div
-        aria-hidden="true"
-        className="fixed inset-0 pointer-events-none z-[998] overflow-hidden select-none flex flex-wrap gap-x-12 gap-y-16 p-4 justify-around content-around anti-screenshot-watermark"
-      >
-        {Array.from({ length: 36 }).map((_, i) => (
-          <div
-            key={i}
-            className="text-[12px] font-mono font-black text-slate-800/[0.16] dark:text-white/[0.20] tracking-wider -rotate-24 select-none whitespace-nowrap"
-          >
-            {userWatermark} • {todayStr} • CONFIDENTIAL
-          </div>
-        ))}
-      </div>
-
       {/* Instant Obfuscation Shield (triggers on window blur, snipping tool, or shortcut) */}
       <AnimatePresence>
         {isShieldActive && (

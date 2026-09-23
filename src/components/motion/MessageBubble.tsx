@@ -11,6 +11,7 @@ import {
   Flame,
   Clock,
   CornerUpLeft,
+  Camera,
 } from "lucide-react";
 import { VaultMessage } from "@/lib/e2ee/vault";
 import { MOTION_SPRINGS, triggerHaptic } from "@/lib/motion/tokens";
@@ -88,6 +89,17 @@ export default function MessageBubble({
     onReact?.(message.id, emoji);
     setShowMenu(false);
   };
+
+  if (message.text.startsWith("📸")) {
+    return (
+      <div className="flex justify-center my-3 w-full select-none">
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 px-3.5 py-1.5 rounded-full text-[11px] font-semibold flex items-center gap-2 shadow-2xs backdrop-blur-xs">
+          <Camera className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          <span>{message.text}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative group my-1.5 flex flex-col select-none">

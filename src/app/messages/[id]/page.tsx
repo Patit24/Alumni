@@ -344,15 +344,71 @@ export default function DirectMessageChatPage(props: {
     scrollToBottom();
   }, [messages]);
 
-  // Screen capture & window blur heuristic awareness listener
+  // Screen capture & screenshot announcement listener (Snapchat-style in-chat alert)
   // Also: reload messages when user returns to tab (picks up offline-delivered messages)
   useEffect(() => {
+    let lastAlertTime = 0;
+
+    const announceScreenshot = async (whoName: string, isFromMe: boolean) => {
+      const now = Date.now();
+      if (now - lastAlertTime < 3500) return;
+      lastAlertTime = now;
+
+      triggerHaptic("heavy");
+
+      const alertText = isFromMe
+        ? "📸 You took a screenshot of the chat"
+        : `📸 ${whoName} took a screenshot of the chat`;
+
+      const alertMsg: VaultMessage = {
+        id: `screenshot_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        peerId,
+        senderId: isFromMe ? (currentUser?.id || "me") : peerId,
+        senderName: isFromMe ? "You" : whoName,
+        text: alertText,
+        type: "TEXT",
+        status: "SENT",
+        createdAt: Date.now(),
+      };
+
+      try {
+        await saveLocalMessage(alertMsg);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === alertMsg.id)) return prev;
+          return [...prev, alertMsg];
+        });
+        scrollToBottom();
+      } catch {}
+
+      // Broadcast to peer via E2EE signaling
+      if (isFromMe && sharedKey && currentUser) {
+        try {
+          const peerNotice = `📸 ${currentUser.name || "Peer"} took a screenshot of the chat`;
+          const structuredPayload = JSON.stringify({
+            text: peerNotice,
+            type: "TEXT",
+            privacyMode: "NORMAL",
+          });
+          const encPayload = await encryptE2EEMessage(sharedKey, structuredPayload);
+          realtimeSignaling.sendEncryptedMessage(peerId, {
+            queueId: alertMsg.id,
+            encryptedPayload: encPayload,
+            messageType: "TEXT",
+            createdAt: new Date().toISOString(),
+          });
+        } catch {}
+      }
+    };
+
+    const handleScreenshotEvent = () => {
+      announceScreenshot(currentUser?.name || "You", true);
+    };
+
     const handleVisibilityChange = async () => {
       if (document.hidden) {
         // App backgrounded / window minimized
       } else {
-        // Tab became visible again — reload local messages so newly drained
-        // offline messages (delivered by signaling.drainPendingQueue) appear
+        // Tab became visible again — reload local messages
         const freshMsgs = await getLocalMessages(peerId);
         setMessages(freshMsgs);
         scrollToBottom();
@@ -360,19 +416,25 @@ export default function DirectMessageChatPage(props: {
     };
 
     const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key === "PrintScreen" || (e.metaKey && e.shiftKey && (e.key === "3" || e.key === "4"))) {
-        setScreenNotice("Privacy Notice: Screen capture or focus change heuristic detected.");
-        setTimeout(() => setScreenNotice(null), 4000);
+      if (
+        e.key === "PrintScreen" ||
+        e.code === "PrintScreen" ||
+        (e.metaKey && e.shiftKey) ||
+        (e.ctrlKey && e.shiftKey)
+      ) {
+        announceScreenshot(currentUser?.name || "You", true);
       }
     };
 
+    window.addEventListener("samparka:screenshot-detected", handleScreenshotEvent);
     window.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("keydown", handleKeydown);
+    window.addEventListener("keydown", handleKeydown, true);
     return () => {
+      window.removeEventListener("samparka:screenshot-detected", handleScreenshotEvent);
       window.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("keydown", handleKeydown);
+      window.removeEventListener("keydown", handleKeydown, true);
     };
-  }, [peerId]);
+  }, [currentUser, peerId, sharedKey]);
 
   // Handle typing status broadcast
   const handleInputChange = (val: string) => {

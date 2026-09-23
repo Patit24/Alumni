@@ -7,7 +7,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Listen for hardware screenshot button event (Side Button + Volume Up) on iOS
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.userDidTakeScreenshotNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            if let rootVC = self?.window?.rootViewController as? CAPBridgeViewController {
+                rootVC.bridge?.webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('samparka:screenshot-detected'));", completionHandler: nil)
+            }
+        }
         return true
     }
 

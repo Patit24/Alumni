@@ -132,17 +132,7 @@ input, textarea, select {
   transition: filter 0.08s ease-in-out !important;
 }
 
-/* Traceable Security Watermark Overlay */
-.anti-screenshot-watermark {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(148, 163, 184, 0.06) 0px,
-    rgba(148, 163, 184, 0.06) 120px,
-    transparent 120px,
-    transparent 240px
-  );
-  pointer-events: none;
-}
+
 
 @media print {
   html,
