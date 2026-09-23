@@ -1,60 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
-  Lock,
-  Phone,
-  Video,
-  ShieldCheck,
-  Search,
-  Plus,
-  ArrowLeft,
-  Trash2,
-  Settings,
-  PhoneIncoming,
-  PhoneOutgoing,
-  PhoneMissed,
-  MessageSquare,
-  Smartphone,
-  Send,
-  UserPlus,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
-  Share2,
-  QrCode,
-  Scan,
-  ChevronRight,
+  Search, Plus, QrCode, Scan, Lock, ShieldCheck,
+  MessageSquare, Phone, Users, CheckCircle2, X,
+  ChevronRight, Loader2, PhoneMissed, PhoneIncoming,
+  PhoneOutgoing, Trash2, UserPlus, RefreshCw,
 } from "lucide-react";
 import {
-  getCallLogs,
-  clearCallLogs,
-  VaultCallLog,
-  getVaultConnectedPeerIds,
-  getLocalConnectedPeerIds,
-  addLocalConnectedPeer,
-  getLatestMessagesPerPeer,
-  setActiveVaultUser,
-  VaultMessage,
+  getCallLogs, clearCallLogs, VaultCallLog,
+  getVaultConnectedPeerIds, getLocalConnectedPeerIds,
+  addLocalConnectedPeer, getLatestMessagesPerPeer,
+  setActiveVaultUser, VaultMessage,
 } from "@/lib/e2ee/vault";
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
 import { motion, AnimatePresence } from "framer-motion";
 import FloatingBottomNav, { NavTab } from "@/components/motion/FloatingBottomNav";
-import AnimatedButton from "@/components/motion/AnimatedButton";
-import AnimatedIconButton from "@/components/motion/AnimatedIconButton";
-import AnimatedCard from "@/components/motion/AnimatedCard";
-import AnimatedBottomSheet from "@/components/motion/AnimatedBottomSheet";
 import { triggerHaptic, MOTION_SPRINGS } from "@/lib/motion/tokens";
-import { Pin, Archive, RefreshCw, Radio, UserCheck } from "lucide-react";
 
 interface AlumniContact {
   id: string;
   name: string;
   username?: string | null;
-  phone?: string | null;
   avatarUrl?: string | null;
   currentRole: string | null;
   currentCompany: string | null;
@@ -63,37 +33,31 @@ interface AlumniContact {
   department?: { name: string } | null;
 }
 
-interface MatchedContact {
-  id: string;
-  name: string;
-  username: string;
-  batchYear: number;
-  role: string;
-  company: string | null;
-  institutionName: string;
-  messageUrl: string;
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+  if (diffDays === 0) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return d.toLocaleDateString([], { weekday: "short" });
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-interface UnregisteredContact {
-  phone: string;
-  inviteSmsUrl: string;
-}
-
-function formatContactBio(role?: string | null, company?: string | null, batchYear?: number | null) {
-  const parts: string[] = [];
-  if (role && company) {
-    parts.push(`${role} at ${company}`);
-  } else if (role) {
-    parts.push(role);
-  } else if (company) {
-    parts.push(company);
-  } else {
-    parts.push("Alumni");
-  }
-  if (batchYear) {
-    parts.push(`Class of ${batchYear}`);
-  }
-  return parts.join(" • ");
+function Avatar({
+  name, src, size = 48
+}: { name: string; src?: string | null; size?: number }) {
+  const initial = (name || "A").charAt(0).toUpperCase();
+  return (
+    <div
+      className="rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold overflow-hidden shrink-0 shadow-sm"
+      style={{ width: size, height: size, fontSize: size * 0.35 }}
+    >
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={name} className="w-full h-full object-cover" />
+      ) : initial}
+    </div>
+  );
 }
 
 export default function MessagesHubPage() {
@@ -105,1403 +69,609 @@ export default function MessagesHubPage() {
   const [connectedPeerIds, setConnectedPeerIds] = useState<Set<string>>(new Set());
   const [latestMessages, setLatestMessages] = useState<Map<string, VaultMessage>>(new Map());
   const [loading, setLoading] = useState(true);
-  const [searchingRemote, setSearchingRemote] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
-  const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
-
-  // Modals
-  const [showNewChatModal, setShowNewChatModal] = useState(false);
-  const [newChatSearch, setNewChatSearch] = useState("");
-  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [showQrModal, setShowQrModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
-  const [privacyLockActive, setPrivacyLockActive] = useState(false);
   const [currentUserProfile, setCurrentUserProfile] = useState<{
-    id: string;
-    name: string;
-    username: string;
-    batchYear: number;
-    institutionName?: string;
+    id: string; name: string; username: string; batchYear: number; institutionName?: string;
   } | null>(null);
 
-  // Contact Sync State
-  const [rawPhoneInput, setRawPhoneInput] = useState("");
-  const [syncing, setSyncing] = useState(false);
-  const [matchedRegistered, setMatchedRegistered] = useState<MatchedContact[] | null>(null);
-  const [matchedUnregistered, setMatchedUnregistered] = useState<UnregisteredContact[] | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
-
-  // Initial load
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-
-        // 1. Authenticate and resolve current user ID first
-        const meRes = await fetch("/api/auth/me").catch(() => null);
-        let currentUserId: string | null = null;
-        if (meRes && meRes.ok) {
-          const meData = await meRes.json();
-          if (meData?.user) {
-            currentUserId = meData.user.id;
-            setActiveVaultUser(currentUserId);
-            setCurrentUserProfile({
-              id: meData.user.id,
-              name: meData.user.name || "Alumni Member",
-              username: meData.user.username || `@${(meData.user.name || "alumni").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
-              batchYear: meData.user.batchYear || new Date().getFullYear(),
-              institutionName: meData.user.institutionName || "Brainware University",
-            });
-          }
-        }
-
-        // 2. Fetch scoped data in parallel
-        const [dirRes, calls, lockRes, vaultPeers, latestMap, reqsRes] = await Promise.all([
-          fetch("/api/directory?limit=100&batchScope=all&institutionScope=all").catch(() => null),
-          getCallLogs(currentUserId || undefined).catch(() => []),
-          fetch("/api/privacy/lock").catch(() => null),
-          getVaultConnectedPeerIds(currentUserId || undefined).catch(() => []),
-          getLatestMessagesPerPeer(currentUserId || undefined).catch(() => new Map()),
-          fetch("/api/contacts/requests").catch(() => null),
-        ]);
-
-        if (lockRes && lockRes.ok) {
-          const lData = await lockRes.json();
-          setPrivacyLockActive(lData.privacyLockActive || false);
-        }
-
-        if (dirRes && dirRes.ok) {
-          const dirData = await dirRes.json();
-          setContacts(dirData.alumni || dirData.users || []);
-          if (!currentUserId && dirData.currentUser) {
-            currentUserId = dirData.currentUser.id;
-            setActiveVaultUser(currentUserId);
-            setCurrentUserProfile({
-              id: dirData.currentUser.id,
-              name: dirData.currentUser.name || "Alumni Member",
-              username: dirData.currentUser.username || `@user_${dirData.currentUser.id.slice(-6)}`,
-              batchYear: dirData.currentUser.batchYear || new Date().getFullYear(),
-              institutionName: dirData.currentUser.institutionName || "Brainware University",
-            });
-          }
-        }
-
-        // Safe fallback user profile if still unpopulated
-        setCurrentUserProfile((prev) => prev || {
-          id: currentUserId || "me",
-          name: "Alumni Member",
-          username: "alumni",
-          batchYear: new Date().getFullYear(),
-          institutionName: "Brainware University",
-        });
-
-        setCallLogs(calls);
-
-        // 3. Build strictly scoped connected peers
-        const serverConnectedPeers = new Set<string>();
-        if (reqsRes && reqsRes.ok) {
-          const reqsData = await reqsRes.json();
-          if (reqsData.incoming) {
-            setIncomingRequests(reqsData.incoming);
-          }
-          if (Array.isArray(reqsData.connectedPeerIds)) {
-            for (const pid of reqsData.connectedPeerIds) {
-              if (pid && pid !== currentUserId) {
-                serverConnectedPeers.add(pid);
-                addLocalConnectedPeer(pid, currentUserId || undefined);
-              }
-            }
-          }
-        }
-
-        // Scoped local peers strictly for current user
-        const localStoredPeers = currentUserId ? getLocalConnectedPeerIds(currentUserId) : [];
-        const mergedPeers = new Set<string>([
-          ...serverConnectedPeers,
-          ...vaultPeers.filter((pid) => pid !== currentUserId),
-          ...localStoredPeers.filter((pid) => pid !== currentUserId),
-        ]);
-
-        setConnectedPeerIds(mergedPeers);
-        setLatestMessages(latestMap);
-
-        // Handle ?connect=@username or ?connect=userId from QR scan or link
-        if (typeof window !== "undefined") {
-          const params = new URLSearchParams(window.location.search);
-          const connectTarget = params.get("connect");
-          if (connectTarget) {
-            const cleanTarget = connectTarget.trim().replace(/^@/, "");
-            let res = await fetch(`/api/directory?username=${encodeURIComponent(cleanTarget)}&batchScope=all&institutionScope=all`);
-            if (res.ok) {
-              const data = await res.json();
-              const peer = data.alumni?.[0];
-              if (peer) {
-                addLocalConnectedPeer(peer.id);
-                setConnectedPeerIds((prev) => new Set(prev).add(peer.id));
-                router.push(`/messages/${peer.id}`);
-                return;
-              }
-            }
-            // Fallback try by ID or name
-            let idRes = await fetch(`/api/directory?id=${encodeURIComponent(cleanTarget)}&batchScope=all&institutionScope=all`);
-            if (idRes.ok) {
-              const data = await idRes.json();
-              const peer = data.alumni?.[0];
-              if (peer) {
-                addLocalConnectedPeer(peer.id);
-                setConnectedPeerIds((prev) => new Set(prev).add(peer.id));
-                router.push(`/messages/${peer.id}`);
-                return;
-              }
-            }
-            let qRes = await fetch(`/api/directory?q=${encodeURIComponent(cleanTarget)}&batchScope=all&institutionScope=all`);
-            if (qRes.ok) {
-              const data = await qRes.json();
-              const peer = data.alumni?.[0];
-              if (peer) {
-                addLocalConnectedPeer(peer.id);
-                setConnectedPeerIds((prev) => new Set(prev).add(peer.id));
-                router.push(`/messages/${peer.id}`);
-                return;
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Error loading messages hub:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadData();
-  }, [router]);
-
-  // Live real-time sync when connection requests or vault messages update
-  useEffect(() => {
-    const handleUpdate = () => {
-      const uid = currentUserProfile?.id;
-      fetch("/api/contacts/requests")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.incoming) setIncomingRequests(data.incoming);
-          if (Array.isArray(data.connectedPeerIds)) {
-            const serverIds = new Set<string>(
-              data.connectedPeerIds.filter((id: string) => id !== uid)
-            );
-            // Also include active local peers for this user
-            const localPeers = uid ? getLocalConnectedPeerIds(uid) : [];
-            localPeers.forEach((id) => {
-              if (id !== uid) serverIds.add(id);
-            });
-            setConnectedPeerIds(serverIds);
-          }
-        })
-        .catch(() => {});
-
-      getLatestMessagesPerPeer(uid)
-        .then((map) => setLatestMessages(map))
-        .catch(() => {});
-    };
-
-    window.addEventListener("connection-requests-updated", handleUpdate);
-    window.addEventListener("vault-messages-updated", handleUpdate);
-    return () => {
-      window.removeEventListener("connection-requests-updated", handleUpdate);
-      window.removeEventListener("vault-messages-updated", handleUpdate);
-    };
-  }, [currentUserProfile?.id]);
-
-  const handleAcceptRequest = async (targetUserId: string) => {
+  const loadData = useCallback(async () => {
     try {
-      setRequestsLoading(true);
-      const res = await fetch("/api/contacts/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId, action: "ACCEPT" }),
-      });
-      if (res.ok) {
-        addLocalConnectedPeer(targetUserId);
-        setConnectedPeerIds((prev) => new Set(prev).add(targetUserId));
-        setIncomingRequests((prev) => prev.filter((r) => r.user.id !== targetUserId));
-        triggerHaptic("success");
-      }
-    } catch (err) {
-      console.error("Accept connection error:", err);
-    } finally {
-      setRequestsLoading(false);
-    }
-  };
+      setLoading(true);
+      const meRes = await fetch("/api/auth/me").catch(() => null);
+      let currentUserId: string | null = null;
 
-  const handleRejectRequest = async (targetUserId: string) => {
-    try {
-      setRequestsLoading(true);
-      const res = await fetch("/api/contacts/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId, action: "REJECT" }),
-      });
-      if (res.ok) {
-        setIncomingRequests((prev) => prev.filter((r) => r.user.id !== targetUserId));
-        triggerHaptic("light");
-      }
-    } catch (err) {
-      console.error("Reject connection error:", err);
-    } finally {
-      setRequestsLoading(false);
-    }
-  };
-
-  // Remote search when query has length > 1 (supports @username and name)
-  useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) return;
-
-    let isCurrent = true;
-    const timer = setTimeout(async () => {
-      setSearchingRemote(true);
-      try {
-        const cleanQuery = searchQuery.trim();
-        const res = await fetch(`/api/directory?q=${encodeURIComponent(cleanQuery)}&limit=100&batchScope=all&institutionScope=all`);
-        if (res.ok && isCurrent) {
-          const data = await res.json();
-          if (data.alumni) {
-            setContacts((prev) => {
-              const map = new Map<string, AlumniContact>();
-              prev.forEach((c) => map.set(c.id, c));
-              data.alumni.forEach((c: AlumniContact) => map.set(c.id, c));
-              return Array.from(map.values());
-            });
-          }
-        }
-      } catch (e) {
-        console.error("Remote search error:", e);
-      } finally {
-        if (isCurrent) setSearchingRemote(false);
-      }
-    }, 300);
-
-    return () => {
-      isCurrent = false;
-      clearTimeout(timer);
-    };
-  }, [searchQuery]);
-
-  const cleanFilter = searchQuery.toLowerCase().replace(/^@/, "").trim();
-  const currentUserId = currentUserProfile?.id;
-  const filteredContacts = contacts
-    .filter((c) => c.id !== currentUserId)
-    .filter((c) => {
-      if (!cleanFilter) return true;
-      return (
-        (c.name || "").toLowerCase().includes(cleanFilter) ||
-        (c.username && c.username.toLowerCase().includes(cleanFilter)) ||
-        c.currentCompany?.toLowerCase().includes(cleanFilter) ||
-        c.currentRole?.toLowerCase().includes(cleanFilter) ||
-        c.batchYear?.toString().includes(cleanFilter)
-      );
-    });
-
-  // CHATS tab shows strictly connected accounts
-  const connectedContacts = filteredContacts.filter((c) => connectedPeerIds.has(c.id));
-
-  const handleClearCallLogs = async () => {
-    if (confirm("Clear your entire call history from this device?")) {
-      await clearCallLogs();
-      setCallLogs([]);
-    }
-  };
-
-  // Signal-style client-side phone number hashing
-  const hashPhoneNumberLocally = async (phone: string): Promise<string | null> => {
-    const digits = phone.replace(/[^0-9]/g, "");
-    if (digits.length < 10) return null;
-    const last10 = digits.slice(-10);
-    const data = new TextEncoder().encode("alumni_disc_v1:" + last10);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  };
-
-  // Sync Phone Contacts Action via Privacy-Preserving Discovery
-  const handleSyncContacts = async (numbersToSync?: string[]) => {
-    setSyncError(null);
-    const list =
-      numbersToSync ||
-      rawPhoneInput
-        .split(/[\n,;]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-    if (list.length === 0) {
-      setSyncError("Please enter at least one phone number to search.");
-      return;
-    }
-
-    setSyncing(true);
-    try {
-      // 1. Compute SHA-256 hashes locally on the client device
-      const hashes = (
-        await Promise.all(list.map((num) => hashPhoneNumberLocally(num)))
-      ).filter((h): h is string => Boolean(h));
-
-      if (hashes.length === 0) {
-        throw new Error("Please enter valid 10-digit mobile numbers.");
-      }
-
-      // 2. Dispatch ONLY hashes to private discovery endpoint (server never receives raw phone numbers)
-      const res = await fetch("/api/contacts/discovery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneHashes: hashes }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to discover contacts");
-      }
-
-      const matches = data.matches || [];
-      setMatchedRegistered(matches);
-
-      // 3. Compute unregistered list locally for optional SMS invites
-      const matchedUsernames = new Set(matches.map((m: any) => m.name.toLowerCase()));
-      const unreg: UnregisteredContact[] = [];
-      for (const num of list) {
-        const clean = num.replace(/[^0-9]/g, "");
-        if (clean.length >= 10) {
-          const last10 = clean.slice(-10);
-          unreg.push({
-            phone: last10,
-            inviteSmsUrl: `/api/test-sms?phone=${last10}`,
+      if (meRes?.ok) {
+        const meData = await meRes.json();
+        if (meData?.user) {
+          currentUserId = meData.user.id;
+          setActiveVaultUser(currentUserId);
+          setCurrentUserProfile({
+            id: meData.user.id,
+            name: meData.user.name || "Alumni Member",
+            username: meData.user.username || `@${(meData.user.name || "alumni").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+            batchYear: meData.user.batchYear || new Date().getFullYear(),
+            institutionName: meData.user.institutionName || "Campus",
           });
         }
       }
-      setMatchedUnregistered(unreg);
-    } catch (err: any) {
-      setSyncError(err.message || "Failed to discover contacts");
+
+      const [dirRes, calls, lockRes, vaultPeers, latestMap, reqsRes] = await Promise.all([
+        fetch("/api/directory?limit=200&batchScope=all&institutionScope=all").catch(() => null),
+        getCallLogs(currentUserId || undefined).catch(() => []),
+        fetch("/api/privacy/lock").catch(() => null),
+        getVaultConnectedPeerIds(currentUserId || undefined).catch(() => []),
+        getLatestMessagesPerPeer(currentUserId || undefined).catch(() => new Map()),
+        fetch("/api/contacts/requests").catch(() => null),
+      ]);
+
+      if (dirRes?.ok) {
+        const dirData = await dirRes.json();
+        setContacts(dirData.alumni || dirData.users || []);
+      }
+
+      setCallLogs(calls);
+      setLatestMessages(latestMap);
+
+      // Build connected peer set from server (authoritative)
+      const serverConnectedPeers = new Set<string>();
+      if (reqsRes?.ok) {
+        const reqsData = await reqsRes.json();
+        if (reqsData.incoming) setIncomingRequests(reqsData.incoming);
+        if (Array.isArray(reqsData.connectedPeerIds)) {
+          for (const pid of reqsData.connectedPeerIds) {
+            if (pid && pid !== currentUserId) {
+              serverConnectedPeers.add(pid);
+              addLocalConnectedPeer(pid, currentUserId || undefined);
+            }
+          }
+        }
+      }
+
+      const localPeers = currentUserId ? getLocalConnectedPeerIds(currentUserId) : [];
+      const merged = new Set<string>([
+        ...serverConnectedPeers,
+        ...vaultPeers.filter(p => p !== currentUserId),
+        ...localPeers.filter(p => p !== currentUserId),
+      ]);
+      setConnectedPeerIds(merged);
+
+      // Handle ?connect= query param from QR scan
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const connectTarget = params.get("connect");
+        if (connectTarget) {
+          const clean = connectTarget.trim().replace(/^@/, "");
+          for (const endpoint of [
+            `/api/directory?username=${encodeURIComponent(clean)}&batchScope=all&institutionScope=all`,
+            `/api/directory?id=${encodeURIComponent(clean)}&batchScope=all&institutionScope=all`,
+            `/api/directory?q=${encodeURIComponent(clean)}&batchScope=all&institutionScope=all`,
+          ]) {
+            const r = await fetch(endpoint).catch(() => null);
+            if (r?.ok) {
+              const data = await r.json();
+              const peer = data.alumni?.[0];
+              if (peer) {
+                addLocalConnectedPeer(peer.id);
+                setConnectedPeerIds(prev => new Set(prev).add(peer.id));
+                router.push(`/messages/${peer.id}`);
+                return;
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Messages hub load error:", err);
     } finally {
-      setSyncing(false);
+      setLoading(false);
+    }
+  }, [router]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // Live sync on connection/vault updates
+  useEffect(() => {
+    const refresh = () => {
+      const uid = currentUserProfile?.id;
+      fetch("/api/contacts/requests").then(r => r.json()).then(data => {
+        if (data.incoming) setIncomingRequests(data.incoming);
+        if (Array.isArray(data.connectedPeerIds)) {
+          const ids = new Set<string>(data.connectedPeerIds.filter((id: string) => id !== uid));
+          if (uid) getLocalConnectedPeerIds(uid).forEach(id => { if (id !== uid) ids.add(id); });
+          setConnectedPeerIds(ids);
+        }
+      }).catch(() => {});
+      getLatestMessagesPerPeer(uid).then(map => setLatestMessages(map)).catch(() => {});
+    };
+    window.addEventListener("connection-requests-updated", refresh);
+    window.addEventListener("vault-messages-updated", refresh);
+    return () => {
+      window.removeEventListener("connection-requests-updated", refresh);
+      window.removeEventListener("vault-messages-updated", refresh);
+    };
+  }, [currentUserProfile?.id]);
+
+  const handleAcceptRequest = async (userId: string) => {
+    try {
+      setRequestsLoading(true);
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: userId, action: "ACCEPT" }),
+      });
+      if (res.ok) {
+        addLocalConnectedPeer(userId);
+        setConnectedPeerIds(prev => new Set(prev).add(userId));
+        setIncomingRequests(prev => prev.filter(r => r.user.id !== userId));
+        triggerHaptic("success");
+      }
+    } finally {
+      setRequestsLoading(false);
     }
   };
 
-  // Modern Web Contact Picker API (if supported on mobile browsers)
-  const handlePickPhoneContacts = async () => {
-    if ("contacts" in navigator && "ContactsManager" in window) {
-      try {
-        const props = ["name", "tel"];
-        const opts = { multiple: true };
-        const contactsPicked = await (navigator as any).contacts.select(props, opts);
-        const phones: string[] = [];
-        for (const c of contactsPicked) {
-          if (c.tel && Array.isArray(c.tel)) {
-            phones.push(...c.tel);
-          }
-        }
-        if (phones.length > 0) {
-          setRawPhoneInput(phones.join("\n"));
-          await handleSyncContacts(phones);
-        }
-      } catch (e) {
-        console.warn("Contacts picker dismissed or not permitted:", e);
+  const handleDeclineRequest = async (userId: string) => {
+    try {
+      setRequestsLoading(true);
+      const res = await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: userId, action: "REJECT" }),
+      });
+      if (res.ok) {
+        setIncomingRequests(prev => prev.filter(r => r.user.id !== userId));
+        triggerHaptic("light");
       }
-    } else {
-      alert("Direct address-book picker is available on supported mobile Chrome/Android browsers. You can paste or type phone numbers in the box below!");
+    } finally {
+      setRequestsLoading(false);
     }
   };
+
+  const currentUserId = currentUserProfile?.id;
+  const cleanFilter = searchQuery.toLowerCase().replace(/^@/, "").trim();
+
+  // ONLY show mutual connections in CHATS tab
+  const connectedContacts = contacts
+    .filter(c => c.id !== currentUserId && connectedPeerIds.has(c.id))
+    .filter(c => {
+      if (!cleanFilter) return true;
+      return (
+        c.name?.toLowerCase().includes(cleanFilter) ||
+        c.username?.toLowerCase().includes(cleanFilter) ||
+        c.currentRole?.toLowerCase().includes(cleanFilter) ||
+        c.batchYear?.toString().includes(cleanFilter)
+      );
+    })
+    .sort((a, b) => {
+      if (pinnedIds.has(b.id) !== pinnedIds.has(a.id)) {
+        return pinnedIds.has(b.id) ? 1 : -1;
+      }
+      const ta = latestMessages.get(a.id)?.createdAt || 0;
+      const tb = latestMessages.get(b.id)?.createdAt || 0;
+      return tb - ta;
+    });
+
+  const filteredCalls = callLogs.filter(log => {
+    if (!cleanFilter) return true;
+    return log.peerName?.toLowerCase().includes(cleanFilter);
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Frosted Glass Header with Safe-Area Top Inset */}
-      <header className="sticky top-0 z-30 glass-header px-3.5 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 sm:px-6">
-        <div className="max-w-3xl mx-auto flex flex-col gap-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <Link
-                href="/"
-                className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-slate-200/80 flex items-center justify-center text-slate-700 transition shrink-0"
-                title="Back to Feed"
-              >
-                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-              </Link>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <h1 className="text-sm sm:text-base font-bold text-slate-900 leading-tight truncate">Private Messages</h1>
-                  <Lock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 shrink-0" />
-                </div>
-                <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">Encrypted Direct Messages</p>
-              </div>
+      {/* ── HEADER ─────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-200/70 shadow-sm">
+        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          {/* Title */}
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+              <Lock className="w-4 h-4" />
             </div>
-
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {/* My QR Code Button (Desktop Header) */}
-              <button
-                type="button"
-                onClick={() => setShowQrModal(true)}
-                className="hidden sm:inline-flex h-8 sm:h-9 px-2.5 rounded-xl bg-indigo-50/90 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200/70 transition items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs"
-                title="My Connect QR Code & Key Exchange"
-              >
-                <QrCode className="w-3.5 h-3.5 text-indigo-600" />
-                <span className="inline font-bold">My QR</span>
-              </button>
-
-              {/* Scan QR Code Button (Desktop Header) */}
-              <button
-                type="button"
-                onClick={() => setShowScannerModal(true)}
-                className="hidden sm:inline-flex h-8 sm:h-9 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200/70 transition items-center gap-1.5 cursor-pointer active:scale-95 shadow-2xs"
-                title="Scan Alumni QR Code"
-              >
-                <Scan className="w-3.5 h-3.5 text-blue-600" />
-                <span className="inline font-bold">Scan QR</span>
-              </button>
-
-              {/* Desktop-only secondary buttons */}
-              <button
-                onClick={() => setShowSyncModal(true)}
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100/80 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
-                title="Find contacts from your phone"
-              >
-                <Smartphone className="w-3.5 h-3.5 text-blue-600" />
-                <span>Sync Contacts</span>
-              </button>
-
-              <Link
-                href="/settings/privacy/dashboard"
-                className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-emerald-50/80 hover:bg-emerald-100 flex items-center justify-center text-emerald-700 transition shrink-0"
-                title="My Privacy Dashboard"
-              >
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              </Link>
-
-              <Link
-                href="/settings/privacy"
-                className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition shrink-0"
-                title="Privacy & Keys"
-              >
-                <Settings className="w-4 h-4" />
-              </Link>
-
-              <button
-                onClick={() => setShowNewChatModal(true)}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs flex items-center gap-1 shrink-0 active:scale-98"
-              >
-                <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span className="hidden xs:inline">New Chat</span>
-              </button>
+            <div>
+              <h1 className="text-sm font-bold text-slate-900 leading-tight">Messages</h1>
+              <p className="text-[10px] text-emerald-600 font-semibold">End-to-End Encrypted</p>
             </div>
           </div>
 
-          {/* Mobile-only Quick Action Pills Bar */}
-          <div className="flex sm:hidden items-center gap-2 overflow-x-auto scrollbar-none pb-0.5 pt-0.5">
+          {/* Actions */}
+          <div className="flex items-center gap-1.5">
             <button
-              type="button"
               onClick={() => setShowQrModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-[11px] font-bold transition shrink-0 shadow-xs active:scale-95 cursor-pointer"
+              className="h-8 w-8 rounded-xl bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 flex items-center justify-center transition active:scale-90"
+              title="My QR Code"
             >
-              <QrCode className="w-3.5 h-3.5" />
-              <span>My QR</span>
+              <QrCode className="w-4 h-4" />
             </button>
             <button
-              type="button"
               onClick={() => setShowScannerModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-[11px] font-bold transition shrink-0 shadow-2xs active:scale-95 cursor-pointer"
+              className="h-8 w-8 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 flex items-center justify-center transition active:scale-90"
+              title="Scan QR Code"
             >
-              <Scan className="w-3.5 h-3.5 text-blue-600" />
-              <span>Scan QR</span>
-            </button>
-            <button
-              onClick={() => setShowSyncModal(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/90 border border-slate-200 text-slate-700 text-[11px] font-semibold transition shrink-0 shadow-2xs active:scale-98"
-            >
-              <Smartphone className="w-3 h-3 text-blue-600" />
-              <span>Sync Contacts</span>
+              <Scan className="w-4 h-4" />
             </button>
             <Link
-              href="/settings/privacy/dashboard"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50/90 border border-emerald-200/80 text-emerald-800 text-[11px] font-semibold transition shrink-0 shadow-2xs active:scale-98"
+              href="/directory"
+              className="h-8 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm active:scale-95"
             >
-              <ShieldCheck className="w-3 h-3 text-emerald-600" />
-              <span>Privacy Shield</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Chat</span>
             </Link>
+          </div>
+        </div>
+
+        {/* Search bar */}
+        <div className="max-w-2xl mx-auto px-4 pb-3">
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder={tab === "CALLS" ? "Search calls…" : "Search conversations…"}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-9 py-2 rounded-xl bg-slate-100 border border-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:border-slate-200 transition"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 space-y-4">
-        {/* Emergency Privacy Lock Active Banner */}
-        {privacyLockActive && (
-          <div className="p-3.5 rounded-2xl bg-rose-600 text-white flex items-center justify-between shadow-xs">
-            <div className="flex items-center gap-2.5">
-              <Lock className="w-4 h-4 text-white shrink-0" />
-              <div>
-                <p className="text-xs font-bold">🔒 PRIVACY LOCK ACTIVE</p>
-                <p className="text-[11px] text-rose-100">Identity hidden, incoming calls auto-blocked, ghost mode active.</p>
-              </div>
-            </div>
-            <Link
-              href="/settings/privacy/dashboard"
-              className="px-3 py-1 rounded-xl bg-white text-rose-900 text-xs font-bold hover:bg-rose-50 transition shrink-0 shadow-2xs"
+      {/* ── MAIN ───────────────────────────────────────────────── */}
+      <main className="flex-1 max-w-2xl w-full mx-auto pb-32">
+
+        {/* ── INCOMING CONNECTION REQUESTS ── */}
+        <AnimatePresence>
+          {incomingRequests.length > 0 && (
+            <motion.section
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={MOTION_SPRINGS.gentle}
+              className="mx-4 mt-4 rounded-2xl bg-blue-600 text-white shadow-md overflow-hidden"
             >
-              Unlock
-            </Link>
-          </div>
-        )}
-
-        {/* Search & Pull-to-Refresh Controls */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-            <input
-              type="text"
-              placeholder={
-                tab === "CHATS"
-                  ? "Search by @username, name, or batch..."
-                  : tab === "CALLS"
-                  ? "Search call records..."
-                  : "Search alumni directory..."
-              }
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-10 py-2.5 rounded-2xl bg-white border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 shadow-2xs"
-            />
-            {searchingRemote && (
-              <Loader2 className="w-4 h-4 text-blue-600 animate-spin absolute right-3.5 top-3" />
-            )}
-          </div>
-
-          {/* Pull to refresh / spring refresh button */}
-          <motion.button
-            whileTap={{ scale: 0.9, rotate: 180 }}
-            transition={MOTION_SPRINGS.snappy}
-            onClick={async () => {
-              setRefreshing(true);
-              triggerHaptic("medium");
-              const uid = currentUserProfile?.id;
-              try {
-                const [dirRes, calls, vaultPeers, latestMap] = await Promise.all([
-                  fetch("/api/directory?limit=100&batchScope=all&institutionScope=all").catch(() => null),
-                  getCallLogs(uid).catch(() => []),
-                  getVaultConnectedPeerIds(uid).catch(() => []),
-                  getLatestMessagesPerPeer(uid).catch(() => new Map()),
-                ]);
-                if (dirRes && dirRes.ok) {
-                  const dirData = await dirRes.json();
-                  setContacts(dirData.alumni || dirData.users || []);
-                }
-                setCallLogs(calls);
-                const localStoredPeers = getLocalConnectedPeerIds(uid);
-                const merged = new Set<string>([...vaultPeers, ...localStoredPeers]);
-                setConnectedPeerIds(merged);
-                setLatestMessages(latestMap);
-                triggerHaptic("success");
-              } catch (e) {
-                console.error(e);
-              } finally {
-                setRefreshing(false);
-              }
-            }}
-            className="h-10 w-10 rounded-2xl bg-white border border-slate-200 text-slate-600 hover:text-blue-600 flex items-center justify-center shadow-2xs transition shrink-0"
-            title="Refresh E2EE Sessions"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-600" : ""}`} />
-          </motion.button>
-        </div>
-
-        {/* PENDING INCOMING CONNECTION REQUESTS BANNER */}
-        {incomingRequests.length > 0 && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+              <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
                   <UserPlus className="w-4 h-4" />
+                  <span className="text-sm font-bold">
+                    {incomingRequests.length} Connection {incomingRequests.length === 1 ? "Request" : "Requests"}
+                  </span>
                 </div>
-                <div>
-                  <h2 className="text-xs sm:text-sm font-bold text-slate-900">
-                    Connection Requests
-                  </h2>
-                  <p className="text-[10px] sm:text-[11px] text-slate-500">
-                    Accept to unlock real-time encrypted messaging and calling.
-                  </p>
-                </div>
+                <span className="text-xs text-blue-200">Accept to start chatting</span>
               </div>
-              <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-bold">
-                {incomingRequests.length} New
-              </span>
-            </div>
-
-            <div className="divide-y divide-blue-100/80">
-              {incomingRequests.map((req) => (
-                <div
-                  key={req.id}
-                  className="pt-3 first:pt-1 pb-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs overflow-hidden">
-                      {req.user.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={req.user.avatarUrl}
-                          alt={req.user.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        req.user.name?.charAt(0)?.toUpperCase() || "A"
-                      )}
+              <div className="divide-y divide-blue-500/30">
+                {incomingRequests.map(req => (
+                  <motion.div
+                    key={req.id}
+                    layout
+                    className="px-4 py-3 flex items-center gap-3"
+                  >
+                    <Avatar name={req.user.name} src={req.user.avatarUrl} size={40} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white truncate">{req.user.name}</p>
+                      <p className="text-[11px] text-blue-200 truncate">
+                        {req.user.currentRole
+                          ? `${req.user.currentRole}${req.user.currentCompany ? ` @ ${req.user.currentCompany}` : ""}`
+                          : `Class of ${req.user.batchYear}`}
+                      </p>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-xs font-bold text-slate-900 truncate">
-                          {req.user.name}
-                        </p>
-                        {req.user.username && (
-                          <span className="text-[10px] font-mono text-slate-500 bg-white/80 px-1.5 py-0.5 rounded border border-blue-100">
-                            @{req.user.username}
-                          </span>
-                        )}
-                        {req.user.batchYear && (
-                          <span className="text-[10px] text-slate-400">
-                            Class of {req.user.batchYear}
-                          </span>
-                        )}
-                      </div>
-                      {(req.user.currentRole || req.user.currentCompany) && (
-                        <p className="text-[11px] text-slate-500 truncate">
-                          {[req.user.currentRole, req.user.currentCompany].filter(Boolean).join(" • ")}
-                        </p>
-                      )}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        disabled={requestsLoading}
+                        onClick={() => handleAcceptRequest(req.user.id)}
+                        className="h-8 px-3 rounded-xl bg-white text-blue-700 text-xs font-bold hover:bg-blue-50 transition active:scale-90 disabled:opacity-50"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        disabled={requestsLoading}
+                        onClick={() => handleDeclineRequest(req.user.id)}
+                        className="h-8 w-8 rounded-xl bg-blue-500/40 hover:bg-blue-500/60 text-white flex items-center justify-center transition active:scale-90 disabled:opacity-50"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
 
-                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                    <button
-                      type="button"
-                      disabled={requestsLoading}
-                      onClick={() => handleAcceptRequest(req.user.id)}
-                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs flex items-center gap-1 active:scale-95 disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Accept</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={requestsLoading}
-                      onClick={() => handleRejectRequest(req.user.id)}
-                      className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-600 text-xs font-semibold border border-slate-200/80 transition active:scale-95 disabled:opacity-50"
-                    >
-                      <span>Decline</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 1: CHATS (Swipeable conversation cards for CONNECTED ACCOUNTS ONLY) */}
+        {/* ── CHATS TAB ── */}
         {tab === "CHATS" && (
-          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
+          <section className="mt-4">
             {loading ? (
-              <div className="p-10 text-center text-slate-400">
-                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
-                <p className="text-xs">Loading encrypted conversations...</p>
+              <div className="flex flex-col items-center justify-center py-20 gap-3">
+                <Loader2 className="w-7 h-7 animate-spin text-blue-600" />
+                <p className="text-sm text-slate-500">Loading conversations…</p>
               </div>
             ) : connectedContacts.length === 0 ? (
-              <div className="p-8 sm:p-10 text-center space-y-4">
-                <div className="mx-auto w-14 h-14 rounded-3xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-xs">
-                  <MessageSquare className="w-7 h-7" />
+              <div className="flex flex-col items-center justify-center py-16 px-8 text-center gap-4">
+                <div className="h-16 w-16 rounded-3xl bg-blue-50 border border-blue-100 flex items-center justify-center">
+                  <MessageSquare className="w-8 h-8 text-blue-600" />
                 </div>
-                <div className="max-w-xs mx-auto space-y-1">
-                  <h3 className="text-sm font-bold text-slate-900">No active conversations</h3>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Chats are end-to-end encrypted. Pick any alumnus from your Contacts directory or scan a QR code to start chatting.
+                <div className="space-y-1.5">
+                  <h3 className="text-base font-bold text-slate-900">
+                    {searchQuery ? "No matches found" : "No chats yet"}
+                  </h3>
+                  <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+                    {searchQuery
+                      ? "Try a different name or username."
+                      : "Connect with alumni to start encrypted conversations. Only mutual connections appear here."}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                  <AnimatedButton
-                    size="sm"
-                    variant="primary"
-                    onClick={() => setShowNewChatModal(true)}
+                {!searchQuery && (
+                  <Link
+                    href="/directory"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold shadow-sm hover:bg-blue-700 transition active:scale-95"
                   >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Start New Chat
-                  </AnimatedButton>
-                  <AnimatedButton
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setTab("CONTACTS")}
-                  >
-                    <UserCheck className="w-3.5 h-3.5 mr-1" /> Browse Directory ({contacts.length})
-                  </AnimatedButton>
-                  <AnimatedButton
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setShowQrModal(true)}
-                  >
-                    <QrCode className="w-3.5 h-3.5 mr-1 text-indigo-600" /> My QR Code
-                  </AnimatedButton>
-                </div>
+                    <Users className="w-4 h-4" />
+                    Find Alumni
+                  </Link>
+                )}
               </div>
             ) : (
-              connectedContacts
-                .filter((c) => !archivedIds.has(c.id))
-                .sort((a, b) => {
-                  if (pinnedIds.has(b.id) !== pinnedIds.has(a.id)) {
-                    return (pinnedIds.has(b.id) ? 1 : 0) - (pinnedIds.has(a.id) ? 1 : 0);
-                  }
-                  const timeA = latestMessages.get(a.id)?.createdAt || 0;
-                  const timeB = latestMessages.get(b.id)?.createdAt || 0;
-                  return timeB - timeA;
-                })
-                .map((contact) => {
-                  const isPinned = pinnedIds.has(contact.id);
-                  const lastMsg = latestMessages.get(contact.id);
-                  const isOutgoing = lastMsg && lastMsg.senderId !== contact.id;
+              <div className="bg-white mx-4 rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
+                <AnimatePresence initial={false}>
+                  {connectedContacts.map(contact => {
+                    const lastMsg = latestMessages.get(contact.id);
+                    const isOutgoing = lastMsg && lastMsg.senderId !== contact.id;
+                    const isPinned = pinnedIds.has(contact.id);
 
-                  return (
-                    <div key={contact.id} className="relative overflow-hidden group select-none">
-                      {/* Swipe reveal actions behind card */}
-                      <div className="absolute inset-y-0 left-0 w-24 bg-blue-600 text-white flex items-center justify-center gap-1.5 font-bold text-xs px-3 pointer-events-none">
-                        <Pin className="w-3.5 h-3.5" />
-                        <span>{isPinned ? "Unpin" : "Pin"}</span>
-                      </div>
-                      <div className="absolute inset-y-0 right-0 w-24 bg-slate-800 text-white flex items-center justify-center gap-1.5 font-bold text-xs px-3 pointer-events-none">
-                        <Archive className="w-3.5 h-3.5" />
-                        <span>Archive</span>
-                      </div>
-
-                      {/* Foreground swipeable card */}
+                    return (
                       <motion.div
-                        drag="x"
-                        dragDirectionLock
-                        dragSnapToOrigin
-                        dragConstraints={{ left: -75, right: 75 }}
-                        dragElastic={0.15}
-                        onDragEnd={(_, info) => {
-                          if (info.offset.x > 50) {
-                            triggerHaptic("medium");
-                            setPinnedIds((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(contact.id)) next.delete(contact.id);
-                              else next.add(contact.id);
-                              return next;
-                            });
-                          } else if (info.offset.x < -50) {
-                            triggerHaptic("medium");
-                            setArchivedIds((prev) => new Set(prev).add(contact.id));
-                          }
-                        }}
-                        whileTap={{ scale: 0.99 }}
-                        className="relative z-10 bg-white p-3.5 sm:p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition cursor-pointer select-none"
+                        key={contact.id}
+                        layout
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: -40 }}
+                        transition={MOTION_SPRINGS.gentle}
+                        whileTap={{ scale: 0.985, backgroundColor: "#f8fafc" }}
+                        className="relative flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors select-none"
                         onClick={() => {
+                          triggerHaptic("light");
                           addLocalConnectedPeer(contact.id);
                           router.push(`/messages/${contact.id}`);
                         }}
                       >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="relative shrink-0">
-                            <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-base font-bold shadow-xs shadow-blue-500/20 overflow-hidden">
-                              {contact.avatarUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={contact.avatarUrl}
-                                  alt={contact.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                (contact.name || "A").charAt(0).toUpperCase()
+                        {/* Avatar + online dot */}
+                        <div className="relative shrink-0">
+                          <Avatar name={contact.name} src={contact.avatarUrl} size={50} />
+                          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white" />
+                        </div>
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p className="text-sm font-bold text-slate-900 truncate">
+                                {contact.name}
+                              </p>
+                              {isPinned && (
+                                <span className="text-blue-500 shrink-0 text-[10px]">📌</span>
+                              )}
+                              {contact.verificationStatus === "VERIFIED" && (
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                               )}
                             </div>
-                            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white ring-1 ring-emerald-400/40" />
+                            {lastMsg && (
+                              <span className="text-[10px] text-slate-400 shrink-0">
+                                {formatTime(lastMsg.createdAt)}
+                              </span>
+                            )}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-1.5">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <p className="text-sm font-bold text-slate-900 truncate group-hover:text-blue-600 transition">
-                                  {contact.name}
-                                </p>
-                                {isPinned && (
-                                  <span className="p-0.5 rounded-md bg-blue-100 text-blue-700 shrink-0" title="Pinned">
-                                    <Pin className="w-3 h-3" />
+
+                          <div className="flex items-center gap-1 mt-0.5 min-w-0">
+                            {lastMsg ? (
+                              <>
+                                {isOutgoing && (
+                                  <span className="text-[11px] shrink-0 leading-none">
+                                    {lastMsg.status === "READ"
+                                      ? <span className="text-blue-500 font-bold">✓✓</span>
+                                      : lastMsg.status === "DELIVERED"
+                                        ? <span className="text-slate-400 font-bold">✓✓</span>
+                                        : <span className="text-slate-400">✓</span>}
                                   </span>
                                 )}
-                                {contact.verificationStatus === "VERIFIED" && (
-                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                )}
-                              </div>
-                              {lastMsg && (
-                                <span className="text-[10px] text-slate-400 shrink-0">
-                                  {new Date(lastMsg.createdAt).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* WhatsApp-style snippet with delivery ticks */}
-                            <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                              {lastMsg ? (
-                                <>
-                                  {isOutgoing && (
-                                    <span className="shrink-0 flex items-center">
-                                      {lastMsg.status === "READ" ? (
-                                        <span className="text-[11px] text-[#53bdeb] font-bold leading-none">✓✓</span>
-                                      ) : lastMsg.status === "DELIVERED" ? (
-                                        <span className="text-[11px] text-slate-400 font-bold leading-none">✓✓</span>
-                                      ) : (
-                                        <span className="text-[11px] text-slate-400 leading-none">✓</span>
-                                      )}
-                                    </span>
-                                  )}
-                                  <p className="text-[11px] text-slate-500 truncate">
-                                    {lastMsg.text}
-                                  </p>
-                                </>
-                              ) : (
-                                <p className="text-[11px] text-slate-400 truncate">
-                                  {contact.username ? `@${contact.username} • ` : ""}Class of {contact.batchYear || 2026}
-                                </p>
-                              )}
-                            </div>
+                                <p className="text-sm text-slate-500 truncate">{lastMsg.text}</p>
+                              </>
+                            ) : (
+                              <p className="text-sm text-slate-400 truncate">
+                                {contact.currentRole
+                                  ? `${contact.currentRole}${contact.currentCompany ? ` · ${contact.currentCompany}` : ""}`
+                                  : `Class of ${contact.batchYear}`}
+                              </p>
+                            )}
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {/* Desktop hover quick actions */}
-                          <div className="hidden sm:flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                triggerHaptic("light");
-                                setPinnedIds((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(contact.id)) next.delete(contact.id);
-                                  else next.add(contact.id);
-                                  return next;
-                                });
-                              }}
-                              className="h-8 w-8 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-500 flex items-center justify-center transition"
-                              title={isPinned ? "Unpin chat" : "Pin chat"}
-                            >
-                              <Pin className={`w-3.5 h-3.5 ${isPinned ? "text-blue-600 fill-blue-600" : ""}`} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                triggerHaptic("light");
-                                setArchivedIds((prev) => new Set(prev).add(contact.id));
-                              }}
-                              className="h-8 w-8 rounded-xl bg-slate-100 hover:bg-amber-50 hover:text-amber-600 text-slate-500 flex items-center justify-center transition"
-                              title="Archive chat"
-                            >
-                              <Archive className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-
-                          <span className="hidden sm:inline-flex h-8 px-2.5 rounded-xl bg-slate-100 group-hover:bg-blue-50 group-hover:text-blue-600 text-[11px] font-bold text-slate-600 items-center transition">
-                            Chat →
-                          </span>
-                          <ChevronRight className="w-4 h-4 text-slate-300 sm:hidden shrink-0" />
-                        </div>
+                        {/* Chevron */}
+                        <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
                       </motion.div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </AnimatePresence>
+              </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* TAB 2: CALLS */}
+        {/* ── CALLS TAB ── */}
         {tab === "CALLS" && (
-          <div className="space-y-3">
+          <section className="mt-4 mx-4 space-y-3">
             {callLogs.length > 0 && (
               <div className="flex justify-end">
                 <button
-                  onClick={handleClearCallLogs}
-                  className="inline-flex items-center gap-1.5 text-xs text-rose-600 hover:text-rose-700 font-semibold px-3 py-1 rounded-lg hover:bg-rose-50 transition"
+                  onClick={async () => {
+                    if (confirm("Clear all call history from this device?")) {
+                      await clearCallLogs();
+                      setCallLogs([]);
+                    }
+                  }}
+                  className="text-xs text-rose-500 hover:text-rose-700 font-semibold flex items-center gap-1 px-3 py-1 rounded-lg hover:bg-rose-50 transition"
                 >
-                  <Trash2 className="w-3.5 h-3.5" /> Clear History
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Clear History
                 </button>
               </div>
             )}
-
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
-              {callLogs.length === 0 ? (
-                <div className="p-10 text-center text-slate-400">
-                  <Phone className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                  <p className="text-xs font-semibold">No call records yet</p>
-                  <p className="text-[11px] mt-1">Direct voice and video calls will appear here</p>
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
+              {filteredCalls.length === 0 ? (
+                <div className="py-16 flex flex-col items-center gap-3 text-center px-8">
+                  <Phone className="w-10 h-10 text-slate-300" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">No call records</p>
+                    <p className="text-xs text-slate-400 mt-1">Voice and video calls will appear here.</p>
+                  </div>
                 </div>
               ) : (
-                callLogs.map((log) => (
-                  <motion.div
-                    key={log.id}
-                    whileTap={{ scale: 0.99 }}
-                    className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50 transition"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`h-10 w-10 rounded-2xl flex items-center justify-center ${
-                          log.status === "MISSED"
-                            ? "bg-rose-50 text-rose-600"
-                            : "bg-emerald-50 text-emerald-600"
-                        }`}
-                      >
-                        {log.status === "MISSED" ? (
-                          <PhoneMissed className="w-5 h-5" />
-                        ) : log.direction === "INCOMING" ? (
-                          <PhoneIncoming className="w-5 h-5" />
-                        ) : (
-                          <PhoneOutgoing className="w-5 h-5" />
-                        )}
+                filteredCalls.map(log => {
+                  const CallIcon = log.status === "MISSED" ? PhoneMissed
+                    : log.direction === "INCOMING" ? PhoneIncoming : PhoneOutgoing;
+                  const iconColor = log.status === "MISSED" ? "text-rose-500" : "text-emerald-500";
+                  return (
+                    <motion.div
+                      key={log.id}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex items-center gap-3.5 px-4 py-3 hover:bg-slate-50 transition cursor-pointer"
+                      onClick={() => router.push(`/messages/${log.peerId}`)}
+                    >
+                      <div className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 ${log.status === "MISSED" ? "bg-rose-50" : "bg-emerald-50"}`}>
+                        <CallIcon className={`w-5 h-5 ${iconColor}`} />
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-900">{log.peerName}</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
-                          <span>{log.callType === "VIDEO" ? "Video Call" : "Voice Call"}</span>
-                          <span>•</span>
-                          <span>
-                            {new Date(log.timestamp).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                          {log.durationSeconds > 0 && (
-                            <>
-                              <span>•</span>
-                              <span>
-                                {Math.floor(log.durationSeconds / 60)}m {log.durationSeconds % 60}s
-                              </span>
-                            </>
-                          )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">{log.peerName || "Unknown"}</p>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {log.callType === "VIDEO" ? "Video" : "Voice"} · {log.status}
+                          {log.durationSeconds ? ` · ${Math.floor(log.durationSeconds / 60)}m ${log.durationSeconds % 60}s` : ""}
                         </p>
                       </div>
-                    </div>
-
-                    <button
-                      onClick={() => router.push(`/messages/${log.peerId}`)}
-                      className="h-9 w-9 rounded-2xl bg-blue-50 hover:bg-blue-100 flex items-center justify-center text-blue-600 transition"
-                      title="Call back"
-                    >
-                      {log.callType === "VIDEO" ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
-                    </button>
-                  </motion.div>
-                ))
+                      <span className="text-[10px] text-slate-400 shrink-0">
+                        {log.timestamp ? formatTime(log.timestamp) : ""}
+                      </span>
+                    </motion.div>
+                  );
+                })
               )}
             </div>
-          </div>
+          </section>
         )}
 
-        {/* TAB 3: CONTACTS (Privacy-Preserving Contact Hub & QR) */}
+        {/* ── CONTACTS TAB ── */}
         {tab === "CONTACTS" && (
-          <div className="space-y-4">
-            <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-2xs space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Radio className="w-5 h-5 animate-pulse" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Privacy-Preserving Contact Discovery</h3>
-                  <p className="text-[11px] text-slate-500">
-                    Encrypted contact discovery. Your contacts stay private on your device.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <AnimatedButton
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setShowSyncModal(true)}
-                >
-                  <Smartphone className="w-4 h-4" /> Sync Phone Numbers
-                </AnimatedButton>
-                <AnimatedButton
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowQrModal(true)}
-                >
-                  <QrCode className="w-4 h-4 text-indigo-600" /> Share My QR Code
-                </AnimatedButton>
-              </div>
-            </div>
-
-            {/* Registered Alumni Quick Connect Directory */}
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs divide-y divide-slate-100 overflow-hidden">
-              <div className="p-4 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Alumni Directory</span>
-                <span className="text-[11px] text-slate-400 font-semibold">{contacts.length} verified members</span>
-              </div>
-              {filteredContacts.map((contact) => (
-                <div key={contact.id} className="p-3.5 flex items-center justify-between hover:bg-slate-50 transition">
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-9 w-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs overflow-hidden shrink-0">
-                      {contact.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={contact.avatarUrl}
-                          alt={contact.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        (contact.name || "A").charAt(0)
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-slate-900">{contact.name}</p>
-                        {contact.verificationStatus === "VERIFIED" && (
-                          <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
-                        )}
-                      </div>
-                      {contact.username && (
-                        <p className="text-[10px] text-slate-400 font-mono">@{contact.username}</p>
-                      )}
-                    </div>
-                  </div>
-                  <AnimatedButton
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      addLocalConnectedPeer(contact.id);
-                      setConnectedPeerIds((prev) => new Set(prev).add(contact.id));
-                      router.push(`/messages/${contact.id}`);
-                    }}
-                  >
-                    Chat →
-                  </AnimatedButton>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: PRIVACY */}
-        {tab === "PRIVACY" && (
-          <div className="space-y-4">
-            <div className="p-5 bg-white rounded-3xl border border-slate-200/80 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
+          <section className="mt-4 mx-4">
+            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-3 px-1">
+              All Connected Alumni
+            </p>
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
+              {connectedContacts.length === 0 ? (
+                <div className="py-14 flex flex-col items-center gap-3 text-center px-8">
+                  <Users className="w-10 h-10 text-slate-300" />
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">Privacy & Security Controls</h3>
-                    <p className="text-[11px] text-slate-500">
-                      Manage cryptographic device identity, rotated handles, and emergency mode.
-                    </p>
+                    <p className="text-sm font-semibold text-slate-700">No connections yet</p>
+                    <p className="text-xs text-slate-400 mt-1">Connect with alumni from the directory.</p>
                   </div>
+                  <Link href="/directory" className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold transition hover:bg-blue-700">
+                    <Users className="w-3.5 h-3.5" /> Browse Directory
+                  </Link>
                 </div>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-slate-800">Emergency Privacy Lock</p>
-                  <p className="text-[11px] text-slate-500">Instantly drops calls and conceals profile in directory</p>
-                </div>
-                <button
-                  onClick={async () => {
-                    const next = !privacyLockActive;
-                    setPrivacyLockActive(next);
-                    triggerHaptic("heavy");
-                    await fetch("/api/privacy/lock", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ active: next }),
-                    });
-                  }}
-                  className={`h-7 w-12 rounded-full p-1 transition-colors ${
-                    privacyLockActive ? "bg-rose-600" : "bg-slate-300"
-                  }`}
-                >
-                  <motion.div
-                    layout
-                    transition={MOTION_SPRINGS.snappy}
-                    className={`h-5 w-5 rounded-full bg-white shadow-xs ${
-                      privacyLockActive ? "ml-auto" : ""
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <div className="pt-2">
-                <Link
-                  href="/settings/privacy/dashboard"
-                  className="w-full py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 transition"
-                >
-                  <ShieldCheck className="w-4 h-4" /> Open Full Privacy Dashboard →
-                </Link>
-              </div>
+              ) : (
+                contacts
+                  .filter(c => c.id !== currentUserId && connectedPeerIds.has(c.id))
+                  .filter(c => {
+                    if (!cleanFilter) return true;
+                    return c.name?.toLowerCase().includes(cleanFilter) ||
+                      c.username?.toLowerCase().includes(cleanFilter);
+                  })
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map(contact => (
+                    <motion.div
+                      key={contact.id}
+                      whileTap={{ scale: 0.985 }}
+                      className="flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-slate-50 transition"
+                      onClick={() => {
+                        triggerHaptic("light");
+                        router.push(`/messages/${contact.id}`);
+                      }}
+                    >
+                      <Avatar name={contact.name} src={contact.avatarUrl} size={44} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">{contact.name}</p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {contact.currentRole || `Class of ${contact.batchYear}`}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                    </motion.div>
+                  ))
+              )}
             </div>
-          </div>
+          </section>
         )}
 
-        <div className="h-20" />
+        {/* ── PRIVACY TAB ── */}
+        {tab === "PRIVACY" && (
+          <section className="mt-4 mx-4 space-y-3">
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
+              {[
+                { label: "Privacy Settings", sub: "Receipts, typing, online status", href: "/settings/privacy", icon: ShieldCheck, color: "text-emerald-600 bg-emerald-50" },
+                { label: "Privacy Dashboard", sub: "Active sessions and threat log", href: "/settings/privacy/dashboard", icon: ShieldCheck, color: "text-blue-600 bg-blue-50" },
+              ].map(item => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="flex items-center gap-3.5 px-4 py-4 hover:bg-slate-50 transition"
+                  >
+                    <div className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 ${item.color}`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-900">{item.label}</p>
+                      <p className="text-[11px] text-slate-500">{item.sub}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                  </Link>
+                );
+              })}
+            </div>
+            <p className="text-center text-[11px] text-slate-400 px-4">
+              All messages are end-to-end encrypted using X25519 ECDH + AES-256-GCM. Zero plaintext stored on servers.
+            </p>
+          </section>
+        )}
       </main>
 
-      {/* FLOATING 2026 BOTTOM DOCK NAVIGATION */}
+      {/* ── BOTTOM FLOATING NAV ─────────────────────────────────── */}
       <FloatingBottomNav
         activeTab={tab}
         onTabChange={setTab}
         unreadCount={incomingRequests.length}
-        missedCallsCount={callLogs.filter((c) => c.status === "MISSED").length}
+        missedCallsCount={callLogs.filter(c => c.status === "MISSED").length}
       />
 
-      {/* MODAL 1: Start New Chat Modal */}
-      {showNewChatModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900">Start New Encrypted Chat</h2>
-              <button
-                onClick={() => setShowNewChatModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search alumni by name or @username..."
-                value={newChatSearch}
-                onChange={(e) => setNewChatSearch(e.target.value)}
-                className="w-full pl-9 pr-8 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-              {newChatSearch && (
-                <button
-                  type="button"
-                  onClick={() => setNewChatSearch("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
-              {contacts
-                .filter((c) => {
-                  if (!newChatSearch.trim()) return true;
-                  const q = newChatSearch.toLowerCase().trim().replace(/^@/, "");
-                  return (
-                    c.name.toLowerCase().includes(q) ||
-                    (c.username && c.username.toLowerCase().includes(q)) ||
-                    (c.currentRole && c.currentRole.toLowerCase().includes(q)) ||
-                    (c.currentCompany && c.currentCompany.toLowerCase().includes(q))
-                  );
-                })
-                .map((c) => (
-                  <div
-                    key={c.id}
-                    onClick={() => {
-                      setShowNewChatModal(false);
-                      setNewChatSearch("");
-                      addLocalConnectedPeer(c.id);
-                      setConnectedPeerIds((prev) => new Set(prev).add(c.id));
-                      router.push(`/messages/${c.id}`);
-                    }}
-                    className="py-2.5 px-2 flex items-center justify-between hover:bg-slate-50 rounded-xl cursor-pointer transition"
-                  >
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-slate-900">{c.name}</p>
-                        {c.username && (
-                          <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
-                            @{c.username}
-                          </span>
-                        )}
-                        {c.verificationStatus === "VERIFIED" && (
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        )}
-                      </div>
-                      <p className="text-[10px] text-slate-400">
-                        {formatContactBio(c.currentRole, c.currentCompany, c.batchYear)}
-                      </p>
-                    </div>
-                    <span className="text-[11px] text-blue-600 font-bold">Start →</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: Sync Phone Contacts & Matcher Modal */}
-      {showSyncModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-3xl border border-slate-200 p-6 shadow-xl space-y-4 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Smartphone className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">Find Contacts on App</h2>
-                  <p className="text-[11px] text-slate-400">Check who from your address book is registered</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowSyncModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-emerald-50 text-[11px] text-emerald-800 flex items-start gap-2 border border-emerald-100">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-              <span>
-                <strong>Zero Address Book Storage:</strong> Contact numbers are hashed locally using client-side SHA-256 before matching. Your phonebook is never uploaded or saved to the server.
-              </span>
-            </div>
-
-            <div className="shrink-0 space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-700">Enter or paste mobile numbers:</label>
-                <button
-                  type="button"
-                  onClick={handlePickPhoneContacts}
-                  className="text-xs text-blue-600 hover:underline font-semibold flex items-center gap-1"
-                >
-                  <UserPlus className="w-3.5 h-3.5" /> Pick from Phone
-                </button>
-              </div>
-              <textarea
-                value={rawPhoneInput}
-                onChange={(e) => setRawPhoneInput(e.target.value)}
-                rows={3}
-                placeholder="Paste numbers separated by comma or new lines (e.g. 9876543210, 9123456789)"
-                className="w-full p-2.5 text-xs rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono"
-              />
-
-              <div className="flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRawPhoneInput("9876543210\n9876543211\n9876543212\n9123456780")}
-                  className="text-[11px] text-slate-500 hover:text-slate-800 underline"
-                >
-                  Fill sample numbers
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSyncContacts()}
-                  disabled={syncing}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                >
-                  {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                  Check Contacts
-                </button>
-              </div>
-
-              {syncError && (
-                <div className="p-2.5 rounded-xl bg-rose-50 text-rose-700 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{syncError}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Results Display */}
-            <div className="flex-1 overflow-y-auto space-y-4 pt-2 border-t border-slate-100">
-              {matchedRegistered && (
-                <div className="space-y-2">
-                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    Found on App ({matchedRegistered.length})
-                  </h3>
-                  {matchedRegistered.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded-xl">
-                      None of these numbers have an active account yet. You can invite them via SMS below!
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {matchedRegistered.map((m) => (
-                        <div
-                          key={m.id}
-                          className="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 flex items-center justify-between gap-2"
-                        >
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-xs font-bold text-slate-900">{m.name}</p>
-                              <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded font-medium">
-                                {m.username}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-slate-600">
-                              {m.role} • Class of {m.batchYear}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setShowSyncModal(false);
-                              router.push(m.messageUrl);
-                            }}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition"
-                          >
-                            Message →
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {matchedUnregistered && matchedUnregistered.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Share2 className="w-4 h-4 text-blue-600" />
-                    Not on App Yet — Invite via SMS ({matchedUnregistered.length})
-                  </h3>
-                  <div className="space-y-2">
-                    {matchedUnregistered.map((u, i) => (
-                      <div
-                        key={i}
-                        className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
-                      >
-                        <p className="text-xs font-mono font-bold text-slate-800">{u.phone}</p>
-                        <a
-                          href={u.inviteSmsUrl}
-                          className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition flex items-center gap-1"
-                        >
-                          <Send className="w-3 h-3" /> Invite via SMS
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* QR Code Modal for In-Person Key Exchange & Instant Chat Connection */}
+      {/* ── MODALS ──────────────────────────────────────────────── */}
       <QRCodeModal
         isOpen={showQrModal}
         onClose={() => setShowQrModal(false)}
         currentUser={currentUserProfile}
         onOpenScanner={() => setShowScannerModal(true)}
       />
-
-      {/* Live QR Camera Scanner Modal */}
       <QRScannerModal
         isOpen={showScannerModal}
         onClose={() => setShowScannerModal(false)}
-        onOpenMyQr={() => {
-          setShowScannerModal(false);
-          setShowQrModal(true);
-        }}
+        onOpenMyQr={() => { setShowScannerModal(false); setShowQrModal(true); }}
       />
     </div>
   );
 }
-

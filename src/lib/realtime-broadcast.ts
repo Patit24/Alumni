@@ -8,13 +8,48 @@ const supabaseKey =
 
 /**
  * Server-side helper to send a Realtime broadcast to a specific channel.
- * Guarantees channel subscription before sending, preventing dropped events.
+ * Uses Supabase HTTP REST broadcast API first (~50ms) — no WebSocket
+ * subscription handshake needed. Falls back to WS subscribe if REST fails.
  */
 export async function sendRealtimeBroadcast(
   channelName: string,
   event: string,
   payload: Record<string, unknown>
 ): Promise<boolean> {
+  // ─── FAST PATH: Supabase REST Broadcast API ────────────────────────────
+  // POST /realtime/v1/api/broadcast — sends without subscribing (~50ms).
+  try {
+    const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
+    const restUrl = `https://${projectRef}.supabase.co/realtime/v1/api/broadcast`;
+
+    const res = await fetch(restUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
+        "apikey": supabaseKey,
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            topic: channelName,
+            event,
+            payload,
+          },
+        ],
+      }),
+    });
+
+    if (res.ok) {
+      return true;
+    }
+    // Non-2xx — fall through to WS fallback
+    console.warn(`[Realtime HTTP Broadcast] Non-ok status ${res.status} for ${channelName}, falling back to WS.`);
+  } catch (httpErr) {
+    console.warn(`[Realtime HTTP Broadcast] fetch failed for ${channelName}, falling back to WS:`, httpErr);
+  }
+
+  // ─── FALLBACK PATH: WebSocket Subscribe-then-Send ─────────────────────
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const channel = supabase.channel(channelName, {
@@ -47,7 +82,7 @@ export async function sendRealtimeBroadcast(
               resolve(true);
             }
           } catch (err) {
-            console.warn(`[Realtime Broadcast] Failed to send on ${channelName}:`, err);
+            console.warn(`[Realtime WS Broadcast] Failed to send on ${channelName}:`, err);
             if (!isSettled) {
               isSettled = true;
               clearTimeout(timeout);
@@ -64,7 +99,8 @@ export async function sendRealtimeBroadcast(
       });
     });
   } catch (err) {
-    console.warn(`[Realtime Broadcast] Exception for channel ${channelName}:`, err);
+    console.warn(`[Realtime WS Broadcast] Exception for channel ${channelName}:`, err);
     return false;
   }
 }
+
