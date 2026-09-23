@@ -104,10 +104,16 @@ function saveLocalFeedPost(post: FeedItemData) {
   if (typeof window === "undefined") return;
   try {
     const existing = getLocalFeedPosts();
-    const updated = [post, ...existing.filter((p) => p.id !== post.id)].slice(0, 40);
+    const updated = [post, ...existing.filter((p) => p.id !== post.id)].slice(0, 30);
     localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(updated));
   } catch (e) {
-    console.warn("Could not save post to local cache:", e);
+    try {
+      const existing = getLocalFeedPosts();
+      const trimmed = [post, ...existing.filter((p) => p.id !== post.id)].slice(0, 10);
+      localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(trimmed));
+    } catch {
+      console.warn("Could not save post to local cache:", e);
+    }
   }
 }
 
@@ -129,10 +135,15 @@ function syncLocalFeedPosts(posts: FeedItemData[]) {
     const map = new Map<string, FeedItemData>();
     localPosts.forEach((p) => map.set(p.id, p));
     posts.forEach((p) => map.set(p.id, p));
-    const merged = Array.from(map.values()).slice(0, 50);
+    const merged = Array.from(map.values()).slice(0, 35);
     localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(merged));
   } catch (e) {
-    console.warn("Could not sync local feed posts:", e);
+    try {
+      const merged = posts.slice(0, 15);
+      localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(merged));
+    } catch {
+      console.warn("Could not sync local feed posts:", e);
+    }
   }
 }
 
@@ -221,8 +232,8 @@ export default function FeedSection({
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 900;
-        const MAX_HEIGHT = 900;
+        const MAX_WIDTH = 750;
+        const MAX_HEIGHT = 750;
         let width = img.width;
         let height = img.height;
 
@@ -243,7 +254,7 @@ export default function FeedSection({
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.75);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.65);
           setSelectedImage(compressedDataUrl);
         } else {
           setSelectedImage(result);

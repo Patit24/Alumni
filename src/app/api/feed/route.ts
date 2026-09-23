@@ -17,40 +17,82 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const filter = searchParams.get("filter") || "ALL"; // "ALL", "SAVED", "JOBS", "MENTORSHIP", "BATCH"
 
-    // 1. Resolve user's accepted friends / connections
-    const [acceptedRequests, connectedTrusts] = await Promise.all([
+    // 1. Resolve user's accepted friends, trusted contacts, message peers, and community connections
+    const [connectionReqs, contactTrusts, messagePeers, myCommunities] = await Promise.all([
       db.connectionRequest.findMany({
         where: {
           OR: [
-            { senderId: user.id, status: "ACCEPTED" },
-            { receiverId: user.id, status: "ACCEPTED" },
+            { senderId: user.id },
+            { receiverId: user.id },
           ],
+          status: { notIn: ["BLOCKED", "REJECTED", "CANCELLED"] },
         },
         select: { senderId: true, receiverId: true },
       }),
       db.contactTrust.findMany({
         where: {
-          userId: user.id,
-          trustLevel: { in: ["CONNECTED", "TRUSTED"] },
+          OR: [
+            { userId: user.id },
+            { contactId: user.id },
+          ],
+          trustLevel: { notIn: ["BLOCKED", "UNKNOWN"] },
         },
-        select: { contactId: true },
+        select: { userId: true, contactId: true },
+      }),
+      db.encryptedMessageQueue.findMany({
+        where: {
+          OR: [
+            { senderId: user.id },
+            { recipientId: user.id },
+          ],
+        },
+        select: { senderId: true, recipientId: true },
+        take: 300,
+      }),
+      db.communityMember.findMany({
+        where: { userId: user.id, status: "ACTIVE" },
+        select: { communityId: true },
       }),
     ]);
 
     const friendIdsSet = new Set<string>();
     friendIdsSet.add(user.id); // User can always see their own posts
-    acceptedRequests.forEach((r) => {
+
+    connectionReqs.forEach((r) => {
       if (r.senderId && r.senderId !== user.id) friendIdsSet.add(r.senderId);
       if (r.receiverId && r.receiverId !== user.id) friendIdsSet.add(r.receiverId);
     });
-    connectedTrusts.forEach((t) => {
+
+    contactTrusts.forEach((t) => {
+      if (t.userId && t.userId !== user.id) friendIdsSet.add(t.userId);
       if (t.contactId && t.contactId !== user.id) friendIdsSet.add(t.contactId);
     });
+
+    messagePeers.forEach((m) => {
+      if (m.senderId && m.senderId !== user.id) friendIdsSet.add(m.senderId);
+      if (m.recipientId && m.recipientId !== user.id) friendIdsSet.add(m.recipientId);
+    });
+
+    if (myCommunities.length > 0) {
+      const communityIds = myCommunities.map((c) => c.communityId);
+      const coMembers = await db.communityMember.findMany({
+        where: {
+          communityId: { in: communityIds },
+          status: "ACTIVE",
+        },
+        select: { userId: true },
+        take: 500,
+      });
+      coMembers.forEach((cm) => {
+        if (cm.userId && cm.userId !== user.id) friendIdsSet.add(cm.userId);
+      });
+    }
+
     const friendIds = Array.from(friendIdsSet);
 
     // 2. Build where filter according to visibility rules:
-    // - Regular posts / alumni updates: only friends' updates show
-    // - Job update or mentorship posts: show to mutual school and college users OR friends
+    // - Regular posts / photo updates: show to all connected friends/contacts AND peers from mutual school/college
+    // - Jobs & Mentorship: show to mutual institution OR connected peers
     // - SAVED: show posts bookmarked by the user
     const where: Prisma.FeedItemWhereInput = {};
 
@@ -61,38 +103,30 @@ export async function GET(req: Request) {
     } else if (filter === "JOBS") {
       where.type = "JOB_POSTED";
       where.OR = [
-        { institutionId: user.institutionId },
+        ...(user.institutionId ? [{ institutionId: user.institutionId }] : []),
         { actorId: { in: friendIds } },
       ];
     } else if (filter === "MENTORSHIP") {
       where.type = "MENTORSHIP_AVAILABLE";
       where.OR = [
-        { institutionId: user.institutionId },
+        ...(user.institutionId ? [{ institutionId: user.institutionId }] : []),
         { actorId: { in: friendIds } },
       ];
     } else if (filter === "BATCH") {
       where.actor = {
         batchYear: user.batchYear,
         OR: [
-          { institutionId: user.institutionId },
+          ...(user.institutionId ? [{ institutionId: user.institutionId }] : []),
           { id: { in: friendIds } },
         ],
       };
     } else {
       // "ALL" (Default feed):
       where.OR = [
-        // a) Any post by a friend or user themselves
+        // a) Any post / photo update from any connected peer, friend, or user themselves
         { actorId: { in: friendIds } },
-        // b) Job updates from mutual school/college
-        {
-          type: "JOB_POSTED",
-          institutionId: user.institutionId,
-        },
-        // c) Mentorship updates from mutual school/college
-        {
-          type: "MENTORSHIP_AVAILABLE",
-          institutionId: user.institutionId,
-        },
+        // b) Posts from alumni of the mutual school or college
+        ...(user.institutionId ? [{ institutionId: user.institutionId }] : []),
       ];
     }
 
@@ -247,13 +281,15 @@ export async function POST(req: Request) {
             currentCompany: true,
             batchYear: true,
             verificationStatus: true,
+            institutionId: true,
+            institution: { select: { name: true, type: true } },
             department: { select: { name: true } },
           },
         },
       },
     });
 
-    let meta = {};
+    let meta: Record<string, unknown> = {};
     try {
       meta = JSON.parse(feedItem.metadata || "{}");
     } catch {
@@ -266,11 +302,21 @@ export async function POST(req: Request) {
       createdAt: feedItem.createdAt,
       actor: (feedItem as any).actor,
       hasLiked: false,
+      hasSaved: false,
       likesCount: 0,
+      savesCount: 0,
       commentsCount: 0,
       sharesCount: 0,
+      isFriend: true,
+      isMutualInstitution: true,
       comments: [],
-      metadata: meta,
+      metadata: {
+        ...meta,
+        likes: 0,
+        savesCount: 0,
+        commentsCount: 0,
+        sharesCount: 0,
+      },
     };
 
     // Broadcast new post via Supabase Realtime
