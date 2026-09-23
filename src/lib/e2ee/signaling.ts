@@ -114,7 +114,8 @@ class RealtimeSignalingService {
           ? Date.now() + parsedData.disappearingSeconds * 1000
           : undefined;
 
-        const msgId = parsedData.id || queueId || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        // Use parsedData.id as the stable message ID; queueId is the DB queue row ID
+        const msgId = parsedData.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const vaultMsg: VaultMessage = {
           id: msgId,
           peerId: senderId,
@@ -133,12 +134,14 @@ class RealtimeSignalingService {
         // Save to local vault
         await saveLocalMessage(vaultMsg);
 
-        // Acknowledge delivery to server & purge temporary encrypted queue entry
+        // ACK server: purge by the ACTUAL DB queue row ID (queueId), not the message ID
+        // This correctly removes the persisted encrypted payload from the server queue
         fetch("/api/messages/ack", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messageIds: [msgId],
+            // queueId is the actual database EncryptedMessageQueue.id row — use it to purge
             queueIds: queueId ? [queueId] : [],
             senderId,
             status: "DELIVERED",
@@ -256,7 +259,21 @@ class RealtimeSignalingService {
     });
 
     this.channel.subscribe();
+
+    // ── Visibility-based re-drain ────────────────────────────────────────────
+    // When the user returns to the tab after being away (offline or backgrounded),
+    // re-drain the server queue so messages sent while they were offline appear.
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this._onVisibilityChange);
+    }
   }
+
+  // Bound visibility handler — re-drains queue when tab becomes visible
+  private _onVisibilityChange = () => {
+    if (document.visibilityState === "visible") {
+      this.drainPendingQueue();
+    }
+  };
 
   // Send WebRTC signal to peer's private channel
   async sendSignalToPeer(peerId: string, signalMsg: WebRTCSignalingMessage) {
@@ -396,40 +413,54 @@ class RealtimeSignalingService {
             ? Date.now() + parsedData.disappearingSeconds * 1000
             : undefined;
 
+          // Use the stable message ID embedded in payload; item.id is the DB queue row
           const msgId = parsedData.id || item.id;
-          const vaultMsg: VaultMessage = {
-            id: msgId,
-            peerId: item.senderId,
-            senderId: item.senderId,
-            senderName: item.senderName || parsedData.senderName,
-            text: parsedData.text || decryptedText,
-            type: item.messageType === "EMOJI" ? "EMOJI" : "TEXT",
-            replyToId: parsedData.replyToId,
-            replySnippet: parsedData.replySnippet,
-            status: "DELIVERED",
-            createdAt: new Date(item.createdAt).getTime() || Date.now(),
-            expiresAt,
-            disappearingSeconds: parsedData.disappearingSeconds,
-          };
 
-          await saveLocalMessage(vaultMsg);
-          acknowledgedQueueIds.push(item.id);
+          // ── Deduplication: skip messages already in local vault ──────────
+          // This prevents showing the same message twice when:
+          // (a) it arrived via real-time broadcast, AND
+          // (b) it still appears in the relay GET (because the ACK hasn't processed yet)
+          const { getLocalMessages } = await import("./vault");
+          const existingMsgs = await getLocalMessages(item.senderId);
+          const alreadyStored = existingMsgs.some((m) => m.id === msgId);
+
+          if (!alreadyStored) {
+            const vaultMsg: VaultMessage = {
+              id: msgId,
+              peerId: item.senderId,
+              senderId: item.senderId,
+              senderName: item.senderName || parsedData.senderName,
+              text: parsedData.text || decryptedText,
+              type: item.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+              replyToId: parsedData.replyToId,
+              replySnippet: parsedData.replySnippet,
+              status: "DELIVERED",
+              createdAt: new Date(item.createdAt).getTime() || Date.now(),
+              expiresAt,
+              disappearingSeconds: parsedData.disappearingSeconds,
+            };
+
+            await saveLocalMessage(vaultMsg);
+            this.sendMessageStatus(item.senderId, [msgId], "DELIVERED");
+            this.onMessageReceivedCbs.forEach((cb) => cb(vaultMsg));
+          }
+
+          // Always ACK and purge the DB queue row, whether new or duplicate
+          acknowledgedQueueIds.push(item.id); // item.id = DB queue row UUID
           acknowledgedMsgIds.push(msgId);
-          this.sendMessageStatus(item.senderId, [msgId], "DELIVERED");
-          this.onMessageReceivedCbs.forEach((cb) => cb(vaultMsg));
         } catch (e) {
           console.error("Failed to decrypt queued message:", e);
         }
       }
 
-      // Purge delivered messages from server
+      // Purge delivered messages from server (by DB queue row ID)
       if (acknowledgedQueueIds.length > 0) {
         await fetch("/api/messages/ack", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messageIds: acknowledgedMsgIds,
-            queueIds: acknowledgedQueueIds,
+            queueIds: acknowledgedQueueIds, // ← these are the real DB row IDs
             status: "DELIVERED",
           }),
         }).catch(() => {});

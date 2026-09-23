@@ -326,10 +326,17 @@ export default function DirectMessageChatPage(props: {
   }, [messages]);
 
   // Screen capture & window blur heuristic awareness listener
+  // Also: reload messages when user returns to tab (picks up offline-delivered messages)
   useEffect(() => {
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.hidden) {
         // App backgrounded / window minimized
+      } else {
+        // Tab became visible again — reload local messages so newly drained
+        // offline messages (delivered by signaling.drainPendingQueue) appear
+        const freshMsgs = await getLocalMessages(peerId);
+        setMessages(freshMsgs);
+        scrollToBottom();
       }
     };
 
@@ -346,7 +353,7 @@ export default function DirectMessageChatPage(props: {
       window.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("keydown", handleKeydown);
     };
-  }, []);
+  }, [peerId]);
 
   // Handle typing status broadcast
   const handleInputChange = (val: string) => {

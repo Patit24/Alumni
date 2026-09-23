@@ -40,197 +40,170 @@ export default async function HomePage(props: {
   }
 
   if (!user) {
-    // Unauthenticated Welcome Landing for Samparka
+    // ── Samparka Premium Landing — 2026 "Made in India" Design ──
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8 bg-gradient-to-b from-amber-50/40 via-slate-50 to-emerald-50/40">
+      <main className="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden bg-[#080810]">
         <ClientAuthRedirect />
-        <div className="w-full max-w-2xl bg-white/95 rounded-3xl shadow-xl shadow-slate-900/5 border border-slate-200/90 p-6 sm:p-10 text-center backdrop-blur-md">
-          {/* Top Brand Pill & Made in India Badge */}
-          <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 text-white text-xs font-bold shadow-sm">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Samparka</span>
+
+        {/* ── Ambient gradient blobs ── */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden select-none">
+          <div className="absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-orange-500/18 blur-[140px]" style={{ animation: "pulse 7s ease-in-out infinite" }} />
+          <div className="absolute top-1/2 -right-48 h-[500px] w-[500px] rounded-full bg-indigo-600/18 blur-[130px]" style={{ animation: "pulse 9s ease-in-out infinite", animationDelay: "2s" }} />
+          <div className="absolute -bottom-32 left-1/3 h-[440px] w-[440px] rounded-full bg-emerald-600/14 blur-[120px]" style={{ animation: "pulse 11s ease-in-out infinite", animationDelay: "1s" }} />
+          {/* Dot grid */}
+          <div
+            className="absolute inset-0 opacity-[0.035]"
+            style={{
+              backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)",
+              backgroundSize: "30px 30px",
+            }}
+          />
+        </div>
+
+        {/* ── Indian tricolor top bar ── */}
+        <div aria-hidden className="absolute top-0 inset-x-0 z-20 h-[3px] flex">
+          <div className="flex-1 bg-[#FF9933]" />
+          <div className="flex-1 bg-white/70" />
+          <div className="flex-1 bg-[#138808]" />
+        </div>
+
+        {/* ── Main content ── */}
+        <div className="relative z-10 w-full max-w-sm mx-auto px-5 py-12 sm:py-16 flex flex-col items-center text-center gap-7">
+
+          {/* App identity pills */}
+          <div className="flex items-center gap-2 flex-wrap justify-center">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/7 border border-white/10 text-white/85 text-[11px] font-bold tracking-[0.16em] uppercase">
+              <span className="h-[7px] w-[7px] rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+              Samparka
             </div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-xs font-semibold border border-amber-200/80">
-              <span>🇮🇳</span>
-              <span>Proudly Made in India</span>
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-amber-500/35 bg-amber-500/10 text-amber-400 text-[11px] font-bold">
+              🇮🇳 Made in India
             </div>
           </div>
 
-          {/* Tagline & Positioning Pill */}
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100/90 mb-4">
-            <Lock className="w-3.5 h-3.5 text-blue-600" />
-            <span>Connect. Chat. Belong. • A secure connection platform built for everyone</span>
-          </div>
-
-          {/* Hero Showcase Image */}
-          <div className="relative rounded-2xl overflow-hidden mb-6 border border-slate-200/80 shadow-md group">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/images/samparka_hero.jpg"
-              alt="Samparka - Connect. Chat. Belong."
-              className="w-full h-auto object-cover max-h-64 sm:max-h-80 transition duration-300 group-hover:scale-[1.01]"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent flex items-end p-4">
-              <div className="text-left text-white">
-                <p className="text-sm font-bold tracking-tight flex items-center gap-1.5">
-                  <span>🇮🇳</span> Samparka
-                </p>
-                <p className="text-xs text-slate-200">India&apos;s Secure Connection &amp; Private Messaging Platform</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Hero Headline */}
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
-            Connect with people.
-            <br />
-            <span className="bg-gradient-to-r from-blue-700 via-indigo-600 to-emerald-600 bg-clip-text text-transparent">
+          {/* Hero headline */}
+          <div className="space-y-2 w-full">
+            <p className="text-white/38 text-[10px] font-semibold tracking-[0.22em] uppercase mb-1">
+              India&apos;s Secure Connection Platform
+            </p>
+            <h1 className="text-[clamp(2.6rem,11vw,3.8rem)] font-black leading-[1.06] tracking-[-0.02em] text-white">
+              Connect with
+              <br />
+              <span
+                className="text-transparent bg-clip-text"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(110deg, #FF9933 0%, #ffd4a0 38%, #ffffff 55%, #a8f0b8 72%, #138808 100%)",
+                  WebkitBackgroundClip: "text",
+                }}
+              >
+                People.
+              </span>
+            </h1>
+            <p className="text-[clamp(1rem,4vw,1.25rem)] font-semibold text-white/55 leading-snug mt-1">
               Chat without limits.
-            </span>
-          </h1>
-
-          {/* Subtitle */}
-          <p className="text-sm sm:text-base text-slate-600 mt-3 max-w-lg mx-auto leading-relaxed">
-            One secure place to connect, communicate, and build meaningful relationships.
-          </p>
-
-          {/* Primary CTA Button */}
-          <div className="mt-6 mb-4">
-            <Link
-              href="/auth"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 text-base shadow-xl shadow-blue-600/30 transition transform active:scale-95"
-            >
-              Get Started →
-            </Link>
-          </div>
-
-          {/* Small Trust Line */}
-          <div className="text-xs text-slate-600 font-semibold flex items-center justify-center gap-2 flex-wrap mb-8">
-            <span>🔒 Secure</span>
-            <span>•</span>
-            <span>⚡ Fast</span>
-            <span>•</span>
-            <span>👥 Trusted</span>
-            <span>•</span>
-            <span>🇮🇳 Made in India</span>
-          </div>
-
-          {/* Section Divider & Core Features */}
-          <div className="border-t border-slate-100 my-6 pt-6">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-              Core Platform Capabilities
-            </h2>
-
-            {/* Core Features 8-Card Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-              {/* 1. Private & Secure Chat */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-blue-200 transition">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">🔐</span>
-                  <p className="text-xs font-bold text-slate-800">Private &amp; Secure Chat</p>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Encrypted personal conversations with zero plaintext stored on servers.
-                </p>
-              </div>
-
-              {/* 2. Connect with People */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">👥</span>
-                  <p className="text-xs font-bold text-slate-800">Connect with People</p>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Discover and connect with verified users, alumni, and colleagues.
-                </p>
-              </div>
-
-              {/* 3. Seamless Messaging */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-emerald-200 transition">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">💬</span>
-                  <p className="text-xs font-bold text-slate-800">Seamless Messaging</p>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Fast text, voice notes, media sharing, and instant delivery ticks.
-                </p>
-              </div>
-
-              {/* 4. Communities & Groups */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-purple-200 transition">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">🏘️</span>
-                  <p className="text-xs font-bold text-slate-800">Communities &amp; Groups</p>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Join groups around interests, work, education, cities, and shared passions.
-                </p>
-              </div>
-
-              {/* 5. Trusted Connections */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-amber-200 transition">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">🤝</span>
-                  <p className="text-xs font-bold text-slate-800">Trusted Connections</p>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Verified profiles, mutual contact handshakes, and safer digital interactions.
-                </p>
-              </div>
-
-              {/* 6. Voice & Video Calls */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-sky-200 transition">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">📞</span>
-                  <p className="text-xs font-bold text-slate-800">Voice &amp; Video Calls</p>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Crystal-clear peer-to-peer audio and video calls directly inside the browser.
-                </p>
-              </div>
-
-              {/* 7. Real-time Notifications */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-rose-200 transition">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">🔔</span>
-                  <p className="text-xs font-bold text-slate-800">Real-time Notifications</p>
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Instant mobile notifications so you never miss an important message.
-                </p>
-              </div>
-
-              {/* 8. Proudly Made in India */}
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-50/70 via-white to-emerald-50/70 border border-amber-200/60 hover:border-emerald-300 transition">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-base">🇮🇳</span>
-                  <p className="text-xs font-bold text-slate-900">Proudly Made in India</p>
-                </div>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Engineered with Indian privacy standards, state-of-the-art encryption, and cultural pride.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Secondary CTA */}
-          <div className="mt-8 pt-4 border-t border-slate-100">
-            <Link
-              href="/auth"
-              className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-6 text-sm shadow-md transition active:scale-[0.99]"
-            >
-              Get Started with Samparka →
-            </Link>
-
-            <p className="text-xs text-slate-400 mt-4 flex items-center justify-center gap-1.5 flex-wrap">
-              <span>Zero Passwords Required</span>
-              <span>•</span>
-              <span>Instant Private ID or Gmail Sign-In</span>
-              <span>•</span>
-              <span>100% Free</span>
             </p>
           </div>
+
+          {/* Sub copy */}
+          <p className="text-[13px] text-white/42 leading-relaxed max-w-[280px]">
+            One secure place to connect, communicate, and build meaningful
+            relationships — engineered with pride in India.
+          </p>
+
+          {/* Primary CTA */}
+          <Link
+            href="/auth"
+            id="landing-get-started-btn"
+            className="group relative inline-flex items-center justify-center gap-2.5 w-full rounded-[18px] text-white font-extrabold py-[15px] px-8 text-[15px] overflow-hidden transition-all duration-200 active:scale-[0.97]"
+            style={{
+              background:
+                "linear-gradient(130deg, #FF9933 0%, #cc5a00 45%, #138808 100%)",
+              boxShadow:
+                "0 0 0 1px rgba(255,153,51,0.3), 0 8px 32px rgba(255,120,0,0.4), 0 2px 8px rgba(0,0,0,0.6)",
+            }}
+          >
+            <span className="relative z-10 flex items-center gap-2">
+              Get Started
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" />
+            </span>
+          </Link>
+
+          {/* Trust strip */}
+          <div className="flex items-center justify-center gap-3 flex-wrap text-[10px] text-white/35 font-semibold">
+            <span className="flex items-center gap-1">
+              <Lock className="w-[10px] h-[10px] text-emerald-400" /> Encrypted
+            </span>
+            <span className="text-white/15">•</span>
+            <span>⚡ Instant</span>
+            <span className="text-white/15">•</span>
+            <span>👥 Verified</span>
+            <span className="text-white/15">•</span>
+            <span>🇮🇳 India First</span>
+          </div>
+
+          {/* Feature bento grid */}
+          <div className="w-full grid grid-cols-2 gap-2 mt-1">
+            {[
+              { icon: "🔐", title: "Private Chat", desc: "E2E encrypted", color: "#818cf8" },
+              { icon: "👥", title: "Discover People", desc: "Verified profiles", color: "#38bdf8" },
+              { icon: "💬", title: "Messaging", desc: "Text, voice & media", color: "#34d399" },
+              { icon: "🏘️", title: "Communities", desc: "Groups & interests", color: "#fbbf24" },
+              { icon: "📞", title: "Voice & Video", desc: "Clear P2P calls", color: "#f472b6" },
+              { icon: "🔔", title: "Notifications", desc: "Real-time alerts", color: "#a78bfa" },
+            ].map((f) => (
+              <div
+                key={f.title}
+                className="relative group p-3.5 rounded-xl border border-white/7 bg-white/[0.035] hover:bg-white/[0.065] hover:border-white/14 transition-all duration-200 text-left overflow-hidden"
+              >
+                <div
+                  aria-hidden
+                  className="absolute -top-8 -right-8 h-20 w-20 rounded-full opacity-0 group-hover:opacity-25 blur-2xl transition-opacity duration-300"
+                  style={{ background: f.color }}
+                />
+                <p className="text-[18px] mb-2 leading-none">{f.icon}</p>
+                <p className="text-[11px] font-bold text-white/85 leading-none">{f.title}</p>
+                <p className="text-[10px] text-white/38 mt-1 leading-snug">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Made in India pride card */}
+          <div
+            className="w-full rounded-xl border border-amber-500/20 p-4 flex items-center gap-3 text-left"
+            style={{
+              background:
+                "linear-gradient(120deg, rgba(255,153,51,0.08) 0%, rgba(255,255,255,0.03) 50%, rgba(19,136,8,0.08) 100%)",
+            }}
+          >
+            <span className="text-3xl select-none leading-none">🇮🇳</span>
+            <div>
+              <p className="text-[12px] font-black text-white/90 tracking-tight leading-tight">
+                Proudly Made in India
+              </p>
+              <p className="text-[10px] text-white/40 mt-1 leading-snug">
+                Indian privacy standards · Local data residency · National pride
+              </p>
+            </div>
+          </div>
+
+          {/* Secondary link */}
+          <p className="text-[11px] text-white/30">
+            Already on Samparka?{" "}
+            <Link
+              href="/auth"
+              className="text-white/65 font-bold underline underline-offset-2 hover:text-white transition-colors"
+            >
+              Sign In →
+            </Link>
+          </p>
+        </div>
+
+        {/* ── Bottom tricolor bar ── */}
+        <div aria-hidden className="absolute bottom-0 inset-x-0 z-20 h-[3px] flex">
+          <div className="flex-1 bg-[#FF9933]" />
+          <div className="flex-1 bg-white/50" />
+          <div className="flex-1 bg-[#138808]" />
         </div>
       </main>
     );
