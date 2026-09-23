@@ -15,7 +15,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
-import { addLocalConnectedPeer } from "@/lib/e2ee/vault";
+import { addLocalConnectedPeer, setActiveVaultUser } from "@/lib/e2ee/vault";
 import { triggerHaptic } from "@/lib/motion/tokens";
 
 interface DiscoveredUser {
@@ -51,6 +51,7 @@ export default function InstitutionDiscoverySection({
 }: InstitutionDiscoverySectionProps) {
   const router = useRouter();
   const [users, setUsers] = useState<DiscoveredUser[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [institution, setInstitution] = useState<InstitutionInfo | null>(
     initialInstitutionName ? { id: institutionId || "", name: initialInstitutionName } : null
   );
@@ -67,6 +68,10 @@ export default function InstitutionDiscoverySection({
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
+        if (data.currentUserId) {
+          setCurrentUserId(data.currentUserId);
+          setActiveVaultUser(data.currentUserId);
+        }
         if (data.institution) setInstitution(data.institution);
         if (Array.isArray(data.users)) setUsers(data.users);
       }
@@ -108,11 +113,12 @@ export default function InstitutionDiscoverySection({
         body: JSON.stringify({ targetUserId, action: "REQUEST" }),
       });
       const data = await res.json();
-      if (data.status === "ACCEPTED") {
+      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || res.ok) {
         setUsers((prev) =>
           prev.map((u) => (u.id === targetUserId ? { ...u, relationshipStatus: "CONNECTED" } : u))
         );
-        addLocalConnectedPeer(targetUserId);
+        addLocalConnectedPeer(targetUserId, currentUserId || undefined);
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
         triggerHaptic("success");
       } else if (data.status === "PENDING") {
         triggerHaptic("light");
@@ -143,7 +149,8 @@ export default function InstitutionDiscoverySection({
         body: JSON.stringify({ targetUserId, action: "ACCEPT" }),
       });
       if (res.ok) {
-        addLocalConnectedPeer(targetUserId);
+        addLocalConnectedPeer(targetUserId, currentUserId || undefined);
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
       }
     } catch (err) {
       console.error("Accept error:", err);

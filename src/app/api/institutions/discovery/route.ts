@@ -164,6 +164,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       success: true,
+      currentUserId: currentUser.id,
       institution,
       users,
       totalCount: users.length,

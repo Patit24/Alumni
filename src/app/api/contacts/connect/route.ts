@@ -49,115 +49,58 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unable to interact with this user" }, { status: 403 });
     }
 
-    // 1. ACTION: REQUEST (Send connection request)
+    // 1. ACTION: REQUEST (Instant alumni peer connection)
     if (action === "REQUEST") {
-      // Check if target user already requested me (reciprocal request -> auto accept!)
-      const incomingReq = await db.connectionRequest.findUnique({
-        where: {
-          senderId_receiverId: {
-            senderId: targetUserId,
-            receiverId: user.id,
-          },
-        },
-      });
-
-      if (incomingReq && incomingReq.status === "PENDING") {
-        // Auto-accept
-        await db.$transaction([
-          db.connectionRequest.update({
-            where: { id: incomingReq.id },
-            data: { status: "ACCEPTED" },
-          }),
-          db.contactTrust.upsert({
-            where: { userId_contactId: { userId: user.id, contactId: targetUserId } },
-            update: { trustLevel: "CONNECTED" },
-            create: { userId: user.id, contactId: targetUserId, trustLevel: "CONNECTED" },
-          }),
-          db.contactTrust.upsert({
-            where: { userId_contactId: { userId: targetUserId, contactId: user.id } },
-            update: { trustLevel: "CONNECTED" },
-            create: { userId: targetUserId, contactId: user.id, trustLevel: "CONNECTED" },
-          }),
-          db.appNotification.create({
-            data: {
-              userId: targetUserId,
-              actorId: user.id,
-              type: "CONNECTION_ACCEPTED",
-              title: "Connection Accepted",
-              body: `${user.name} is now connected with you.`,
-              data: JSON.stringify({ peerId: user.id, peerName: user.name, peerUsername: user.username }),
+      const [request] = await db.$transaction([
+        db.connectionRequest.upsert({
+          where: {
+            senderId_receiverId: {
+              senderId: user.id,
+              receiverId: targetUserId,
             },
-          }),
-        ]);
-
-        sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-accepted", {
-          peerId: user.id,
-          peerName: user.name,
-          peerUsername: user.username,
-        }).catch(() => {});
-
-        return NextResponse.json({
-          success: true,
-          status: "ACCEPTED",
-          message: `Connected with ${targetUser.name}!`,
-        });
-      }
-
-      // Normal request creation or reactivation
-      const request = await db.connectionRequest.upsert({
-        where: {
-          senderId_receiverId: {
+          },
+          update: {
+            status: "ACCEPTED",
+          },
+          create: {
             senderId: user.id,
             receiverId: targetUserId,
+            status: "ACCEPTED",
           },
-        },
-        update: {
-          status: "PENDING",
-        },
-        create: {
-          senderId: user.id,
-          receiverId: targetUserId,
-          status: "PENDING",
-        },
-      });
+        }),
+        db.contactTrust.upsert({
+          where: { userId_contactId: { userId: user.id, contactId: targetUserId } },
+          update: { trustLevel: "CONNECTED" },
+          create: { userId: user.id, contactId: targetUserId, trustLevel: "CONNECTED" },
+        }),
+        db.contactTrust.upsert({
+          where: { userId_contactId: { userId: targetUserId, contactId: user.id } },
+          update: { trustLevel: "CONNECTED" },
+          create: { userId: targetUserId, contactId: user.id, trustLevel: "CONNECTED" },
+        }),
+        db.appNotification.create({
+          data: {
+            userId: targetUserId,
+            actorId: user.id,
+            type: "CONNECTION_ACCEPTED",
+            title: "New Connection",
+            body: `${user.name} connected with you.`,
+            data: JSON.stringify({ peerId: user.id, peerName: user.name, peerUsername: user.username }),
+          },
+        }),
+      ]);
 
-      // Update local sender trust to REQUEST
-      await db.contactTrust.upsert({
-        where: { userId_contactId: { userId: user.id, contactId: targetUserId } },
-        update: { trustLevel: "REQUEST" },
-        create: { userId: user.id, contactId: targetUserId, trustLevel: "REQUEST" },
-      });
-
-      // Persistent Notification for User B
-      await db.appNotification.create({
-        data: {
-          userId: targetUserId,
-          actorId: user.id,
-          type: "CONNECTION_REQUEST",
-          title: "New Connection Request",
-          body: `${user.name} wants to connect with you.`,
-          data: JSON.stringify({
-            requestId: request.id,
-            senderId: user.id,
-            senderName: user.name,
-            senderUsername: user.username,
-          }),
-        },
-      });
-
-      // Realtime event to User B's channel
-      sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-request", {
-        requestId: request.id,
-        senderId: user.id,
-        senderName: user.name,
-        senderUsername: user.username,
-        createdAt: request.createdAt.toISOString(),
-      }).catch((e) => console.warn("Broadcast connection-request notice:", e));
+      // Broadcast Realtime event to target user
+      sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-accepted", {
+        peerId: user.id,
+        peerName: user.name,
+        peerUsername: user.username,
+      }).catch((e) => console.warn("Broadcast connection-accepted notice:", e));
 
       return NextResponse.json({
         success: true,
-        status: "PENDING",
-        message: "Connection request sent",
+        status: "CONNECTED",
+        message: `Connected with ${targetUser.name}`,
         request,
       });
     }

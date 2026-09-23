@@ -108,9 +108,11 @@ export default function MessagesHubPage() {
         fetch("/api/contacts/requests").catch(() => null),
       ]);
 
+      let loadedContacts: AlumniContact[] = [];
       if (dirRes?.ok) {
         const dirData = await dirRes.json();
-        setContacts(dirData.alumni || dirData.users || []);
+        loadedContacts = dirData.alumni || dirData.users || [];
+        setContacts(loadedContacts);
       }
 
       setCallLogs(calls);
@@ -139,6 +141,30 @@ export default function MessagesHubPage() {
       ]);
       setConnectedPeerIds(merged);
 
+      // Ensure any connected peer not in directory is dynamically resolved
+      const loadedIds = new Set(loadedContacts.map((c) => c.id));
+      const missingPeerIds = Array.from(merged).filter((id) => id && !loadedIds.has(id));
+      if (missingPeerIds.length > 0) {
+        try {
+          const fetchedMissing = await Promise.all(
+            missingPeerIds.map((id) =>
+              fetch(`/api/directory?id=${encodeURIComponent(id)}&batchScope=all&institutionScope=all`)
+                .then((r) => r.json())
+                .then((d) => d.alumni?.[0])
+                .catch(() => null)
+            )
+          );
+          const validMissing: AlumniContact[] = fetchedMissing.filter(Boolean);
+          if (validMissing.length > 0) {
+            setContacts((prev) => {
+              const prevIds = new Set(prev.map((c) => c.id));
+              const newUnique = validMissing.filter((m) => !prevIds.has(m.id));
+              return [...prev, ...newUnique];
+            });
+          }
+        } catch {}
+      }
+
       // Handle ?connect= query param from QR scan
       if (typeof window !== "undefined") {
         const params = new URLSearchParams(window.location.search);
@@ -155,7 +181,7 @@ export default function MessagesHubPage() {
               const data = await r.json();
               const peer = data.alumni?.[0];
               if (peer) {
-                addLocalConnectedPeer(peer.id);
+                addLocalConnectedPeer(peer.id, currentUserId || undefined);
                 setConnectedPeerIds(prev => new Set(prev).add(peer.id));
                 router.push(`/messages/${peer.id}`);
                 return;
@@ -204,7 +230,7 @@ export default function MessagesHubPage() {
         body: JSON.stringify({ targetUserId: userId, action: "ACCEPT" }),
       });
       if (res.ok) {
-        addLocalConnectedPeer(userId);
+        addLocalConnectedPeer(userId, currentUserId || undefined);
         setConnectedPeerIds(prev => new Set(prev).add(userId));
         setIncomingRequests(prev => prev.filter(r => r.user.id !== userId));
         triggerHaptic("success");
@@ -233,6 +259,21 @@ export default function MessagesHubPage() {
 
   const currentUserId = currentUserProfile?.id;
   const cleanFilter = searchQuery.toLowerCase().replace(/^@/, "").trim();
+
+  const handleQuickConnectAndChat = async (targetUserId: string) => {
+    triggerHaptic("medium");
+    addLocalConnectedPeer(targetUserId, currentUserId || undefined);
+    setConnectedPeerIds((prev) => new Set(prev).add(targetUserId));
+    window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+    try {
+      await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId, action: "REQUEST" }),
+      });
+    } catch {}
+    router.push(`/messages/${targetUserId}`);
+  };
 
   // ONLY show mutual connections in CHATS tab
   const connectedContacts = contacts
@@ -395,7 +436,7 @@ export default function MessagesHubPage() {
                 <p className="text-sm text-slate-500">Loading conversations…</p>
               </div>
             ) : connectedContacts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 px-8 text-center gap-4">
+              <div className="flex flex-col items-center justify-center py-12 px-6 text-center gap-4">
                 <div className="h-16 w-16 rounded-3xl bg-blue-50 border border-blue-100 flex items-center justify-center">
                   <MessageSquare className="w-8 h-8 text-blue-600" />
                 </div>
@@ -418,6 +459,43 @@ export default function MessagesHubPage() {
                     Find Alumni
                   </Link>
                 )}
+
+                {/* Quick Start Suggested Alumni */}
+                {!searchQuery && contacts.filter((c) => c.id !== currentUserId).length > 0 && (
+                  <div className="mt-6 w-full max-w-md text-left">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5 px-1">
+                      Start Chatting With Alumni
+                    </p>
+                    <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 shadow-sm overflow-hidden">
+                      {contacts
+                        .filter((c) => c.id !== currentUserId)
+                        .slice(0, 5)
+                        .map((person) => (
+                          <div
+                            key={person.id}
+                            className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Avatar name={person.name} src={person.avatarUrl} size={40} />
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-slate-900 truncate">{person.name}</p>
+                                <p className="text-xs text-slate-500 truncate">
+                                  {person.currentRole || `Class of ${person.batchYear}`}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleQuickConnectAndChat(person.id)}
+                              className="h-8 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shrink-0 transition active:scale-95 flex items-center gap-1.5 shadow-sm"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              <span>Chat</span>
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="bg-white mx-4 rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
@@ -439,7 +517,7 @@ export default function MessagesHubPage() {
                         className="relative flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors select-none"
                         onClick={() => {
                           triggerHaptic("light");
-                          addLocalConnectedPeer(contact.id);
+                          addLocalConnectedPeer(contact.id, currentUserId || undefined);
                           router.push(`/messages/${contact.id}`);
                         }}
                       >

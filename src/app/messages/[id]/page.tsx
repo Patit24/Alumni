@@ -173,7 +173,8 @@ export default function DirectMessageChatPage(props: {
           const target = pData.alumni?.find((u: PeerProfile) => u.id === peerId) || pData.alumni?.[0];
           if (target) {
             setPeer(target);
-            addLocalConnectedPeer(peerId);
+            addLocalConnectedPeer(peerId, user.id);
+            window.dispatchEvent(new CustomEvent("connection-requests-updated"));
           }
         }
 

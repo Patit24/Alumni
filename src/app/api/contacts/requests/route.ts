@@ -58,20 +58,61 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
     });
 
-    // 3. All accepted / connected relationships
-    const connectedTrusts = await db.contactTrust.findMany({
-      where: {
-        userId: user.id,
-        trustLevel: { in: ["CONNECTED", "TRUSTED"] },
-      },
-      select: { contactId: true, trustLevel: true },
+    // 3. All accepted / connected relationships and message peers
+    const [connectedTrusts, acceptedRequests, outgoingRequests, messagePeers] = await Promise.all([
+      db.contactTrust.findMany({
+        where: {
+          userId: user.id,
+          trustLevel: { in: ["CONNECTED", "TRUSTED"] },
+        },
+        select: { contactId: true, trustLevel: true },
+      }),
+      db.connectionRequest.findMany({
+        where: {
+          OR: [
+            { senderId: user.id, status: "ACCEPTED" },
+            { receiverId: user.id, status: "ACCEPTED" },
+          ],
+        },
+        select: { senderId: true, receiverId: true },
+      }),
+      db.connectionRequest.findMany({
+        where: {
+          senderId: user.id,
+        },
+        select: { receiverId: true },
+      }),
+      db.encryptedMessageQueue.findMany({
+        where: {
+          OR: [
+            { senderId: user.id },
+            { recipientId: user.id },
+          ],
+        },
+        select: { senderId: true, recipientId: true },
+        take: 100,
+      }),
+    ]);
+
+    const connectedPeerIdsSet = new Set<string>();
+    connectedTrusts.forEach((c) => { if (c.contactId && c.contactId !== user.id) connectedPeerIdsSet.add(c.contactId); });
+    acceptedRequests.forEach((r) => {
+      if (r.senderId && r.senderId !== user.id) connectedPeerIdsSet.add(r.senderId);
+      if (r.receiverId && r.receiverId !== user.id) connectedPeerIdsSet.add(r.receiverId);
+    });
+    outgoingRequests.forEach((r) => {
+      if (r.receiverId && r.receiverId !== user.id) connectedPeerIdsSet.add(r.receiverId);
+    });
+    messagePeers.forEach((m) => {
+      if (m.senderId && m.senderId !== user.id) connectedPeerIdsSet.add(m.senderId);
+      if (m.recipientId && m.recipientId !== user.id) connectedPeerIdsSet.add(m.recipientId);
     });
 
     // Build status lookup map for fast UI status binding
     const statusMap: Record<string, "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED"> = {};
 
-    for (const ct of connectedTrusts) {
-      statusMap[ct.contactId] = "CONNECTED";
+    for (const pid of connectedPeerIdsSet) {
+      statusMap[pid] = "CONNECTED";
     }
 
     for (const req of incoming) {
@@ -103,6 +144,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       success: true,
+      currentUserId: user.id,
       incoming: incoming.map((r) => ({
         id: r.id,
         createdAt: r.createdAt,
@@ -113,7 +155,7 @@ export async function GET(req: Request) {
         createdAt: r.createdAt,
         user: r.receiver,
       })),
-      connectedPeerIds: connectedTrusts.map((c) => c.contactId),
+      connectedPeerIds: Array.from(connectedPeerIdsSet),
       statusMap,
       mutualCount,
       unreadRequestsCount: incoming.length,

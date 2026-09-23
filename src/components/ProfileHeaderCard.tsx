@@ -27,7 +27,7 @@ import {
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
 import EditProfileModal from "@/components/EditProfileModal";
-import { addLocalConnectedPeer } from "@/lib/e2ee/vault";
+import { addLocalConnectedPeer, setActiveVaultUser } from "@/lib/e2ee/vault";
 
 interface ProfileHeaderCardProps {
   user: {
@@ -81,6 +81,13 @@ export default function ProfileHeaderCard({
   useEffect(() => {
     setUser(initialUser);
   }, [initialUser]);
+
+  // Ensure active vault user is initialized
+  useEffect(() => {
+    if (currentUser?.id) {
+      setActiveVaultUser(currentUser.id);
+    }
+  }, [currentUser?.id]);
 
   // Sync with client-side localStorage fallback so avatar/cover/college NEVER vanishes on refresh
   useEffect(() => {
@@ -251,8 +258,9 @@ export default function ProfileHeaderCard({
       return;
     }
     setConnecting(true);
-    // Optimistic UI update: Immediately mark as Request Sent
-    setRelStatus("PENDING_OUTGOING");
+    // Optimistic UI update: Immediately mark as connected so chat can start
+    setRelStatus("CONNECTED");
+    addLocalConnectedPeer(user.id, currentUser.id);
 
     try {
       const res = await fetch("/api/contacts/connect", {
@@ -261,12 +269,11 @@ export default function ProfileHeaderCard({
         body: JSON.stringify({ targetUserId: user.id, action: "REQUEST" }),
       });
       const data = await res.json();
-      if (data.status === "ACCEPTED") {
+      if (data.status === "ACCEPTED" || data.status === "CONNECTED") {
         setRelStatus("CONNECTED");
-        addLocalConnectedPeer(user.id);
-      } else if (data.status === "PENDING") {
-        setRelStatus("PENDING_OUTGOING");
+        addLocalConnectedPeer(user.id, currentUser.id);
       }
+      window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (err) {
       console.error(err);
       fetch(`/api/contacts/requests?targetUserId=${user.id}`)
@@ -282,6 +289,9 @@ export default function ProfileHeaderCard({
   const handleAcceptConnect = async () => {
     setConnecting(true);
     setRelStatus("CONNECTED");
+    if (currentUser?.id) {
+      addLocalConnectedPeer(user.id, currentUser.id);
+    }
     try {
       const res = await fetch("/api/contacts/connect", {
         method: "POST",
@@ -289,10 +299,11 @@ export default function ProfileHeaderCard({
         body: JSON.stringify({ targetUserId: user.id, action: "ACCEPT" }),
       });
       const data = await res.json();
-      if (data.status === "ACCEPTED") {
+      if (data.status === "ACCEPTED" || data.status === "CONNECTED") {
         setRelStatus("CONNECTED");
-        addLocalConnectedPeer(user.id);
+        if (currentUser?.id) addLocalConnectedPeer(user.id, currentUser.id);
       }
+      window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (err) {
       console.error(err);
     } finally {
@@ -309,6 +320,7 @@ export default function ProfileHeaderCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: user.id, action: "REJECT" }),
       });
+      window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (err) {
       console.error(err);
     } finally {
@@ -317,7 +329,12 @@ export default function ProfileHeaderCard({
   };
 
   const handleGoToChat = () => {
-    addLocalConnectedPeer(user.id);
+    if (currentUser?.id) {
+      setActiveVaultUser(currentUser.id);
+      addLocalConnectedPeer(user.id, currentUser.id);
+    } else {
+      addLocalConnectedPeer(user.id);
+    }
     router.push(`/messages/${user.id}`);
   };
 

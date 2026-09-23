@@ -20,7 +20,7 @@ import {
   CheckCircle2,
   Clock,
 } from "lucide-react";
-import { addLocalConnectedPeer } from "@/lib/e2ee/vault";
+import { addLocalConnectedPeer, setActiveVaultUser } from "@/lib/e2ee/vault";
 
 interface AlumniUser {
   id: string;
@@ -61,6 +61,7 @@ export default function DirectoryPage() {
   const [selectedDept, setSelectedDept] = useState("all");
 
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [statusMap, setStatusMap] = useState<Record<string, "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">>({});
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
@@ -69,6 +70,10 @@ export default function DirectoryPage() {
     fetch("/api/contacts/requests")
       .then((r) => r.json())
       .then((data) => {
+        if (data.currentUserId) {
+          setCurrentUserId(data.currentUserId);
+          setActiveVaultUser(data.currentUserId);
+        }
         const merged: Record<string, "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED"> = {
           ...(data.statusMap || {}),
         };
@@ -100,9 +105,10 @@ export default function DirectoryPage() {
         body: JSON.stringify({ targetUserId, action: "REQUEST" }),
       });
       const data = await res.json();
-      if (data.status === "ACCEPTED") {
+      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || res.ok) {
         setStatusMap((prev) => ({ ...prev, [targetUserId]: "CONNECTED" }));
-        addLocalConnectedPeer(targetUserId);
+        addLocalConnectedPeer(targetUserId, currentUserId || undefined);
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
       } else if (data.status === "PENDING") {
         setStatusMap((prev) => ({ ...prev, [targetUserId]: "PENDING_OUTGOING" }));
       }
@@ -125,7 +131,8 @@ export default function DirectoryPage() {
       });
       if (res.ok) {
         setStatusMap((prev) => ({ ...prev, [targetUserId]: "CONNECTED" }));
-        addLocalConnectedPeer(targetUserId);
+        addLocalConnectedPeer(targetUserId, currentUserId || undefined);
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
       }
     } catch (err) {
       console.error("Accept error:", err);
