@@ -1,43 +1,69 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { ShieldAlert, Lock } from "lucide-react";
 import { setNativeScreenshotAllowed } from "@/lib/native-security";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function AntiScreenshotShield() {
+  const pathname = usePathname();
   const [isShieldActive, setIsShieldActive] = useState(false);
   const [alertToast, setAlertToast] = useState<string | null>(null);
   const unshieldTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Activate protection ONLY on active chat / messaging routes (e.g. 1-on-1 SMS, group chat, channel chat)
+  const isChatRoute = Boolean(
+    pathname && (
+      pathname.startsWith("/messages/") ||
+      pathname.startsWith("/groups/") ||
+      pathname.includes("/channels/")
+    )
+  );
+
+  // 1. Manage Native OS hardware protection (Capacitor iOS/Android)
   useEffect(() => {
-    // Enforce native OS hardware protection if running inside Capacitor Android/iOS
+    if (!isChatRoute) {
+      // Allow screenshots everywhere outside of chat SMS
+      setNativeScreenshotAllowed(true);
+      return;
+    }
+
+    // Inside chat SMS: restrict native screenshots
     setNativeScreenshotAllowed(false);
 
     return () => {
+      // Re-enable when leaving chat
       setNativeScreenshotAllowed(true);
     };
-  }, []);
+  }, [isChatRoute]);
 
+  // 2. Manage in-chat browser screen capture detection
   useEffect(() => {
-    // 1. Wipe clipboard with security notice
+    if (!isChatRoute) {
+      setIsShieldActive(false);
+      setAlertToast(null);
+      return;
+    }
+
+    // Wipe clipboard with security notice on screenshot attempt
     const secureClipboard = () => {
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard
-            .writeText("Screenshots and screen captures are protected and restricted on this platform.")
+            .writeText("Screenshots and screen captures are protected in this private chat.")
             .catch(() => {});
         }
       } catch {}
     };
 
-    // 2. Trigger instant obfuscation shield
-    const triggerShield = (reason: string, durationMs = 3500) => {
+    // Trigger obfuscation shield & broadcast snapshot event
+    const triggerShield = (reason: string, durationMs = 3000) => {
       setIsShieldActive(true);
       secureClipboard();
       setAlertToast(reason);
 
-      // Broadcast screenshot event across the app (for chat Snapchat-style notification)
+      // Broadcast screenshot event for in-chat Snapchat-style notification pill
       window.dispatchEvent(
         new CustomEvent("samparka:screenshot-detected", {
           detail: { reason, timestamp: Date.now() },
@@ -51,10 +77,8 @@ export default function AntiScreenshotShield() {
       }, durationMs);
     };
 
-    // 3. Listen to keyboard shortcuts for screenshot, snip, print, devtools
+    // Listen to keyboard shortcuts for screenshot, snip, print
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Pre-emptive detection: On macOS, Cmd+Shift is the prefix for Cmd+Shift+3/4/5.
-      // On Windows, Ctrl+Shift is the prefix for snipping shortcuts.
       const isMetaShift =
         (e.metaKey && (e.shiftKey || e.key === "Shift")) ||
         (e.shiftKey && (e.metaKey || e.key === "Meta"));
@@ -64,7 +88,7 @@ export default function AntiScreenshotShield() {
         (e.shiftKey && (e.ctrlKey || e.key === "Control"));
 
       if (isMetaShift || isCtrlShift) {
-        triggerShield("Screen capture shortcut detected. Content protected.", 3500);
+        triggerShield("Screen capture shortcut detected in chat.", 3000);
         return;
       }
 
@@ -92,31 +116,28 @@ export default function AntiScreenshotShield() {
       if (isPrintScreen || isMacScreenshotKey || isWindowsSnip) {
         e.preventDefault();
         e.stopPropagation();
-        triggerShield("Screen capture shortcut detected. Content protected.", 3500);
+        triggerShield("Screen capture shortcut detected in chat.", 3000);
         return false;
       }
 
       if (isPrint) {
         e.preventDefault();
         e.stopPropagation();
-        triggerShield("Printing and PDF export are restricted.", 3000);
+        triggerShield("Printing and exporting chat are restricted.", 2500);
         return false;
       }
     };
 
-    // 4. Obfuscate on Window Blur & Visibility Change
-    // External snipping tools (Windows Snipping Tool, Mac crosshair selection, ShareX, Lightshot)
-    // always steal window focus, triggering window.onblur or visibilitychange.
+    // Obfuscate on Window Blur (e.g. Snipping tool stealing focus)
     const handleBlur = () => {
       setIsShieldActive(true);
     };
 
     const handleFocus = () => {
-      // Delay unshield slightly so external tool has finished capturing
       if (unshieldTimerRef.current) clearTimeout(unshieldTimerRef.current);
       unshieldTimerRef.current = setTimeout(() => {
         setIsShieldActive(false);
-      }, 400);
+      }, 350);
     };
 
     const handleVisibilityChange = () => {
@@ -127,14 +148,7 @@ export default function AntiScreenshotShield() {
       }
     };
 
-    // 5. Detect mouse leaving to browser menubar / top bar
-    const handleMouseLeave = (e: MouseEvent) => {
-      if (e.clientY <= 0) {
-        triggerShield("Screen focus lost.", 2000);
-      }
-    };
-
-    // 6. Prevent context menu & drag on restricted media
+    // Prevent context menu & drag on restricted media inside chat
     const handleContextMenu = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target?.closest(".screenshot-restricted") || target?.tagName === "IMG") {
@@ -149,14 +163,12 @@ export default function AntiScreenshotShield() {
       }
     };
 
-    // Attach listeners
     window.addEventListener("keydown", handleKeyDown, true);
     window.addEventListener("keyup", handleKeyDown, true);
     window.addEventListener("blur", handleBlur);
     window.addEventListener("focus", handleFocus);
     window.addEventListener("pagehide", handleBlur);
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    document.documentElement.addEventListener("mouseleave", handleMouseLeave);
     document.addEventListener("contextmenu", handleContextMenu);
     document.addEventListener("dragstart", handleDragStart);
 
@@ -167,16 +179,20 @@ export default function AntiScreenshotShield() {
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("pagehide", handleBlur);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
       document.removeEventListener("contextmenu", handleContextMenu);
       document.removeEventListener("dragstart", handleDragStart);
       if (unshieldTimerRef.current) clearTimeout(unshieldTimerRef.current);
     };
-  }, []);
+  }, [isChatRoute]);
+
+  // If outside of chat SMS, completely disable shield UI
+  if (!isChatRoute) {
+    return null;
+  }
 
   return (
     <>
-      {/* Instant Obfuscation Shield (triggers on window blur, snipping tool, or shortcut) */}
+      {/* In-Chat Instant Obfuscation Shield */}
       <AnimatePresence>
         {isShieldActive && (
           <motion.div
@@ -191,14 +207,14 @@ export default function AntiScreenshotShield() {
                 <Lock className="w-7 h-7" />
               </div>
               <h3 className="text-base font-bold text-white tracking-wide">
-                Protected View Active
+                Chat Content Protected
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Screen capture and recording are restricted on this platform to safeguard alumni conversations and data.
+                Screenshots and screen capture are restricted inside private chats to safeguard messages.
               </p>
               <div className="pt-2">
                 <span className="text-[11px] font-semibold text-slate-400 bg-slate-900/90 px-3.5 py-1.5 rounded-full border border-slate-800">
-                  Click or focus tab to resume
+                  Click or focus chat to resume
                 </span>
               </div>
             </div>
@@ -206,7 +222,7 @@ export default function AntiScreenshotShield() {
         )}
       </AnimatePresence>
 
-      {/* Floating Screen Capture Warning Toast */}
+      {/* Floating In-Chat Screenshot Warning Toast */}
       <AnimatePresence>
         {alertToast && (
           <motion.div
