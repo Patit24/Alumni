@@ -63,8 +63,8 @@ const SPRING = { type: "spring" as const, stiffness: 400, damping: 35 };
 export default function AuthPage() {
   const router = useRouter();
 
-  /* ─── MODE: instant wizard vs phone/email login ─── */
-  const [mode, setMode] = useState<"wizard" | "phone" | "email">("wizard");
+  /* ─── MODE: instant wizard vs phone/email login vs google-onboard ─── */
+  const [mode, setMode] = useState<"wizard" | "phone" | "email" | "google-onboard">("wizard");
   const [wizardStep, setWizardStep] = useState(0); // 0=name 1=college 2=batch
   const [slideDir, setSlideDir] = useState(1);
 
@@ -87,6 +87,7 @@ export default function AuthPage() {
   /* ─── PHONE/EMAIL AUTH ─── */
   const [phoneInput, setPhoneInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
+  const [googleAvatar, setGoogleAvatar] = useState("");
   const [otp, setOtp] = useState("");
   const [otpStep, setOtpStep] = useState(false);
   const [signupToken, setSignupToken] = useState("");
@@ -100,15 +101,30 @@ export default function AuthPage() {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 10 }, (_, i) => currentYear + 2 - i);
 
-  /* redirect if already logged in */
+  /* Handle OAuth callback params or check existing session */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const verifiedEmail = params.get("verifiedEmail");
-    if (verifiedEmail) {
-      // OAuth callback — skip wizard, go home
-      window.location.href = "/";
+    const modeParam = params.get("mode");
+    const verifiedEmail = params.get("email") || params.get("verifiedEmail");
+    const verifiedName = params.get("name");
+    const token = params.get("signupToken");
+    const avatar = params.get("avatar");
+
+    // If redirected from Google OAuth with a signup token for a new user
+    if ((modeParam === "google-onboard" || verifiedEmail) && token) {
+      if (verifiedEmail) setEmailInput(verifiedEmail);
+      if (verifiedName) {
+        setWName(verifiedName);
+        const clean = verifiedName.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (clean) setWUsername(`${clean}_${Math.random().toString(36).substring(2, 5)}`);
+      }
+      setSignupToken(token);
+      if (avatar) setGoogleAvatar(avatar);
+      setMode("google-onboard");
       return;
     }
+
+    // Check if user is already authenticated
     fetch("/api/auth/me")
       .then(r => r.json())
       .then(d => { if (d.authenticated) window.location.href = "/"; })
@@ -213,9 +229,17 @@ export default function AuthPage() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to send code");
+      if (!res.ok) throw new Error(data.error || "Failed to process request");
       if (data.loggedIn) { window.location.href = "/"; return; }
-      if (data.signupToken) setSignupToken(data.signupToken);
+      if (data.signupToken) {
+        setSignupToken(data.signupToken);
+        if (mode === "email" || data.isNewUser) {
+          // Seamless onboarding: email already verified, proceed directly to complete profile!
+          if (!wName) setWName(emailInput.split("@")[0]);
+          setMode("google-onboard");
+          return;
+        }
+      }
       setOtp(data.testCode || "");
       setOtpStep(true);
       setResendCooldown(30);
@@ -240,6 +264,46 @@ export default function AuthPage() {
       window.location.href = "/";
     } catch (err: any) { setError(err?.message); }
     finally { setLoading(false); }
+  };
+
+  /* ─── GOOGLE / EMAIL DIRECT ONBOARD SUBMIT ─── */
+  const handleGoogleOnboardSubmit = async () => {
+    const chosenCollege = (wInstName || wCustomInstName || instQuery).trim();
+    if (!chosenCollege) {
+      setError("Please search or enter your college name.");
+      return;
+    }
+    if (!wBatchYear) {
+      setError("Please select your graduation year.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signupToken,
+          email: emailInput.trim().toLowerCase(),
+          name: wName.trim() || emailInput.split("@")[0] || "Alumni Member",
+          institutionId: wInstId || undefined,
+          institutionName: chosenCollege,
+          newInstitutionName: chosenCollege,
+          batchYear: parseInt(wBatchYear, 10),
+          departmentName: wDept.trim() || undefined,
+          avatarUrl: googleAvatar || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Account setup failed");
+      try { localStorage.setItem("alumni_user", JSON.stringify(data.user)); } catch {}
+      window.location.href = "/";
+    } catch (err: any) {
+      setError(err?.message || "Failed to complete registration. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -291,9 +355,38 @@ export default function AuthPage() {
                 {/* STEP 0 — Name & Username */}
                 {wizardStep === 0 && (
                   <div className="space-y-4">
-                    <div className="text-center mb-4">
-                      <h2 className="text-lg font-bold text-slate-900">Create your profile</h2>
-                      <p className="text-xs text-slate-500 mt-0.5">No phone or email required</p>
+                    {/* Primary Hero: Google Sign-In */}
+                    <button
+                      type="button"
+                      onClick={handleGoogleSignIn}
+                      disabled={googleLoading || loading}
+                      className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white border-2 border-slate-200 hover:border-blue-500 hover:bg-blue-50/20 text-slate-800 font-semibold text-sm shadow-sm transition-all active:scale-[0.98] disabled:opacity-60 group"
+                    >
+                      {googleLoading ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                      ) : (
+                        <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.14z" />
+                          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
+                          <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z" />
+                          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
+                        </svg>
+                      )}
+                      <span className="text-slate-800 group-hover:text-blue-600">Continue with Google</span>
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 ml-auto">
+                        1-Click
+                      </span>
+                    </button>
+
+                    <div className="flex items-center gap-3 my-2">
+                      <div className="flex-1 border-t border-slate-200" />
+                      <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">or create without email</span>
+                      <div className="flex-1 border-t border-slate-200" />
+                    </div>
+
+                    <div className="text-center mb-3">
+                      <h2 className="text-base font-bold text-slate-900">Instant Alumni Profile</h2>
+                      <p className="text-xs text-slate-500 mt-0.5">Quick setup without phone or email</p>
                     </div>
 
                     <Field label="Your full name *">
@@ -511,6 +604,198 @@ export default function AuthPage() {
               </motion.div>
             )}
 
+            {/* ═══ GOOGLE / VERIFIED EMAIL ONBOARDING MODE ═══ */}
+            {mode === "google-onboard" && (
+              <motion.div
+                key="google-onboard"
+                custom={slideDir}
+                variants={SLIDE}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={SPRING}
+                className="p-6 space-y-4"
+              >
+                <div className="text-center mb-3">
+                  {googleAvatar ? (
+                    <img
+                      src={googleAvatar}
+                      alt={wName || "User"}
+                      className="w-16 h-16 rounded-full mx-auto mb-2 border-2 border-blue-500 shadow-md object-cover"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full mx-auto mb-2 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xl font-bold shadow-md">
+                      {wName?.charAt(0)?.toUpperCase() || "A"}
+                    </div>
+                  )}
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Welcome, {wName || "Alumni"}! 🎉
+                  </h2>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium mt-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span className="truncate max-w-[220px]">{emailInput || "Verified account"}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Almost there! Select your college and graduation year to complete your profile:
+                  </p>
+                </div>
+
+                {/* College selection with autocomplete */}
+                <Field label="College / University *">
+                  {(wInstId || wInstName) ? (
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-200">
+                      <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span className="text-sm font-bold text-blue-900 flex-1 truncate">
+                        {wInstName || wCustomInstName || instQuery}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWInstId("");
+                          setWInstName("");
+                          setWCustomInstName("");
+                          setInstQuery("");
+                        }}
+                        className="h-5 w-5 rounded-full bg-blue-200 hover:bg-blue-300 flex items-center justify-center transition"
+                      >
+                        <X className="w-3 h-3 text-blue-700" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div ref={instRef} className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                      {instLoading && (
+                        <Loader2 className="w-4 h-4 text-blue-600 animate-spin absolute right-3.5 top-3.5" />
+                      )}
+                      <input
+                        type="text"
+                        value={instQuery}
+                        onChange={e => {
+                          setInstQuery(e.target.value);
+                          setWCustomInstName(e.target.value);
+                          setWInstName(e.target.value);
+                        }}
+                        placeholder="Search college, university, school..."
+                        autoFocus
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-10 text-sm text-slate-900 outline-none focus:border-blue-600 focus:bg-white transition"
+                      />
+                      {instResults.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl z-20 overflow-hidden max-h-52 overflow-y-auto">
+                          {instResults.map(inst => (
+                            <button
+                              key={inst.id}
+                              type="button"
+                              onClick={() => {
+                                setWInstId(inst.id);
+                                setWInstName(inst.name);
+                                setInstQuery(inst.name);
+                                setInstResults([]);
+                              }}
+                              className="w-full text-left px-4 py-3 hover:bg-blue-50 transition flex items-start gap-3 border-b border-slate-100 last:border-0"
+                            >
+                              <Building2 className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{inst.name}</p>
+                                <p className="text-[11px] text-slate-400">
+                                  {inst.type}
+                                  {inst.city ? ` · ${inst.city}` : ""}
+                                </p>
+                              </div>
+                            </button>
+                          ))}
+                          {instQuery.trim().length >= 2 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setWInstId("");
+                                setWCustomInstName(instQuery.trim());
+                                setInstResults([]);
+                                setWInstName(instQuery.trim());
+                              }}
+                              className="w-full text-left px-4 py-3 hover:bg-amber-50 transition flex items-center gap-3 text-amber-700 bg-amber-50/50"
+                            >
+                              <Building2 className="w-4 h-4 shrink-0" />
+                              <span className="text-sm font-semibold">
+                                Add "{instQuery.trim()}" as new institution
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {!instLoading &&
+                        instQuery.trim().length >= 2 &&
+                        instResults.length === 0 &&
+                        !wInstId && (
+                          <p className="text-[11px] text-slate-400 mt-1.5 px-1">
+                            College will be saved as entered.
+                          </p>
+                        )}
+                    </div>
+                  )}
+                </Field>
+
+                {/* Graduation Year */}
+                <Field label="Graduation year *">
+                  <select
+                    value={wBatchYear}
+                    onChange={e => setWBatchYear(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-600 focus:bg-white transition"
+                  >
+                    {years.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                    {Array.from({ length: 30 }, (_, i) => currentYear - 3 - i).map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </Field>
+
+                {/* Department / Stream */}
+                <Field label="Department / Stream" hint="e.g. Computer Science, BCA, B.Tech, MBA (optional)">
+                  <input
+                    type="text"
+                    value={wDept}
+                    onChange={e => setWDept(e.target.value)}
+                    placeholder="e.g. Computer Science"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 px-4 text-sm text-slate-900 outline-none focus:border-blue-600 focus:bg-white transition"
+                  />
+                </Field>
+
+                {error && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={loading || (!wInstId && !wInstName && !wCustomInstName && instQuery.trim().length < 2) || !wBatchYear}
+                  onClick={handleGoogleOnboardSubmit}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-blue-600 text-white text-sm font-bold shadow-md shadow-blue-500/20 hover:bg-blue-700 transition disabled:opacity-40 active:scale-[0.98]"
+                >
+                  {loading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Completing registration…</>
+                  ) : (
+                    <><Zap className="w-4 h-4 text-amber-300 fill-amber-300" /> Complete Registration & Enter</>
+                  )}
+                </button>
+
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("wizard");
+                      setSignupToken("");
+                      window.history.replaceState({}, document.title, window.location.pathname);
+                    }}
+                    className="text-xs text-slate-400 hover:text-slate-600 underline"
+                  >
+                    Cancel / Use another method
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
             {/* ═══ PHONE LOGIN MODE ═══ */}
             {mode === "phone" && (
               <motion.div
@@ -533,6 +818,16 @@ export default function AuthPage() {
                   <div>
                     <h2 className="text-base font-bold text-slate-900">Phone sign in</h2>
                     <p className="text-xs text-slate-500">6-digit SMS code</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2">
+                  <span className="shrink-0 text-sm leading-none">⚠️</span>
+                  <div>
+                    <p className="font-semibold text-amber-900">SMS Gateway Offline</p>
+                    <p className="text-[11px] text-amber-700 mt-0.5">
+                      Phone OTP delivery is temporarily disabled. Please use <strong>Google Sign-In</strong> or <strong>Instant Profile</strong> above.
+                    </p>
                   </div>
                 </div>
 
@@ -622,19 +917,23 @@ export default function AuthPage() {
 
                 {/* Google */}
                 <button
+                  type="button"
                   onClick={handleGoogleSignIn}
                   disabled={googleLoading || loading}
-                  className="w-full flex items-center justify-center gap-3 py-3 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl border-2 border-slate-200 bg-white hover:border-blue-500 hover:bg-blue-50/20 text-sm font-semibold text-slate-800 shadow-sm transition active:scale-[0.98] disabled:opacity-50 group"
                 >
-                  {googleLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  {googleLoading ? <Loader2 className="w-5 h-5 animate-spin text-blue-600" /> : (
+                    <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                       <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.65v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.14z" />
                       <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
                       <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z" />
                       <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
                     </svg>
                   )}
-                  Continue with Google
+                  <span className="text-slate-800 group-hover:text-blue-600">Continue with Google</span>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 ml-auto">
+                    Instant
+                  </span>
                 </button>
 
                 <div className="flex items-center gap-3">

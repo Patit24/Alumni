@@ -52,7 +52,14 @@ export async function GET(req: Request) {
 
     if (!error && data?.user?.email) {
       const userEmail = data.user.email.toLowerCase().trim();
-      const userName = data.user.user_metadata?.full_name || data.user.user_metadata?.name || userEmail.split("@")[0];
+      const userName =
+        data.user.user_metadata?.full_name ||
+        data.user.user_metadata?.name ||
+        userEmail.split("@")[0];
+      const userAvatar =
+        data.user.user_metadata?.avatar_url ||
+        data.user.user_metadata?.picture ||
+        "";
 
       // Check if user already exists
       const existingUser = await db.user.findFirst({
@@ -80,22 +87,29 @@ export async function GET(req: Request) {
           currentCompany: existingUser.currentCompany,
           currentRole: existingUser.currentRole,
           city: existingUser.city,
+          avatarUrl: existingUser.avatarUrl || userAvatar || null,
         });
 
         const redirectResponse = NextResponse.redirect(`${origin}/`);
         redirectResponse.cookies.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+        redirectResponse.cookies.set("session_token", sessionToken, AUTH_COOKIE.options);
         return redirectResponse;
       } else {
         // Redirect to onboarding with verified email and signed token
         console.log("[OAUTH-CALLBACK] New user, redirecting to onboarding for:", userEmail);
-        const signupToken = await new SignJWT({ email: userEmail, purpose: "signup" })
+        const signupToken = await new SignJWT({
+          email: userEmail,
+          purpose: "signup",
+          name: userName,
+          avatarUrl: userAvatar,
+        })
           .setProtectedHeader({ alg: "HS256" })
           .setIssuedAt()
           .setExpirationTime("2h")
           .sign(JWT_SECRET);
 
         return NextResponse.redirect(
-          `${origin}/auth?verifiedEmail=${encodeURIComponent(userEmail)}&name=${encodeURIComponent(userName)}&signupToken=${encodeURIComponent(signupToken)}`
+          `${origin}/auth?mode=google-onboard&email=${encodeURIComponent(userEmail)}&name=${encodeURIComponent(userName)}&avatar=${encodeURIComponent(userAvatar)}&signupToken=${encodeURIComponent(signupToken)}`
         );
       }
     }

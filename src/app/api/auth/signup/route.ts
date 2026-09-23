@@ -47,6 +47,7 @@ export async function POST(req: Request) {
     // 1. Resolve verified email or phone number
     let verifiedEmail: string | null = null;
     let verifiedPhone: string | null = null;
+    let tokenAvatarUrl: string | null = null;
 
     if (signupToken) {
       try {
@@ -57,10 +58,15 @@ export async function POST(req: Request) {
         if (payload.phone) {
           verifiedPhone = (payload.phone as string).replace(/[^0-9+]/g, "");
         }
+        if (payload.avatarUrl && typeof payload.avatarUrl === "string") {
+          tokenAvatarUrl = payload.avatarUrl;
+        }
       } catch (err) {
         console.warn("Signup token verification fallback:", err);
       }
     }
+
+    const finalAvatarUrl = (body.avatarUrl || tokenAvatarUrl || "").trim() || null;
 
     // Direct email or phone fallback (allows seamless email registration without OTP roadblock)
     if (!verifiedEmail && email && typeof email === "string" && email.includes("@")) {
@@ -229,6 +235,7 @@ export async function POST(req: Request) {
           currentRole: currentRole?.trim() || null,
           city: city?.trim() || null,
           linkedinUrl: linkedinUrl?.trim() || null,
+          avatarUrl: finalAvatarUrl || existingUser.avatarUrl || null,
         },
         include: {
           institution: true,
@@ -255,6 +262,7 @@ export async function POST(req: Request) {
           currentRole: currentRole?.trim() || null,
           city: city?.trim() || null,
           linkedinUrl: linkedinUrl?.trim() || null,
+          avatarUrl: finalAvatarUrl || null,
         },
         include: {
           institution: true,
@@ -297,6 +305,7 @@ export async function POST(req: Request) {
       currentCompany: user.currentCompany,
       currentRole: user.currentRole,
       city: user.city,
+      avatarUrl: user.avatarUrl,
     });
 
     const response = NextResponse.json({
