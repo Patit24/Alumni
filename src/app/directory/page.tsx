@@ -172,7 +172,7 @@ export default function DirectoryPage() {
   }, [searchQuery, institutionScope, batchScope, selectedCity, selectedDept]);
 
   const userBatchYear = currentUser?.batchYear || 2026;
-  const userInstName = currentUser?.institutionName || "Brainware University";
+  const userInstName = currentUser?.institutionName || (currentUser as any)?.institution?.name || "All Colleges";
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

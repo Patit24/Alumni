@@ -82,25 +82,34 @@ export default function ProfileHeaderCard({
     setUser(initialUser);
   }, [initialUser]);
 
-  // Sync with client-side localStorage fallback so avatar/cover NEVER vanishes on refresh
+  // Sync with client-side localStorage fallback so avatar/cover/college NEVER vanishes on refresh
   useEffect(() => {
     if (typeof window === "undefined" || !initialUser?.id) return;
     const cachedAvatar = localStorage.getItem(`alumni_avatar_${initialUser.id}`);
     const cachedCover = localStorage.getItem(`alumni_cover_${initialUser.id}`);
-    if ((cachedAvatar && !initialUser.avatarUrl) || (cachedCover && !initialUser.coverUrl)) {
+    const cachedInst = localStorage.getItem(`alumni_inst_${initialUser.id}`);
+    if (
+      (cachedAvatar && !initialUser.avatarUrl) ||
+      (cachedCover && !initialUser.coverUrl) ||
+      (cachedInst && cachedInst !== initialUser.institution?.name)
+    ) {
       setUser((prev) => ({
         ...prev,
         avatarUrl: prev.avatarUrl || cachedAvatar,
         coverUrl: prev.coverUrl || cachedCover,
+        institution: cachedInst
+          ? { ...(prev.institution || {}), name: cachedInst }
+          : prev.institution,
       }));
     }
 
     const handleProfileUpdate = (e: any) => {
       if (e.detail) {
         setUser((prev) => {
-          const updatedInst =
-            e.detail.institution ||
-            (e.detail.institutionName ? { name: e.detail.institutionName, city: prev.institution?.city } : prev.institution);
+          const updatedInstName = e.detail.institutionName || e.detail.institution?.name;
+          const updatedInst = updatedInstName
+            ? { ...(prev.institution || {}), name: updatedInstName, city: e.detail.city || prev.institution?.city }
+            : prev.institution;
           return {
             ...prev,
             ...e.detail,
@@ -111,7 +120,7 @@ export default function ProfileHeaderCard({
     };
     window.addEventListener("profile-updated", handleProfileUpdate);
     return () => window.removeEventListener("profile-updated", handleProfileUpdate);
-  }, [initialUser?.id, initialUser?.avatarUrl, initialUser?.coverUrl]);
+  }, [initialUser?.id, initialUser?.avatarUrl, initialUser?.coverUrl, initialUser?.institution?.name]);
 
   const isOwnProfile = currentUser?.id === user.id;
   const isVerified = user.verificationStatus === "VERIFIED";
@@ -658,6 +667,35 @@ export default function ProfileHeaderCard({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Education & Batch Details Card (Dynamically reactive to profile edits & custom college) */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-4">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          <GraduationCap className="w-4 h-4 text-blue-600" /> Education & Batch Details
+        </h2>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase">Institution</p>
+            <p className="text-xs font-bold text-slate-800 mt-1">{user.institution?.name || "Not specified"}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">{user.institution?.city || formattedCity || "India"}</p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase">Graduation Batch</p>
+            <p className="text-xs font-bold text-slate-800 mt-1">Class of {user.batchYear || "—"}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Alumni Network Member</p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase">Department / Degree</p>
+            <p className="text-xs font-bold text-slate-800 mt-1">
+              {user.course || user.department?.name || "General"}
+            </p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Academic Degree</p>
           </div>
         </div>
       </div>

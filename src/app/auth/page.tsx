@@ -466,7 +466,6 @@ export default function AuthPage() {
                           onChange={e => {
                             setInstQuery(e.target.value);
                             setWCustomInstName(e.target.value);
-                            setWInstName(e.target.value);
                           }}
                           placeholder="Search college, university, school..."
                           autoFocus
@@ -673,7 +672,6 @@ export default function AuthPage() {
                         onChange={e => {
                           setInstQuery(e.target.value);
                           setWCustomInstName(e.target.value);
-                          setWInstName(e.target.value);
                         }}
                         placeholder="Search college, university, school..."
                         autoFocus

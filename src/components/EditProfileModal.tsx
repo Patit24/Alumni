@@ -212,10 +212,16 @@ export default function EditProfileModal({
       if (typeof window !== "undefined" && currentUser?.id) {
         if (avatarUrl) localStorage.setItem(`alumni_avatar_${currentUser.id}`, avatarUrl);
         if (coverUrl) localStorage.setItem(`alumni_cover_${currentUser.id}`, coverUrl);
+        const savedInstName = data.user?.institution?.name || institutionName.trim();
+        if (savedInstName) {
+          localStorage.setItem(`alumni_inst_${currentUser.id}`, savedInstName);
+        }
         window.dispatchEvent(
           new CustomEvent("profile-updated", {
             detail: {
               ...(data.user || {}),
+              institution: data.user?.institution || { name: savedInstName, city: city.trim() || null },
+              institutionName: savedInstName,
               avatarUrl: avatarUrl || data.user?.avatarUrl,
               coverUrl: coverUrl || data.user?.coverUrl,
             },
@@ -547,8 +553,8 @@ export default function EditProfileModal({
                 </div>
 
                 {/* Institution suggestions dropdown */}
-                {showSuggestions && instSuggestions.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 max-h-44 overflow-y-auto">
+                {showSuggestions && (instSuggestions.length > 0 || institutionName.trim().length >= 2) && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 max-h-48 overflow-y-auto">
                     {instSuggestions.map((inst) => (
                       <button
                         key={inst.id}
@@ -565,7 +571,25 @@ export default function EditProfileModal({
                         )}
                       </button>
                     ))}
+                    {institutionName.trim().length >= 2 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowSuggestions(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2 text-xs bg-amber-50/70 hover:bg-amber-100 text-amber-800 transition flex items-center gap-1.5 font-semibold border-t border-amber-200/50"
+                      >
+                        <span>✓ Use &quot;{institutionName.trim()}&quot; as custom institution</span>
+                      </button>
+                    )}
                   </div>
+                )}
+
+                {!loadingSuggestions && institutionName.trim().length >= 2 && instSuggestions.length === 0 && (
+                  <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1">
+                    <span className="text-emerald-600 font-bold">✓</span>
+                    <span>&quot;{institutionName.trim()}&quot; will be saved as your custom institution.</span>
+                  </p>
                 )}
               </div>
 

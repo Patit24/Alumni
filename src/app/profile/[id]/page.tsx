@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import {
   ArrowLeft,
-  GraduationCap,
   Sparkles,
   Eye,
 } from "lucide-react";
@@ -51,6 +50,14 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
 
   const isOwnProfile = currentUser?.id === user.id;
 
+  // Ensure own profile always reflects current authenticated session's institution
+  if (isOwnProfile && (currentUser as any)?.institution?.name) {
+    user.institution = {
+      ...user.institution,
+      name: (currentUser as any).institution.name,
+    };
+  }
+
   // Parse mentor topics if any
   const mentorTopicsList = user.mentorTopics
     ? user.mentorTopics.split(",").map((t) => t.trim()).filter(Boolean)
@@ -85,41 +92,12 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
 
       {/* Profile Main Content */}
       <main className="flex-1 max-w-3xl w-full mx-auto p-4 sm:p-6 space-y-5">
-        {/* Main Profile Header Card (With Cover, Avatar, QR, Scanner & Connect for Chat) */}
+        {/* Main Profile Header Card (With Cover, Avatar, QR, Scanner & Connect for Chat, and Education & Batch Details) */}
         <ProfileHeaderCard
           user={user as any}
           currentUser={currentUser ? { id: currentUser.id, name: currentUser.name } : null}
           autoConnect={isConnectAction}
         />
-
-        {/* Academic Details Card */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-            <GraduationCap className="w-4 h-4 text-blue-600" /> Education & Batch Details
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase">Institution</p>
-              <p className="text-xs font-bold text-slate-800 mt-1">{user.institution.name}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">{user.institution.city || "India"}</p>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase">Graduation Batch</p>
-              <p className="text-xs font-bold text-slate-800 mt-1">Class of {user.batchYear}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">Alumni Network Member</p>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-              <p className="text-[11px] font-semibold text-slate-400 uppercase">Department / Degree</p>
-              <p className="text-xs font-bold text-slate-800 mt-1">
-                {user.department?.name || "General"}
-              </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">Faculty of Technology</p>
-            </div>
-          </div>
-        </div>
 
         {/* Mentorship Section */}
         <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-3">

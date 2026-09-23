@@ -158,6 +158,7 @@ export async function PUT(req: NextRequest) {
     });
 
     // Refresh the session cookie with updated fields (strictly keeping cookie < 1KB)
+    let newSessionToken: string | null = null;
     try {
       const safeAvatar =
         updatedUser.avatarUrl && updatedUser.avatarUrl.startsWith("http") && updatedUser.avatarUrl.length < 300
@@ -168,7 +169,7 @@ export async function PUT(req: NextRequest) {
           ? updatedUser.coverUrl
           : null;
 
-      const newSessionToken = await createSessionToken({
+      newSessionToken = await createSessionToken({
         userId: updatedUser.id,
         phone: updatedUser.phone,
         email: updatedUser.email,
@@ -195,7 +196,12 @@ export async function PUT(req: NextRequest) {
       console.warn("Could not refresh session cookie:", e);
     }
 
-    return NextResponse.json({ success: true, user: updatedUser });
+    const response = NextResponse.json({ success: true, user: updatedUser });
+    if (newSessionToken) {
+      response.cookies.set(AUTH_COOKIE.name, newSessionToken, AUTH_COOKIE.options);
+      response.cookies.set("session_token", newSessionToken, AUTH_COOKIE.options);
+    }
+    return response;
   } catch (error: any) {
     console.error("PUT /api/profile error:", error);
     return NextResponse.json({ error: error.message || "Failed to update profile" }, { status: 500 });

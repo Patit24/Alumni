@@ -122,6 +122,46 @@ export async function getCurrentUser() {
     }
 
     if (user) {
+      if (
+        payload.institutionName &&
+        typeof payload.institutionName === "string" &&
+        payload.institutionName.trim() &&
+        user.institution?.name !== payload.institutionName.trim()
+      ) {
+        const desiredName = payload.institutionName.trim();
+        try {
+          const allInsts = await db.institution.findMany({ take: 200 });
+          let matchedInst = allInsts.find(
+            (i) =>
+              i.name.toLowerCase() === desiredName.toLowerCase() ||
+              (payload.institutionId && i.id.toLowerCase() === (payload.institutionId as string).toLowerCase())
+          );
+          if (!matchedInst) {
+            const slugBase = desiredName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+            matchedInst = await db.institution.create({
+              data: {
+                name: desiredName,
+                slug: `${slugBase || "inst"}-${Date.now().toString(36)}`,
+                type: "COLLEGE",
+              },
+            });
+          }
+          user = await db.user.update({
+            where: { id: user.id },
+            data: { institutionId: matchedInst.id },
+            include: {
+              institution: true,
+              department: true,
+              batch: true,
+            },
+          });
+        } catch (syncErr) {
+          console.warn("[getCurrentUser] DB sync error for institution:", syncErr);
+          if (user.institution) {
+            user.institution.name = desiredName;
+          }
+        }
+      }
       return user;
     }
 
