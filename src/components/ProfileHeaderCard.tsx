@@ -325,9 +325,8 @@ export default function ProfileHeaderCard({
       return;
     }
     setConnecting(true);
-    // Optimistic UI update: Immediately mark as connected so chat can start
-    setRelStatus("CONNECTED");
-    addLocalConnectedPeer(user.id, currentUser.id);
+    // Optimistic UI update: mark as pending request
+    setRelStatus("PENDING_OUTGOING");
 
     try {
       const res = await fetch("/api/contacts/connect", {
@@ -339,6 +338,8 @@ export default function ProfileHeaderCard({
       if (data.status === "ACCEPTED" || data.status === "CONNECTED") {
         setRelStatus("CONNECTED");
         addLocalConnectedPeer(user.id, currentUser.id);
+      } else if (data.status === "PENDING") {
+        setRelStatus("PENDING_OUTGOING");
       }
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (err) {

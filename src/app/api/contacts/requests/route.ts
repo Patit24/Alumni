@@ -27,8 +27,10 @@ export async function GET(req: Request) {
             currentRole: true,
             currentCompany: true,
             batchYear: true,
+            city: true,
             verificationStatus: true,
-            institution: { select: { name: true } },
+            institution: { select: { id: true, name: true, city: true } },
+            department: { select: { id: true, name: true } },
           },
         },
       },
@@ -51,36 +53,33 @@ export async function GET(req: Request) {
             currentRole: true,
             currentCompany: true,
             batchYear: true,
+            city: true,
             verificationStatus: true,
+            institution: { select: { id: true, name: true, city: true } },
+            department: { select: { id: true, name: true } },
           },
         },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    // 3. All accepted / connected relationships and message peers
-    const [connectedTrusts, acceptedRequests, outgoingRequests, messagePeers] = await Promise.all([
+    // 3. All accepted / connected relationships and message peers (bidirectional)
+    const [connectedTrusts, acceptedRequests, messagePeers] = await Promise.all([
       db.contactTrust.findMany({
         where: {
-          userId: user.id,
+          OR: [{ userId: user.id }, { contactId: user.id }],
           trustLevel: { in: ["CONNECTED", "TRUSTED"] },
         },
-        select: { contactId: true, trustLevel: true },
+        select: { userId: true, contactId: true, trustLevel: true },
       }),
       db.connectionRequest.findMany({
         where: {
           OR: [
-            { senderId: user.id, status: "ACCEPTED" },
-            { receiverId: user.id, status: "ACCEPTED" },
+            { senderId: user.id, status: { in: ["ACCEPTED", "CONNECTED"] } },
+            { receiverId: user.id, status: { in: ["ACCEPTED", "CONNECTED"] } },
           ],
         },
         select: { senderId: true, receiverId: true },
-      }),
-      db.connectionRequest.findMany({
-        where: {
-          senderId: user.id,
-        },
-        select: { receiverId: true },
       }),
       db.encryptedMessageQueue.findMany({
         where: {
@@ -90,23 +89,46 @@ export async function GET(req: Request) {
           ],
         },
         select: { senderId: true, recipientId: true },
-        take: 100,
+        take: 200,
       }),
     ]);
 
     const connectedPeerIdsSet = new Set<string>();
-    connectedTrusts.forEach((c) => { if (c.contactId && c.contactId !== user.id) connectedPeerIdsSet.add(c.contactId); });
+    connectedTrusts.forEach((c) => {
+      if (c.userId && c.userId !== user.id) connectedPeerIdsSet.add(c.userId);
+      if (c.contactId && c.contactId !== user.id) connectedPeerIdsSet.add(c.contactId);
+    });
     acceptedRequests.forEach((r) => {
       if (r.senderId && r.senderId !== user.id) connectedPeerIdsSet.add(r.senderId);
-      if (r.receiverId && r.receiverId !== user.id) connectedPeerIdsSet.add(r.receiverId);
-    });
-    outgoingRequests.forEach((r) => {
       if (r.receiverId && r.receiverId !== user.id) connectedPeerIdsSet.add(r.receiverId);
     });
     messagePeers.forEach((m) => {
       if (m.senderId && m.senderId !== user.id) connectedPeerIdsSet.add(m.senderId);
       if (m.recipientId && m.recipientId !== user.id) connectedPeerIdsSet.add(m.recipientId);
     });
+
+    // Fetch full user profiles for all connected peers
+    const connectedPeerIds = Array.from(connectedPeerIdsSet);
+    const connectedUsers = connectedPeerIds.length > 0
+      ? await db.user.findMany({
+          where: { id: { in: connectedPeerIds } },
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            avatarUrl: true,
+            batchYear: true,
+            currentRole: true,
+            currentCompany: true,
+            city: true,
+            verificationStatus: true,
+            isOpenToMentor: true,
+            institution: { select: { id: true, name: true, city: true } },
+            department: { select: { id: true, name: true } },
+          },
+          orderBy: { name: "asc" },
+        })
+      : [];
 
     // Build status lookup map for fast UI status binding
     const statusMap: Record<string, "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED"> = {};
@@ -116,13 +138,13 @@ export async function GET(req: Request) {
     }
 
     for (const req of incoming) {
-      if (!statusMap[req.senderId] || statusMap[req.senderId] === "NONE") {
+      if (statusMap[req.senderId] !== "CONNECTED") {
         statusMap[req.senderId] = "PENDING_INCOMING";
       }
     }
 
     for (const req of outgoing) {
-      if (!statusMap[req.receiverId] || statusMap[req.receiverId] === "NONE") {
+      if (statusMap[req.receiverId] !== "CONNECTED") {
         statusMap[req.receiverId] = "PENDING_OUTGOING";
       }
     }
@@ -133,12 +155,19 @@ export async function GET(req: Request) {
     let mutualCount = 0;
     if (targetUserId) {
       const targetTrusts = await db.contactTrust.findMany({
-        where: { userId: targetUserId, trustLevel: { in: ["CONNECTED", "TRUSTED"] } },
-        select: { contactId: true },
+        where: {
+          OR: [{ userId: targetUserId }, { contactId: targetUserId }],
+          trustLevel: { in: ["CONNECTED", "TRUSTED"] },
+        },
+        select: { userId: true, contactId: true },
       });
-      const targetConnected = new Set(targetTrusts.map((t) => t.contactId));
-      for (const ct of connectedTrusts) {
-        if (targetConnected.has(ct.contactId)) mutualCount++;
+      const targetConnected = new Set<string>();
+      targetTrusts.forEach((t) => {
+        if (t.userId !== targetUserId) targetConnected.add(t.userId);
+        if (t.contactId !== targetUserId) targetConnected.add(t.contactId);
+      });
+      for (const pid of connectedPeerIdsSet) {
+        if (targetConnected.has(pid)) mutualCount++;
       }
     }
 
@@ -149,13 +178,16 @@ export async function GET(req: Request) {
         id: r.id,
         createdAt: r.createdAt,
         user: r.sender,
+        sender: r.sender,
       })),
       outgoing: outgoing.map((r) => ({
         id: r.id,
         createdAt: r.createdAt,
         user: r.receiver,
+        receiver: r.receiver,
       })),
-      connectedPeerIds: Array.from(connectedPeerIdsSet),
+      connections: connectedUsers,
+      connectedPeerIds,
       statusMap,
       mutualCount,
       unreadRequestsCount: incoming.length,

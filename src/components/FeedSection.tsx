@@ -79,6 +79,7 @@ interface FeedItemData {
 }
 
 interface FeedSectionProps {
+  currentUserId?: string;
   currentUserName: string;
   currentUserRole?: string | null;
   currentUserCompany?: string | null;
@@ -88,71 +89,83 @@ interface FeedSectionProps {
   currentUserAvatar?: string | null;
 }
 
-const FEED_CACHE_KEY = "alumni_local_feed_cache_v2";
+function getFeedCacheKey(userId?: string): string {
+  return userId ? `alumni_feed_cache_v5_${userId}` : "alumni_feed_cache_v5_anon";
+}
 
-function getLocalFeedPosts(): FeedItemData[] {
+// Immediately purge legacy global caches on script evaluation
+if (typeof window !== "undefined") {
+  try {
+    localStorage.removeItem("alumni_local_feed_cache_v2");
+    localStorage.removeItem("alumni_local_feed_cache");
+    localStorage.removeItem("alumni_feed_cache_v3");
+    localStorage.removeItem("alumni_feed_cache_v4");
+  } catch {}
+}
+
+function getLocalFeedPosts(userId?: string): FeedItemData[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(FEED_CACHE_KEY);
+    const raw = localStorage.getItem(getFeedCacheKey(userId));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-function saveLocalFeedPost(post: FeedItemData) {
+function saveLocalFeedPost(post: FeedItemData, userId?: string) {
   if (typeof window === "undefined") return;
   try {
-    const existing = getLocalFeedPosts();
+    const existing = getLocalFeedPosts(userId);
     const updated = [post, ...existing.filter((p) => p.id !== post.id)].slice(0, 30);
-    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(updated));
+    localStorage.setItem(getFeedCacheKey(userId), JSON.stringify(updated));
   } catch (e) {
     try {
-      const existing = getLocalFeedPosts();
+      const existing = getLocalFeedPosts(userId);
       const trimmed = [post, ...existing.filter((p) => p.id !== post.id)].slice(0, 10);
-      localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(trimmed));
+      localStorage.setItem(getFeedCacheKey(userId), JSON.stringify(trimmed));
     } catch {
       console.warn("Could not save post to local cache:", e);
     }
   }
 }
 
-function updateLocalFeedPost(postId: string, updater: (post: FeedItemData) => FeedItemData) {
+function updateLocalFeedPost(postId: string, updater: (post: FeedItemData) => FeedItemData, userId?: string) {
   if (typeof window === "undefined") return;
   try {
-    const existing = getLocalFeedPosts();
+    const existing = getLocalFeedPosts(userId);
     const updated = existing.map((p) => (p.id === postId ? updater(p) : p));
-    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(updated));
+    localStorage.setItem(getFeedCacheKey(userId), JSON.stringify(updated));
   } catch (e) {
     console.warn("Could not update post in local cache:", e);
   }
 }
 
-function syncLocalFeedPosts(posts: FeedItemData[]) {
+function syncLocalFeedPosts(posts: FeedItemData[], userId?: string) {
   if (typeof window === "undefined" || !posts.length) return;
   try {
-    const localPosts = getLocalFeedPosts();
+    const localPosts = getLocalFeedPosts(userId);
     const map = new Map<string, FeedItemData>();
     localPosts.forEach((p) => map.set(p.id, p));
     posts.forEach((p) => map.set(p.id, p));
     const merged = Array.from(map.values()).slice(0, 35);
-    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(merged));
+    localStorage.setItem(getFeedCacheKey(userId), JSON.stringify(merged));
   } catch (e) {
     try {
       const merged = posts.slice(0, 15);
-      localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(merged));
+      localStorage.setItem(getFeedCacheKey(userId), JSON.stringify(merged));
     } catch {
       console.warn("Could not sync local feed posts:", e);
     }
   }
 }
 
-function removeLocalFeedPost(postId: string) {
+function removeLocalFeedPost(postId: string, userId?: string) {
   if (typeof window === "undefined") return;
   try {
-    const existing = getLocalFeedPosts();
+    const existing = getLocalFeedPosts(userId);
     const updated = existing.filter((p) => p.id !== postId);
-    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(updated));
+    localStorage.setItem(getFeedCacheKey(userId), JSON.stringify(updated));
   } catch (e) {
     console.warn("Could not remove post from local cache:", e);
   }
@@ -172,6 +185,7 @@ function calculateTimeAgo(isoString: string) {
 }
 
 export default function FeedSection({
+  currentUserId,
   currentUserName,
   batchYear,
   currentUserAvatar: initialAvatar,
@@ -281,20 +295,25 @@ export default function FeedSection({
       if (!res.ok) throw new Error("Failed to load feed");
       const json = await res.json();
       const serverPosts: FeedItemData[] = json.feed || [];
-      const localPosts = getLocalFeedPosts();
+      const localPosts = getLocalFeedPosts(currentUserId);
 
       if (serverPosts.length > 0) {
-        syncLocalFeedPosts(serverPosts);
+        syncLocalFeedPosts(serverPosts, currentUserId);
       }
 
       // Merge server posts with local posts so that user-created posts and photos NEVER vanish
       const map = new Map<string, FeedItemData>();
       // First insert server posts
       serverPosts.forEach((p) => map.set(p.id, p));
-      // Then overlay any locally saved posts not yet on server or dropped by serverless cold start
+      // Then overlay only locally saved posts authored by the current user within 2 hours
+      const twoHoursAgo = Date.now() - 1000 * 60 * 60 * 2;
       localPosts.forEach((p) => {
         if (!map.has(p.id)) {
-          map.set(p.id, p);
+          const isSelf = currentUserId && p.actor?.id === currentUserId;
+          const isRecent = new Date(p.createdAt).getTime() > twoHoursAgo;
+          if (isSelf && isRecent) {
+            map.set(p.id, p);
+          }
         }
       });
 
@@ -308,15 +327,15 @@ export default function FeedSection({
       }
     } catch (err) {
       console.error("Error fetching feed:", err);
-      // Even if network fails, display local posts
-      const localPosts = getLocalFeedPosts();
+      // Even if network fails, display local posts for current user
+      const localPosts = getLocalFeedPosts(currentUserId);
       if (localPosts.length > 0) {
         setFeed(localPosts);
       }
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [currentUserId]);
 
   // Initial load on filter change
   useEffect(() => {
@@ -359,7 +378,7 @@ export default function FeedSection({
     channel
       .on("broadcast", { event: "new-post" }, (event) => {
         const newPost = event.payload as FeedItemData;
-        saveLocalFeedPost(newPost);
+        saveLocalFeedPost(newPost, currentUserId);
         setFeed((prev) => {
           if (prev.some((p) => p.id === newPost.id)) return prev;
           return [newPost, ...prev];
@@ -458,7 +477,7 @@ export default function FeedSection({
       const createdItem: FeedItemData = result.feedItem;
       if (createdItem) {
         // Persist to local cache so the post and its image NEVER vanish on this device
-        saveLocalFeedPost(createdItem);
+        saveLocalFeedPost(createdItem, currentUserId);
         // Prepend directly to active feed
         setFeed((prev) => [createdItem, ...prev.filter((p) => p.id !== createdItem.id)]);
       }
@@ -479,7 +498,7 @@ export default function FeedSection({
     if (!confirm("Are you sure you want to delete this post?")) return;
 
     setFeed((prev) => prev.filter((item) => item.id !== postId));
-    removeLocalFeedPost(postId);
+    removeLocalFeedPost(postId, currentUserId);
 
     try {
       await fetch(`/api/feed/${postId}`, { method: "DELETE" });

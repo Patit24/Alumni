@@ -131,6 +131,16 @@ export default function MessagesHubPage() {
             }
           }
         }
+        if (Array.isArray(reqsData.connections)) {
+          setContacts((prev) => {
+            const map = new Map<string, AlumniContact>();
+            prev.forEach((c) => map.set(c.id, c));
+            reqsData.connections.forEach((c: any) => {
+              if (c && c.id) map.set(c.id, { ...map.get(c.id), ...c });
+            });
+            return Array.from(map.values());
+          });
+        }
       }
 
       const localPeers = currentUserId ? getLocalConnectedPeerIds(currentUserId) : [];

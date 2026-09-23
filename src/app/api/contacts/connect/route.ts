@@ -49,65 +49,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unable to interact with this user" }, { status: 403 });
     }
 
-    // 1. ACTION: REQUEST (Instant alumni peer connection)
+    // 1. ACTION: REQUEST (Send connection request or auto-accept if mutual)
     if (action === "REQUEST") {
-      const [request] = await db.$transaction([
-        db.connectionRequest.upsert({
-          where: {
-            senderId_receiverId: {
-              senderId: user.id,
-              receiverId: targetUserId,
-            },
-          },
-          update: {
-            status: "ACCEPTED",
-          },
-          create: {
-            senderId: user.id,
-            receiverId: targetUserId,
-            status: "ACCEPTED",
-          },
-        }),
-        db.contactTrust.upsert({
-          where: { userId_contactId: { userId: user.id, contactId: targetUserId } },
-          update: { trustLevel: "CONNECTED" },
-          create: { userId: user.id, contactId: targetUserId, trustLevel: "CONNECTED" },
-        }),
-        db.contactTrust.upsert({
-          where: { userId_contactId: { userId: targetUserId, contactId: user.id } },
-          update: { trustLevel: "CONNECTED" },
-          create: { userId: targetUserId, contactId: user.id, trustLevel: "CONNECTED" },
-        }),
-        db.appNotification.create({
-          data: {
-            userId: targetUserId,
-            actorId: user.id,
-            type: "CONNECTION_ACCEPTED",
-            title: "New Connection",
-            body: `${user.name} connected with you.`,
-            data: JSON.stringify({ peerId: user.id, peerName: user.name, peerUsername: user.username }),
-          },
-        }),
-      ]);
-
-      // Broadcast Realtime event to target user
-      sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-accepted", {
-        peerId: user.id,
-        peerName: user.name,
-        peerUsername: user.username,
-      }).catch((e) => console.warn("Broadcast connection-accepted notice:", e));
-
-      return NextResponse.json({
-        success: true,
-        status: "CONNECTED",
-        message: `Connected with ${targetUser.name}`,
-        request,
-      });
-    }
-
-    // 2. ACTION: ACCEPT (User B accepts User A's request)
-    if (action === "ACCEPT") {
-      const pendingReq = await db.connectionRequest.findFirst({
+      // Check if targetUser already sent currentUser a pending request -> auto-accept
+      const reversePending = await db.connectionRequest.findFirst({
         where: {
           senderId: targetUserId,
           receiverId: user.id,
@@ -115,19 +60,175 @@ export async function POST(req: Request) {
         },
       });
 
+      if (reversePending) {
+        // Mutual intention -> immediately establish connection
+        await db.$transaction([
+          db.connectionRequest.update({
+            where: { id: reversePending.id },
+            data: { status: "ACCEPTED" },
+          }),
+          db.contactTrust.upsert({
+            where: { userId_contactId: { userId: user.id, contactId: targetUserId } },
+            update: { trustLevel: "CONNECTED" },
+            create: { userId: user.id, contactId: targetUserId, trustLevel: "CONNECTED" },
+          }),
+          db.contactTrust.upsert({
+            where: { userId_contactId: { userId: targetUserId, contactId: user.id } },
+            update: { trustLevel: "CONNECTED" },
+            create: { userId: targetUserId, contactId: user.id, trustLevel: "CONNECTED" },
+          }),
+          db.appNotification.create({
+            data: {
+              userId: targetUserId,
+              actorId: user.id,
+              type: "CONNECTION_ACCEPTED",
+              title: "Connection Accepted",
+              body: `${user.name} accepted your connection request.`,
+              data: JSON.stringify({ peerId: user.id, peerName: user.name, peerUsername: user.username }),
+            },
+          }),
+          db.appNotification.updateMany({
+            where: {
+              userId: user.id,
+              actorId: targetUserId,
+              type: "CONNECTION_REQUEST",
+              isRead: false,
+            },
+            data: { isRead: true },
+          }),
+        ]);
+
+        sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-accepted", {
+          peerId: user.id,
+          peerName: user.name,
+          peerUsername: user.username,
+        }).catch((e) => console.warn("Broadcast connection-accepted notice:", e));
+
+        return NextResponse.json({
+          success: true,
+          status: "CONNECTED",
+          message: `Connected with ${targetUser.name}`,
+        });
+      }
+
+      // Check if already connected
+      const existingAccepted = await db.connectionRequest.findFirst({
+        where: {
+          OR: [
+            { senderId: user.id, receiverId: targetUserId, status: "ACCEPTED" },
+            { senderId: targetUserId, receiverId: user.id, status: "ACCEPTED" },
+          ],
+        },
+      });
+
+      if (existingAccepted) {
+        // Ensure bidirectional contactTrust is present
+        await Promise.all([
+          db.contactTrust.upsert({
+            where: { userId_contactId: { userId: user.id, contactId: targetUserId } },
+            update: { trustLevel: "CONNECTED" },
+            create: { userId: user.id, contactId: targetUserId, trustLevel: "CONNECTED" },
+          }),
+          db.contactTrust.upsert({
+            where: { userId_contactId: { userId: targetUserId, contactId: user.id } },
+            update: { trustLevel: "CONNECTED" },
+            create: { userId: targetUserId, contactId: user.id, trustLevel: "CONNECTED" },
+          }),
+        ]);
+
+        return NextResponse.json({
+          success: true,
+          status: "CONNECTED",
+          message: `Already connected with ${targetUser.name}`,
+        });
+      }
+
+      // Create or update connection request to PENDING
+      const request = await db.connectionRequest.upsert({
+        where: {
+          senderId_receiverId: {
+            senderId: user.id,
+            receiverId: targetUserId,
+          },
+        },
+        update: {
+          status: "PENDING",
+        },
+        create: {
+          senderId: user.id,
+          receiverId: targetUserId,
+          status: "PENDING",
+        },
+      });
+
+      // Send notification to recipient
+      await db.appNotification.create({
+        data: {
+          userId: targetUserId,
+          actorId: user.id,
+          type: "CONNECTION_REQUEST",
+          title: "Connection Request",
+          body: `${user.name} sent you a connection request.`,
+          data: JSON.stringify({
+            peerId: user.id,
+            peerName: user.name,
+            peerUsername: user.username,
+            peerAvatarUrl: user.avatarUrl,
+          }),
+        },
+      });
+
+      // Broadcast Realtime event to recipient
+      sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-request-received", {
+        peerId: user.id,
+        peerName: user.name,
+        peerUsername: user.username,
+      }).catch((e) => console.warn("Broadcast connection-request notice:", e));
+
+      return NextResponse.json({
+        success: true,
+        status: "PENDING",
+        message: `Connection request sent to ${targetUser.name}`,
+        request,
+      });
+    }
+
+    // 2. ACTION: ACCEPT (User accepts an incoming connection request)
+    if (action === "ACCEPT") {
+      const pendingReq = await db.connectionRequest.findFirst({
+        where: {
+          OR: [
+            { senderId: targetUserId, receiverId: user.id, status: "PENDING" },
+            { senderId: user.id, receiverId: targetUserId, status: "PENDING" },
+          ],
+        },
+      });
+
       if (!pendingReq) {
-        // Also check if User A sent previously or already accepted
+        // Also check if already accepted
         const existing = await db.connectionRequest.findFirst({
           where: {
             OR: [
-              { senderId: targetUserId, receiverId: user.id },
-              { senderId: user.id, receiverId: targetUserId },
+              { senderId: targetUserId, receiverId: user.id, status: "ACCEPTED" },
+              { senderId: user.id, receiverId: targetUserId, status: "ACCEPTED" },
             ],
           },
         });
 
-        if (existing && existing.status === "ACCEPTED") {
-          return NextResponse.json({ success: true, status: "ACCEPTED", message: "Already connected" });
+        if (existing) {
+          await Promise.all([
+            db.contactTrust.upsert({
+              where: { userId_contactId: { userId: user.id, contactId: targetUserId } },
+              update: { trustLevel: "CONNECTED" },
+              create: { userId: user.id, contactId: targetUserId, trustLevel: "CONNECTED" },
+            }),
+            db.contactTrust.upsert({
+              where: { userId_contactId: { userId: targetUserId, contactId: user.id } },
+              update: { trustLevel: "CONNECTED" },
+              create: { userId: targetUserId, contactId: user.id, trustLevel: "CONNECTED" },
+            }),
+          ]);
+          return NextResponse.json({ success: true, status: "CONNECTED", message: "Already connected" });
         }
 
         return NextResponse.json({ error: "No pending connection request found to accept" }, { status: 404 });
@@ -149,7 +250,7 @@ export async function POST(req: Request) {
           update: { trustLevel: "CONNECTED" },
           create: { userId: targetUserId, contactId: user.id, trustLevel: "CONNECTED" },
         }),
-        // Notify User A
+        // Notify original sender
         db.appNotification.create({
           data: {
             userId: targetUserId,
@@ -160,7 +261,7 @@ export async function POST(req: Request) {
             data: JSON.stringify({ peerId: user.id, peerName: user.name, peerUsername: user.username }),
           },
         }),
-        // Mark pending notification as read for User B
+        // Mark pending notification as read
         db.appNotification.updateMany({
           where: {
             userId: user.id,
@@ -172,7 +273,7 @@ export async function POST(req: Request) {
         }),
       ]);
 
-      // Broadcast Realtime to User A
+      // Broadcast Realtime to original sender
       sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-accepted", {
         peerId: user.id,
         peerName: user.name,
@@ -181,12 +282,12 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         success: true,
-        status: "ACCEPTED",
+        status: "CONNECTED",
         message: `Connected with ${targetUser.name}`,
       });
     }
 
-    // 3. ACTION: REJECT
+    // 3. ACTION: REJECT / IGNORE
     if (action === "REJECT") {
       await db.connectionRequest.updateMany({
         where: {
@@ -210,7 +311,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, status: "REJECTED" });
     }
 
-    // 4. ACTION: CANCEL (User A cancels request)
+    // 4. ACTION: CANCEL (User cancels outgoing request)
     if (action === "CANCEL") {
       await db.connectionRequest.updateMany({
         where: {
@@ -219,14 +320,6 @@ export async function POST(req: Request) {
           status: "PENDING",
         },
         data: { status: "CANCELLED" },
-      });
-
-      await db.contactTrust.deleteMany({
-        where: {
-          userId: user.id,
-          contactId: targetUserId,
-          trustLevel: "REQUEST",
-        },
       });
 
       return NextResponse.json({ success: true, status: "CANCELLED" });

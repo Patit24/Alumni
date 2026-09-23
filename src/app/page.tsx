@@ -373,6 +373,7 @@ export default async function HomePage(props: {
         {/* Campus & Alumni Feed */}
         <section className="pt-2">
           <FeedSection
+            currentUserId={user.id}
             currentUserName={user.name}
             currentUserRole={user.currentRole}
             currentUserCompany={user.currentCompany}
