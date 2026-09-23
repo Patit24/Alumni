@@ -5,13 +5,13 @@ import CallModal from "@/components/CallModal";
 import GlobalRealtimeProvider from "@/components/GlobalRealtimeProvider";
 
 export const metadata: Metadata = {
-  title: "Alumni Network | Connect, Mentor & Grow",
-  description: "Connect with your alumni, find mentors, discover job referrals, and stay in touch with your alma mater.",
+  title: "Samparka | Connect. Chat. Belong.",
+  description: "A secure connection platform built for everyone. Private encrypted chat, verified communities, and voice & video communication. Proudly Made in India.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Alumni Network",
+    title: "Samparka",
   },
 };
 

@@ -327,12 +327,17 @@ export default function AuthPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo + Brand */}
-        <div className="text-center mb-8">
-          <div className="inline-flex h-14 w-14 rounded-2xl bg-blue-600 text-white items-center justify-center shadow-2xl shadow-blue-500/30 mb-3">
-            <GraduationCap className="w-7 h-7" />
+        <div className="text-center mb-6">
+          <div className="inline-flex h-16 w-16 rounded-2xl overflow-hidden shadow-2xl shadow-blue-500/30 mb-3 border-2 border-white/20 bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/images/samparka_logo.jpg" alt="Samparka" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Alumni Network</h1>
-          <p className="text-sm text-blue-300 mt-1">End-to-end encrypted private network</p>
+          <div className="flex items-center justify-center gap-1.5 mb-1">
+            <h1 className="text-2xl font-black text-white tracking-tight">Samparka</h1>
+            <span className="text-sm">🇮🇳</span>
+          </div>
+          <p className="text-xs text-amber-300 font-bold tracking-wide">Connect. Chat. Belong.</p>
+          <p className="text-[11px] text-slate-300 mt-1">A secure connection platform built for everyone</p>
         </div>
 
         {/* Card */}

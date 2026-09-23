@@ -1,7 +1,7 @@
 {
-  "name": "Alumni Network",
-  "short_name": "Alumni",
-  "description": "Connect with your alumni, find mentors, discover opportunities, and stay connected with your alma mater.",
+  "name": "Samparka - Connect. Chat. Belong.",
+  "short_name": "Samparka",
+  "description": "A secure connection platform built for everyone. Proudly Made in India.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
