@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get("alumni_session")?.value;
+    const token = cookieStore.get("alumni_session")?.value || cookieStore.get("session_token")?.value;
     const allCookies = cookieStore.getAll().map((c) => c.name);
 
     let tokenPayload = null;

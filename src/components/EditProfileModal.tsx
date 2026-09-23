@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   Camera,
@@ -18,6 +19,7 @@ import {
   School,
   GraduationCap,
   BookOpen,
+  Search,
 } from "lucide-react";
 
 interface EditProfileModalProps {
@@ -35,6 +37,8 @@ interface EditProfileModalProps {
     linkedinUrl?: string | null;
     institution?: { name: string } | null;
     institutionName?: string | null;
+    department?: { name: string } | null;
+    departmentName?: string | null;
     course?: string | null;
     batchYear?: number | null;
   };
@@ -66,6 +70,7 @@ export default function EditProfileModal({
   currentUser,
   onProfileUpdated,
 }: EditProfileModalProps) {
+  const router = useRouter();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -78,6 +83,9 @@ export default function EditProfileModal({
   const [institutionName, setInstitutionName] = useState(
     currentUser.institution?.name || currentUser.institutionName || ""
   );
+  const [departmentName, setDepartmentName] = useState(
+    currentUser.department?.name || currentUser.departmentName || ""
+  );
   const [course, setCourse] = useState(currentUser.course || "");
   const [batchYear, setBatchYear] = useState<string>(
     currentUser.batchYear ? String(currentUser.batchYear) : ""
@@ -88,6 +96,33 @@ export default function EditProfileModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Institution suggestions
+  const [instSuggestions, setInstSuggestions] = useState<any[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Search colleges when typing
+  useEffect(() => {
+    const q = institutionName.trim();
+    if (!q || q.length < 2) {
+      setInstSuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setLoadingSuggestions(true);
+      try {
+        const res = await fetch(`/api/institutions?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        setInstSuggestions(data.institutions || []);
+      } catch {
+        setInstSuggestions([]);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [institutionName]);
 
   // Compress & convert selected file to base64
   const processImageFile = (file: File, maxWidth: number, maxHeight: number, callback: (dataUrl: string) => void) => {
@@ -163,6 +198,7 @@ export default function EditProfileModal({
           city: city.trim() || null,
           linkedinUrl: linkedinUrl.trim() || null,
           institutionName: institutionName.trim() || null,
+          departmentName: departmentName.trim() || null,
           course: course.trim() || null,
           batchYear: batchYear.trim() && !isNaN(Number(batchYear.trim())) ? parseInt(batchYear.trim(), 10) : null,
         }),
@@ -191,6 +227,10 @@ export default function EditProfileModal({
       if (onProfileUpdated) {
         onProfileUpdated(data.user);
       }
+      try {
+        router.refresh();
+      } catch {}
+
       setTimeout(() => {
         setSuccess(false);
         onClose();
@@ -483,23 +523,69 @@ export default function EditProfileModal({
                 </p>
               </div>
 
-              <div>
+              <div className="relative">
                 <label className="text-xs font-semibold text-slate-700 block mb-1">
-                  College / University / School Name
+                  College / University / School Name *
                 </label>
                 <div className="relative">
                   <School className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                  {loadingSuggestions && (
+                    <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin absolute right-3 top-3" />
+                  )}
                   <input
                     type="text"
                     value={institutionName}
-                    onChange={(e) => setInstitutionName(e.target.value)}
-                    placeholder="e.g. ABC University, Stanford, Modern High School"
-                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    onChange={(e) => {
+                      setInstitutionName(e.target.value);
+                      setShowSuggestions(true);
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    placeholder="e.g. Kalyani Government Engineering College, Jadavpur University"
+                    className="w-full pl-9 pr-8 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
+                    required
                   />
                 </div>
+
+                {/* Institution suggestions dropdown */}
+                {showSuggestions && instSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 max-h-44 overflow-y-auto">
+                    {instSuggestions.map((inst) => (
+                      <button
+                        key={inst.id}
+                        type="button"
+                        onClick={() => {
+                          setInstitutionName(inst.name);
+                          setShowSuggestions(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2 text-xs hover:bg-blue-50 transition flex items-center justify-between border-b border-slate-100 last:border-0"
+                      >
+                        <span className="font-semibold text-slate-800">{inst.name}</span>
+                        {inst.city && (
+                          <span className="text-[10px] text-slate-400 ml-2">{inst.city}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                    Department / Stream
+                  </label>
+                  <div className="relative">
+                    <School className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      value={departmentName}
+                      onChange={(e) => setDepartmentName(e.target.value)}
+                      placeholder="e.g. MCA, CSE, IT"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-xs font-semibold text-slate-700 block mb-1">
                     Course / Degree
@@ -510,7 +596,7 @@ export default function EditProfileModal({
                       type="text"
                       value={course}
                       onChange={(e) => setCourse(e.target.value)}
-                      placeholder="e.g. BCA, Computer Science"
+                      placeholder="e.g. B.Tech, BCA, MCA"
                       className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                     />
                   </div>
@@ -528,8 +614,8 @@ export default function EditProfileModal({
                       max={2040}
                       value={batchYear}
                       onChange={(e) => setBatchYear(e.target.value)}
-                      placeholder="e.g. 2027"
-                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      placeholder="e.g. 2026"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
                     />
                   </div>
                 </div>

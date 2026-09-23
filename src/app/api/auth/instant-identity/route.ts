@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { createSessionToken } from "@/lib/auth";
+import { createSessionToken, AUTH_COOKIE } from "@/lib/auth";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,7 @@ export async function POST(req: Request) {
       name,
       username: requestedUsername,
       institutionId,
+      institutionName,
       batchYear = new Date().getFullYear(),
       departmentName,
       currentRole,
@@ -30,10 +31,10 @@ export async function POST(req: Request) {
 
     const displayName = (name || "").trim() || "Anonymous Alumni";
     const year = parseInt(String(batchYear), 10) || new Date().getFullYear();
-    const customInstName = (body.customInstitutionName || "").trim();
+    const targetInstName = (institutionName || body.customInstitutionName || "").trim();
     const customInstType = body.customInstitutionType || "COLLEGE";
 
-    // 1. Resolve Institution (required — no Brainware fallback)
+    // 1. Resolve Institution cleanly (by id, by name, or by slug)
     let institution = null;
     if (institutionId) {
       institution = await db.institution.findUnique({
@@ -42,27 +43,26 @@ export async function POST(req: Request) {
       });
     }
 
-    if (!institution && customInstName) {
-      // Create or find by custom name (case-insensitive search via JS)
-      const slug = customInstName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    if (!institution && targetInstName) {
+      // Find case-insensitively across existing institutions
       const allInsts = await db.institution.findMany({
-        where: {},
-        select: { id: true, name: true },
         take: 200,
+        include: { departments: true },
       });
-      const found = allInsts.find(
-        (i) => i.name.toLowerCase() === customInstName.toLowerCase()
-      );
-      if (found) {
-        institution = await db.institution.findUnique({
-          where: { id: found.id },
-          include: { departments: true },
-        });
-      } else {
+      institution =
+        allInsts.find(
+          (i) =>
+            i.name.toLowerCase() === targetInstName.toLowerCase() ||
+            (institutionId && i.id.toLowerCase() === institutionId.toLowerCase()) ||
+            (institutionId && i.slug.toLowerCase() === institutionId.toLowerCase())
+        ) || null;
+
+      if (!institution) {
+        const slugBase = targetInstName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
         institution = await db.institution.create({
           data: {
-            name: customInstName,
-            slug: `${slug}-${Math.random().toString(36).substring(2, 6)}`,
+            name: targetInstName,
+            slug: `${slugBase || "inst"}-${Math.random().toString(36).substring(2, 6)}`,
             type: customInstType,
             country: "India",
           },
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
 
     if (!institution) {
       return NextResponse.json(
-        { error: "Please select your college, university, or school." },
+        { error: "Please select or type your college, university, or school name." },
         { status: 400 }
       );
     }
@@ -181,19 +181,17 @@ export async function POST(req: Request) {
       phone: null,
       email: null,
       username: user.username,
+      name: user.name,
       role: user.role,
+      verificationStatus: user.verificationStatus,
       institutionId: user.institutionId,
+      institutionName: user.institution.name,
       batchYear: user.batchYear,
     });
 
     const cookieStore = await cookies();
-    cookieStore.set("session_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-      path: "/",
-    });
+    cookieStore.set(AUTH_COOKIE.name, token, AUTH_COOKIE.options);
+    cookieStore.set("session_token", token, AUTH_COOKIE.options);
 
     return NextResponse.json({
       success: true,
@@ -202,6 +200,7 @@ export async function POST(req: Request) {
         name: user.name,
         username: user.username,
         role: user.role,
+        institutionId: user.institutionId,
         institutionName: user.institution.name,
         batchYear: user.batchYear,
       },

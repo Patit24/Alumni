@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser, createSessionToken } from "@/lib/auth";
+import { getCurrentUser, createSessionToken, AUTH_COOKIE } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { cookies } from "next/headers";
 
@@ -57,84 +57,94 @@ export async function PUT(req: NextRequest) {
     if (typeof isPhoneVisible === "boolean") dataToUpdate.isPhoneVisible = isPhoneVisible;
 
     // Institution selection (discovery attribute - no verification roadblock)
+    let targetInst = null;
     if (institutionId) {
-      let inst = await db.institution.findUnique({ where: { id: institutionId } });
-      if (!inst && institutionName) {
-        inst = await db.institution.findFirst({ where: { name: institutionName.trim() } });
-        if (!inst) {
-          inst = await db.institution.create({
-            data: {
-              name: institutionName.trim(),
-              slug: `inst-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-              type: institutionType || "COLLEGE",
-            },
-          });
-        }
-      }
-      if (inst) {
-        dataToUpdate.institutionId = inst.id;
-      }
-    } else if (institutionName && typeof institutionName === "string" && institutionName.trim()) {
-      let inst = await db.institution.findFirst({ where: { name: institutionName.trim() } });
-      if (!inst) {
-        inst = await db.institution.create({
+      targetInst = await db.institution.findUnique({ where: { id: institutionId } });
+    }
+
+    if (!targetInst && institutionName && typeof institutionName === "string" && institutionName.trim()) {
+      const trimmedName = institutionName.trim();
+      const allInsts = await db.institution.findMany({ take: 200 });
+      targetInst =
+        allInsts.find(
+          (i) =>
+            i.name.toLowerCase() === trimmedName.toLowerCase() ||
+            (institutionId && i.id.toLowerCase() === institutionId.toLowerCase()) ||
+            (institutionId && i.slug.toLowerCase() === institutionId.toLowerCase())
+        ) || null;
+
+      if (!targetInst) {
+        const slugBase = trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        targetInst = await db.institution.create({
           data: {
-            name: institutionName.trim(),
-            slug: `inst-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            name: trimmedName,
+            slug: `${slugBase || "inst"}-${Date.now().toString(36)}`,
             type: institutionType || "COLLEGE",
           },
         });
       }
-      dataToUpdate.institutionId = inst.id;
+    }
+
+    if (targetInst) {
+      dataToUpdate.institutionId = targetInst.id;
     }
 
     if (course !== undefined) {
-      dataToUpdate.course = typeof course === "string" ? course.trim() : null;
+      dataToUpdate.course = typeof course === "string" && course.trim() ? course.trim() : null;
     }
 
     const effectiveInstId = dataToUpdate.institutionId || user.institutionId;
 
-    if (batchYear && !isNaN(Number(batchYear))) {
-      const yearInt = parseInt(String(batchYear), 10);
-      dataToUpdate.batchYear = yearInt;
-      let batch = await db.batch.findUnique({
-        where: {
-          institutionId_year: {
-            institutionId: effectiveInstId,
-            year: yearInt,
-          },
-        },
-      });
-      if (!batch) {
-        batch = await db.batch.create({
-          data: {
-            institutionId: effectiveInstId,
-            year: yearInt,
-            estimatedSize: 60,
-          },
-        });
-      }
-      dataToUpdate.batchId = batch.id;
-    }
+    // Always ensure valid batch for effectiveInstId
+    const effectiveBatchYear =
+      batchYear && !isNaN(Number(batchYear))
+        ? parseInt(String(batchYear), 10)
+        : user.batchYear || new Date().getFullYear();
 
-    if (departmentName && typeof departmentName === "string" && departmentName.trim()) {
-      let dept = await db.department.findUnique({
-        where: {
-          institutionId_name: {
-            institutionId: effectiveInstId,
-            name: departmentName.trim(),
-          },
+    dataToUpdate.batchYear = effectiveBatchYear;
+
+    let batch = await db.batch.findUnique({
+      where: {
+        institutionId_year: {
+          institutionId: effectiveInstId,
+          year: effectiveBatchYear,
+        },
+      },
+    });
+
+    if (!batch) {
+      batch = await db.batch.create({
+        data: {
+          institutionId: effectiveInstId,
+          year: effectiveBatchYear,
+          estimatedSize: 60,
         },
       });
-      if (!dept) {
-        dept = await db.department.create({
-          data: {
-            institutionId: effectiveInstId,
-            name: departmentName.trim(),
-          },
+    }
+    dataToUpdate.batchId = batch.id;
+
+    // Handle department
+    if (departmentName !== undefined) {
+      if (departmentName && typeof departmentName === "string" && departmentName.trim()) {
+        const trimmedDept = departmentName.trim();
+        const existingDepts = await db.department.findMany({
+          where: { institutionId: effectiveInstId },
         });
+        let dept = existingDepts.find(
+          (d) => d.name.toLowerCase() === trimmedDept.toLowerCase()
+        );
+        if (!dept) {
+          dept = await db.department.create({
+            data: {
+              institutionId: effectiveInstId,
+              name: trimmedDept,
+            },
+          });
+        }
+        dataToUpdate.departmentId = dept.id;
+      } else {
+        dataToUpdate.departmentId = null;
       }
-      dataToUpdate.departmentId = dept.id;
     }
 
     const updatedUser = await db.user.update({
@@ -179,13 +189,8 @@ export async function PUT(req: NextRequest) {
       });
 
       const cookieStore = await cookies();
-      cookieStore.set("alumni_session", newSessionToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-      });
+      cookieStore.set(AUTH_COOKIE.name, newSessionToken, AUTH_COOKIE.options);
+      cookieStore.set("session_token", newSessionToken, AUTH_COOKIE.options);
     } catch (e) {
       console.warn("Could not refresh session cookie:", e);
     }

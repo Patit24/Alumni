@@ -76,7 +76,9 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 export async function getCurrentUser() {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+    const token =
+      cookieStore.get(SESSION_COOKIE_NAME)?.value ||
+      cookieStore.get("session_token")?.value;
     if (!token) {
       return null;
     }
@@ -129,27 +131,48 @@ export async function getCurrentUser() {
     const targetEmail = payload.email ? payload.email.trim().toLowerCase() : null;
     const targetUserId = payload.userId || (targetEmail ? `user-${targetEmail.replace(/[^a-z0-9]/g, "")}` : `user-${Date.now()}`);
     const userName = payload.name || (targetEmail ? targetEmail.split("@")[0] : "Alumni Member");
-    const instName = payload.institutionName || "Brainware University";
-    const instId = payload.institutionId || "cmu6s3a60000008hefi6ay2gu";
+    const instName = (payload.institutionName || "").trim();
+    const instId = payload.institutionId || null;
     const batchYear = payload.batchYear || 2026;
 
+    let inst: any = null;
     try {
-      // Ensure institution exists
-      let inst = await db.institution.findFirst({
-        where: {
-          OR: [{ id: instId }, { name: instName }],
-        },
-      });
+      // Ensure institution exists based on verified JWT data
+      if (instId) {
+        inst = await db.institution.findUnique({ where: { id: instId } });
+      }
+
+      if (!inst && instName) {
+        const allInsts = await db.institution.findMany({ take: 200 });
+        inst = allInsts.find(
+          (i) =>
+            i.name.toLowerCase() === instName.toLowerCase() ||
+            (instId && i.id.toLowerCase() === instId.toLowerCase())
+        ) || null;
+
+        if (!inst) {
+          inst = await db.institution.create({
+            data: {
+              name: instName,
+              slug: `inst-${Math.floor(1000 + Math.random() * 9000)}`,
+              type: "COLLEGE",
+            },
+          });
+        }
+      }
 
       if (!inst) {
-        inst = await db.institution.create({
-          data: {
-            id: instId,
-            name: instName,
-            slug: `inst-${Math.floor(1000 + Math.random() * 9000)}`,
-            type: "COLLEGE",
-          },
-        });
+        // Find any existing approved institution or create a standard one
+        inst = await db.institution.findFirst();
+        if (!inst) {
+          inst = await db.institution.create({
+            data: {
+              name: "Campus Network",
+              slug: "campus-network",
+              type: "COLLEGE",
+            },
+          });
+        }
       }
 
       // Ensure batch exists
@@ -211,6 +234,9 @@ export async function getCurrentUser() {
     } catch (dbErr) {
       console.warn("[getCurrentUser] DB self-healing write notice:", dbErr);
 
+      const finalInstId: string = payload.institutionId || (inst ? inst.id : "inst-default");
+      const finalInstName: string = (payload.institutionName && payload.institutionName.trim()) || (inst ? inst.name : "Campus Network");
+
       // Return synthesized valid user object so dashboard and feed never break
       return {
         id: targetUserId,
@@ -224,7 +250,7 @@ export async function getCurrentUser() {
         verificationStatus: payload.verificationStatus || "UNVERIFIED",
         verifiedAt: null,
         verifiedById: null,
-        institutionId: instId,
+        institutionId: finalInstId,
         departmentId: null,
         batchId: "batch-default",
         batchYear,
@@ -240,9 +266,9 @@ export async function getCurrentUser() {
         createdAt: new Date(),
         updatedAt: new Date(),
         institution: {
-          id: instId,
-          name: instName,
-          slug: `inst-${instId}`,
+          id: finalInstId,
+          name: finalInstName,
+          slug: `inst-${finalInstId}`,
           type: "COLLEGE",
           city: payload.city || null,
           state: null,
@@ -257,7 +283,7 @@ export async function getCurrentUser() {
           ? {
               id: "dept-default",
               name: payload.departmentName,
-              institutionId: instId,
+              institutionId: finalInstId,
               createdAt: new Date(),
               updatedAt: new Date(),
             }
@@ -266,7 +292,7 @@ export async function getCurrentUser() {
           id: "batch-default",
           year: batchYear,
           estimatedSize: 60,
-          institutionId: instId,
+          institutionId: finalInstId,
           createdAt: new Date(),
           updatedAt: new Date(),
         },

@@ -179,7 +179,7 @@ export async function POST(req: Request) {
       id: feedItem.id,
       type: feedItem.type,
       createdAt: feedItem.createdAt,
-      actor: feedItem.actor,
+      actor: (feedItem as any).actor,
       hasLiked: false,
       likesCount: 0,
       commentsCount: 0,

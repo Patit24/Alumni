@@ -97,7 +97,16 @@ export default function ProfileHeaderCard({
 
     const handleProfileUpdate = (e: any) => {
       if (e.detail) {
-        setUser((prev) => ({ ...prev, ...e.detail }));
+        setUser((prev) => {
+          const updatedInst =
+            e.detail.institution ||
+            (e.detail.institutionName ? { name: e.detail.institutionName, city: prev.institution?.city } : prev.institution);
+          return {
+            ...prev,
+            ...e.detail,
+            institution: updatedInst,
+          };
+        });
       }
     };
     window.addEventListener("profile-updated", handleProfileUpdate);
@@ -678,7 +687,16 @@ export default function ProfileHeaderCard({
           onClose={() => setShowEditModal(false)}
           currentUser={user as any}
           onProfileUpdated={(updated) => {
-            setUser((prev) => ({ ...prev, ...updated }));
+            setUser((prev) => {
+              const updatedInst =
+                updated.institution ||
+                (updated.institutionName ? { name: updated.institutionName, city: prev.institution?.city } : prev.institution);
+              return {
+                ...prev,
+                ...updated,
+                institution: updatedInst,
+              };
+            });
           }}
         />
       )}

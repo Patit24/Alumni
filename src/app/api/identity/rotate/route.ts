@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser, createSessionToken } from "@/lib/auth";
+import { getCurrentUser, createSessionToken, AUTH_COOKIE } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { cookies } from "next/headers";
 
@@ -99,19 +99,17 @@ export async function POST(req: Request) {
       phone: user.phone || null,
       email: user.email || null,
       username: updatedUser.username,
+      name: user.name,
       role: updatedUser.role,
+      verificationStatus: user.verificationStatus,
       institutionId: updatedUser.institutionId,
+      institutionName: user.institution?.name,
       batchYear: updatedUser.batchYear,
     });
 
     const cookieStore = await cookies();
-    cookieStore.set("session_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30,
-      path: "/",
-    });
+    cookieStore.set(AUTH_COOKIE.name, token, AUTH_COOKIE.options);
+    cookieStore.set("session_token", token, AUTH_COOKIE.options);
 
     return NextResponse.json({
       success: true,

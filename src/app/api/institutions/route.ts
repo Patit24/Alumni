@@ -13,17 +13,9 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const query = searchParams.get("q")?.toLowerCase().trim() || "";
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let institutions: any[] = [];
     try {
-      institutions = await db.institution.findMany({
-        where: query
-          ? {
-              name: {
-                contains: query,
-              },
-            }
-          : undefined,
+      const all = await db.institution.findMany({
         include: {
           departments: {
             select: { id: true, name: true },
@@ -32,21 +24,33 @@ export async function GET(req: Request) {
             select: { users: true },
           },
         },
-        take: 20,
+        take: 50,
         orderBy: {
           users: {
             _count: "desc",
           },
         },
       });
+
+      institutions = query
+        ? all.filter(
+            (inst) =>
+              inst.name.toLowerCase().includes(query) ||
+              (inst.city && inst.city.toLowerCase().includes(query)) ||
+              inst.slug.toLowerCase().includes(query)
+          )
+        : all;
     } catch (dbErr) {
       console.error("DB query error in institutions GET:", (dbErr as Error)?.stack || dbErr);
     }
 
-    // If DB has none yet, provide curated default list
+    // If DB has none matching, provide curated default list
     if (institutions.length === 0) {
       institutions = DEFAULT_INSTITUTIONS.filter((inst) =>
-        query ? inst.name.toLowerCase().includes(query) : true
+        query
+          ? inst.name.toLowerCase().includes(query) ||
+            (inst.city && inst.city.toLowerCase().includes(query))
+          : true
       );
     }
 

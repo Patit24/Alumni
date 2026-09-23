@@ -158,7 +158,11 @@ export default function AuthPage() {
 
   /* ─── STEP VALIDATION ─── */
   const canProceed0 = wName.trim().length >= 2;
-  const canProceed1 = (wInstId !== "" && wInstName !== "") || wCustomInstName.trim().length >= 2;
+  const canProceed1 =
+    (wInstId !== "" && wInstName !== "") ||
+    wInstName.trim().length >= 2 ||
+    wCustomInstName.trim().length >= 2 ||
+    instQuery.trim().length >= 2;
   const canSubmit = canProceed0 && canProceed1 && wBatchYear !== "";
 
   /* ─── WIZARD SUBMIT ─── */
@@ -168,6 +172,7 @@ export default function AuthPage() {
     setError(null);
     try {
       const localIdentity = await getOrCreateDeviceIdentity("temp_init");
+      const chosenCollege = (wInstName || wCustomInstName || instQuery).trim();
       const res = await fetch("/api/auth/instant-identity", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -177,7 +182,8 @@ export default function AuthPage() {
           batchYear: parseInt(wBatchYear, 10),
           departmentName: wDept.trim() || undefined,
           institutionId: wInstId || undefined,
-          customInstitutionName: !wInstId && wCustomInstName.trim() ? wCustomInstName.trim() : undefined,
+          institutionName: chosenCollege || undefined,
+          customInstitutionName: chosenCollege || undefined,
           publicKey: localIdentity.publicKeySpki,
           deviceId: localIdentity.deviceId,
         }),
@@ -342,12 +348,13 @@ export default function AuthPage() {
                     </div>
 
                     {/* Selected institution pill */}
-                    {wInstId && wInstName && (
+                    {(wInstId || wInstName) && (
                       <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-200">
                         <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
-                        <span className="text-sm font-bold text-blue-900 flex-1 truncate">{wInstName}</span>
+                        <span className="text-sm font-bold text-blue-900 flex-1 truncate">{wInstName || wCustomInstName || instQuery}</span>
                         <button
-                          onClick={() => { setWInstId(""); setWInstName(""); setInstQuery(""); }}
+                          type="button"
+                          onClick={() => { setWInstId(""); setWInstName(""); setWCustomInstName(""); setInstQuery(""); }}
                           className="h-5 w-5 rounded-full bg-blue-200 hover:bg-blue-300 flex items-center justify-center transition"
                         >
                           <X className="w-3 h-3 text-blue-700" />
@@ -356,14 +363,18 @@ export default function AuthPage() {
                     )}
 
                     {/* Search field */}
-                    {!wInstId && (
+                    {!wInstId && !wInstName && (
                       <div ref={instRef} className="relative">
                         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
                         {instLoading && <Loader2 className="w-4 h-4 text-blue-600 animate-spin absolute right-3.5 top-3.5" />}
                         <input
                           type="text"
                           value={instQuery}
-                          onChange={e => { setInstQuery(e.target.value); setWCustomInstName(e.target.value); }}
+                          onChange={e => {
+                            setInstQuery(e.target.value);
+                            setWCustomInstName(e.target.value);
+                            setWInstName(e.target.value);
+                          }}
                           placeholder="Search college, university, school..."
                           autoFocus
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-10 text-sm text-slate-900 outline-none focus:border-blue-600 focus:bg-white transition"
@@ -443,7 +454,7 @@ export default function AuthPage() {
                     {/* Summary chip */}
                     <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
                       <GraduationCap className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span className="truncate font-medium">{wInstName || wCustomInstName}</span>
+                      <span className="truncate font-medium">{wInstName || wCustomInstName || instQuery}</span>
                     </div>
 
                     <Field label="Graduation year *">

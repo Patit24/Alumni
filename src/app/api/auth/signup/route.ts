@@ -87,37 +87,54 @@ export async function POST(req: Request) {
     let resolvedInstId = institutionId;
     let isFoundingMember = false;
 
-    // Check if institutionId exists in DB or if it's a placeholder (e.g. starts with "inst-")
+    // Check if institutionId exists in DB
     let existingInst = null;
-    if (resolvedInstId && !resolvedInstId.startsWith("inst-")) {
+    if (resolvedInstId) {
       existingInst = await db.institution.findUnique({ where: { id: resolvedInstId } });
     }
 
     if (!existingInst) {
       // Find or create institution by name
-      const targetName = (newInstitutionName || institutionName || "Brainware University").trim();
-      const slugBase = slugify(targetName);
-
-      existingInst = await db.institution.findFirst({
-        where: {
-          name: { equals: targetName },
-        },
-      });
-
-      if (!existingInst) {
-        const uniqueSlug = `${slugBase}-${Math.floor(1000 + Math.random() * 9000)}`;
-        existingInst = await db.institution.create({
-          data: {
-            name: targetName,
-            slug: uniqueSlug,
-            type: newInstitutionType || "COLLEGE",
-            city: city || null,
-          },
-        });
-        isFoundingMember = true;
+      const targetName = (newInstitutionName || institutionName || "").trim();
+      if (!targetName && !resolvedInstId) {
+        return NextResponse.json(
+          { error: "Please select or enter your college or school name." },
+          { status: 400 }
+        );
       }
 
-      resolvedInstId = existingInst.id;
+      if (targetName) {
+        const slugBase = slugify(targetName);
+        const allInsts = await db.institution.findMany({ take: 200 });
+        existingInst = allInsts.find(
+          (i) =>
+            i.name.toLowerCase() === targetName.toLowerCase() ||
+            (resolvedInstId && i.id.toLowerCase() === resolvedInstId.toLowerCase()) ||
+            (resolvedInstId && i.slug.toLowerCase() === resolvedInstId.toLowerCase())
+        ) || null;
+
+        if (!existingInst) {
+          const uniqueSlug = `${slugBase || "inst"}-${Math.floor(1000 + Math.random() * 9000)}`;
+          existingInst = await db.institution.create({
+            data: {
+              name: targetName,
+              slug: uniqueSlug,
+              type: newInstitutionType || "COLLEGE",
+              city: city || null,
+            },
+          });
+          isFoundingMember = true;
+        }
+
+        resolvedInstId = existingInst.id;
+      }
+    }
+
+    if (!existingInst) {
+      return NextResponse.json(
+        { error: "Please select or provide your college, university, or school." },
+        { status: 400 }
+      );
     }
 
     // 3. Resolve Batch Year
@@ -288,9 +305,11 @@ export async function POST(req: Request) {
     });
 
     response.cookies.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+    response.cookies.set("session_token", sessionToken, AUTH_COOKIE.options);
 
     const cookieStore = await cookies();
     cookieStore.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+    cookieStore.set("session_token", sessionToken, AUTH_COOKIE.options);
 
     return response;
   } catch (error) {
