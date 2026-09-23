@@ -22,7 +22,6 @@ import FeedSection from "@/components/FeedSection";
 import ClientAuthRedirect from "@/components/ClientAuthRedirect";
 import AlumniPassportCard from "@/components/AlumniPassportCard";
 import InstitutionDiscoverySection from "@/components/InstitutionDiscoverySection";
-import MadeInIndiaBadge from "@/components/MadeInIndiaBadge";
 
 import { redirect } from "next/navigation";
 
@@ -99,7 +98,6 @@ export default async function HomePage(props: {
             <span>•</span>
             <span>100% Free</span>
           </p>
-          <MadeInIndiaBadge />
         </div>
       </main>
     );
@@ -279,9 +277,6 @@ export default async function HomePage(props: {
             currentUserAvatar={user.avatarUrl}
           />
         </section>
-
-        {/* Made in India Footer Badge */}
-        <MadeInIndiaBadge />
       </main>
     </div>
   );

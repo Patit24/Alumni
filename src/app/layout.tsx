@@ -3,7 +3,6 @@ import "./globals.css";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import CallModal from "@/components/CallModal";
 import GlobalRealtimeProvider from "@/components/GlobalRealtimeProvider";
-import MadeInIndiaSplashScreen from "@/components/MadeInIndiaSplashScreen";
 
 export const metadata: Metadata = {
   title: "Alumni Network | Connect, Mentor & Grow",
@@ -34,7 +33,6 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 selection:bg-blue-100 selection:text-blue-900">
         <GlobalRealtimeProvider />
-        <MadeInIndiaSplashScreen />
         {children}
         <CallModal />
         <MobileBottomNav />
