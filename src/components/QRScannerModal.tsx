@@ -585,7 +585,7 @@ export default function QRScannerModal({
               >
                 <input
                   type="text"
-                  placeholder="Or enter @username / link..."
+                  placeholder="Enter User ID, @username or link..."
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
                   className="flex-1 p-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono"

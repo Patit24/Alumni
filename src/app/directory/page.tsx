@@ -334,6 +334,11 @@ export default function DirectoryPage() {
           >
             <Users className="w-4 h-4" />
             <span>Discover Alumni</span>
+            {incomingRequests.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-red-600 text-white text-[10px] font-extrabold animate-pulse shadow-xs">
+                {incomingRequests.length}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -623,7 +628,7 @@ export default function DirectoryPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by @username, name, company, role, or city..."
+                placeholder="Search by User ID, @username, name, company, role, or city..."
                 className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none shadow-sm transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
               />
             </div>

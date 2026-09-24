@@ -38,9 +38,37 @@ export async function GET(req: Request) {
       },
     });
 
+    let effectiveTrustLevel = myTrust?.trustLevel || "REQUEST";
+
+    // Guarantee: once connected via any flow (QR scan, network request accept, directory),
+    // users remain connected permanently and never revert to REQUEST
+    if (effectiveTrustLevel !== "CONNECTED" && effectiveTrustLevel !== "TRUSTED" && effectiveTrustLevel !== "BLOCKED") {
+      const [peerIsConnected, acceptedReq] = await Promise.all([
+        peerTrust?.trustLevel === "CONNECTED" || peerTrust?.trustLevel === "TRUSTED",
+        db.connectionRequest.findFirst({
+          where: {
+            OR: [
+              { senderId: user.id, receiverId: contactId, status: { in: ["ACCEPTED", "CONNECTED"] } },
+              { senderId: contactId, receiverId: user.id, status: { in: ["ACCEPTED", "CONNECTED"] } },
+            ],
+          },
+        }),
+      ]);
+
+      if (peerIsConnected || acceptedReq) {
+        effectiveTrustLevel = "CONNECTED";
+        // Auto-heal myTrust so future queries find it immediately
+        db.contactTrust.upsert({
+          where: { userId_contactId: { userId: user.id, contactId } },
+          update: { trustLevel: "CONNECTED" },
+          create: { userId: user.id, contactId, trustLevel: "CONNECTED" },
+        }).catch(() => {});
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      trustLevel: myTrust?.trustLevel || "REQUEST",
+      trustLevel: effectiveTrustLevel,
       isVerified: Boolean(myTrust?.verifiedFingerprint),
       verifiedFingerprint: myTrust?.verifiedFingerprint || null,
       myReveals: {

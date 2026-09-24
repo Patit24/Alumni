@@ -57,10 +57,12 @@ export async function GET(req: Request) {
         };
       }
 
-      // 5. Search query (searches across all alumni globally)
+      // 5. Search query (searches across all alumni globally: ID, username, name, company, etc.)
       if (q) {
         const cleanQ = q.startsWith("@") ? q.slice(1).trim() : q.trim();
         where.OR = [
+          { id: { equals: cleanQ } },
+          { id: { contains: cleanQ } },
           { name: { contains: q } },
           { username: { contains: cleanQ } },
           { currentCompany: { contains: q } },
