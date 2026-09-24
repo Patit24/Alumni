@@ -1146,6 +1146,15 @@ export default function DirectMessageChatPage(props: {
           webrtcManager.endCall(true);
           setActiveCall((prev) => ({ ...prev, isOpen: false }));
         }}
+        onAcceptCall={async () => {
+          try {
+            await webrtcManager.acceptCall();
+            setLocalStream(webrtcManager.getLocalStream());
+            setActiveCall((prev) => ({ ...prev, callStatus: "CONNECTED" }));
+          } catch (err) {
+            console.error("Accept call error:", err);
+          }
+        }}
         onToggleMute={() => webrtcManager.toggleMute()}
         onToggleVideo={() => webrtcManager.toggleVideo()}
       />

@@ -7,6 +7,7 @@ import {
   CallSession,
   CallType,
 } from "@/lib/webrtc/call-manager";
+import { realtimeSignaling } from "@/lib/e2ee/signaling";
 import {
   Mic,
   MicOff,
@@ -55,7 +56,12 @@ export default function CallModal() {
           remoteVideoRef.current.srcObject = stream;
         }
       },
-      onSendSignal: () => {},
+      onSendSignal: (msg) => {
+        const cur = webrtcManager.getCurrentSession();
+        if (cur?.peerId) {
+          realtimeSignaling.sendSignalToPeer(cur.peerId, msg);
+        }
+      },
     });
 
     // Duration interval listener
@@ -101,24 +107,32 @@ export default function CallModal() {
               Incoming {session.callType === "VIDEO" ? "Video" : "Voice"} Call...
             </p>
 
-            <div className="mt-8 flex items-center justify-center gap-6">
+            <div className="mt-8 flex items-center justify-center gap-10">
               {/* Decline Button */}
-              <button
-                onClick={() => webrtcManager.rejectCall("DECLINED")}
-                className="h-16 w-16 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-lg shadow-rose-600/30 transition transform active:scale-95"
-                title="Decline"
-              >
-                <PhoneOff className="w-7 h-7" />
-              </button>
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => webrtcManager.rejectCall("DECLINED")}
+                  className="h-16 w-16 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-lg shadow-rose-600/30 transition transform active:scale-95 cursor-pointer"
+                  title="Decline"
+                >
+                  <PhoneOff className="w-7 h-7" />
+                </button>
+                <span className="text-xs font-bold text-rose-300">Decline</span>
+              </div>
 
-              {/* Accept Button */}
-              <button
-                onClick={() => webrtcManager.acceptCall()}
-                className="h-16 w-16 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center shadow-lg shadow-emerald-600/30 transition transform active:scale-95 animate-bounce"
-                title="Accept"
-              >
-                <PhoneCall className="w-7 h-7" />
-              </button>
+              {/* Receive / Accept Button */}
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => webrtcManager.acceptCall()}
+                  className="h-16 w-16 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow-xl shadow-emerald-500/40 ring-4 ring-emerald-400/30 transition transform active:scale-95 animate-bounce cursor-pointer"
+                  title="Receive Call"
+                >
+                  <PhoneCall className="w-7 h-7" />
+                </button>
+                <span className="text-xs font-extrabold text-emerald-400">Receive</span>
+              </div>
             </div>
           </div>
         </motion.div>

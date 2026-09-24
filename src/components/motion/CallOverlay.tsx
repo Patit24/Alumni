@@ -8,6 +8,7 @@ import {
   Video as VideoIcon,
   VideoOff,
   PhoneOff,
+  PhoneCall,
   Volume2,
   VolumeX,
   Lock,
@@ -25,6 +26,7 @@ interface CallOverlayProps {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   onEndCall: () => void;
+  onAcceptCall?: () => void;
   onToggleMute: (isMuted: boolean) => void;
   onToggleVideo: (isVideoOff: boolean) => void;
 }
@@ -34,11 +36,12 @@ export default function CallOverlay({
   peerName,
   peerRole,
   isVideo,
-  isCaller: _isCaller,
+  isCaller,
   callStatus,
   localStream,
   remoteStream,
   onEndCall,
+  onAcceptCall,
   onToggleMute,
   onToggleVideo,
 }: CallOverlayProps) {
@@ -117,6 +120,8 @@ export default function CallOverlay({
           <span className="text-xs font-bold text-slate-300">
             {callStatus === "CONNECTED"
               ? formatDuration(callDuration)
+              : !isCaller
+              ? `Incoming ${isVideo ? "Video" : "Voice"} Call...`
               : callStatus === "RINGING"
               ? "Ringing..."
               : "Securing Connection..."}
@@ -128,26 +133,38 @@ export default function CallOverlay({
           {!isVideo ? (
             <div className="relative flex items-center justify-center">
               {/* Concentric Animated Audio Rings */}
-              {callStatus === "CONNECTED" && (
+              {(callStatus === "CONNECTED" || (!isCaller && callStatus === "RINGING")) && (
                 <>
                   <motion.div
-                    animate={{ scale: [1, 1.4, 1], opacity: [0.3, 0, 0.3] }}
-                    transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
-                    className="absolute h-40 w-40 rounded-full border border-blue-400/40"
+                    animate={{ scale: [1, 1.4, 1], opacity: [0.35, 0, 0.35] }}
+                    transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
+                    className={`absolute h-40 w-40 rounded-full border ${
+                      !isCaller && callStatus !== "CONNECTED"
+                        ? "border-emerald-400/50"
+                        : "border-blue-400/40"
+                    }`}
                   />
                   <motion.div
-                    animate={{ scale: [1, 1.7, 1], opacity: [0.2, 0, 0.2] }}
-                    transition={{ repeat: Infinity, duration: 2.5, delay: 0.4, ease: "easeInOut" }}
-                    className="absolute h-40 w-40 rounded-full border border-blue-500/30"
+                    animate={{ scale: [1, 1.75, 1], opacity: [0.25, 0, 0.25] }}
+                    transition={{ repeat: Infinity, duration: 2.2, delay: 0.4, ease: "easeInOut" }}
+                    className={`absolute h-40 w-40 rounded-full border ${
+                      !isCaller && callStatus !== "CONNECTED"
+                        ? "border-emerald-500/40"
+                        : "border-blue-500/30"
+                    }`}
                   />
                 </>
               )}
 
               {/* Avatar Box */}
               <motion.div
-                animate={callStatus === "RINGING" ? { scale: [1, 1.06, 1] } : {}}
-                transition={{ repeat: Infinity, duration: 1.6 }}
-                className="h-28 w-28 rounded-3xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-4xl font-extrabold shadow-2xl shadow-blue-500/30 border-2 border-white/20"
+                animate={callStatus === "RINGING" ? { scale: [1, 1.08, 1] } : {}}
+                transition={{ repeat: Infinity, duration: 1.5 }}
+                className={`h-28 w-28 rounded-3xl text-white flex items-center justify-center text-4xl font-extrabold shadow-2xl border-2 ${
+                  !isCaller && callStatus !== "CONNECTED"
+                    ? "bg-gradient-to-tr from-emerald-600 via-teal-600 to-blue-600 shadow-emerald-500/30 border-emerald-400/40"
+                    : "bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-blue-500/30 border-white/20"
+                }`}
               >
                 {peerName.charAt(0).toUpperCase()}
               </motion.div>
@@ -160,10 +177,26 @@ export default function CallOverlay({
             {peerRole && (
               <p className="text-xs text-slate-400 mt-1 font-medium">{peerRole}</p>
             )}
-            <p className="text-xs font-semibold text-emerald-400 mt-2 flex items-center justify-center gap-1.5">
-              <ShieldCheck className="w-4 h-4" />
-              <span>Zero server recording • Direct WebRTC</span>
-            </p>
+
+            {!isCaller && callStatus !== "CONNECTED" ? (
+              <motion.div
+                animate={{ scale: [1, 1.05, 1], opacity: [0.85, 1, 0.85] }}
+                transition={{ repeat: Infinity, duration: 1.8 }}
+                className="mt-3 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold shadow-lg shadow-emerald-500/10"
+              >
+                <PhoneCall className="w-3.5 h-3.5 animate-bounce text-emerald-400" />
+                <span>Incoming {isVideo ? "Video" : "Voice"} Call • Tap Receive below</span>
+              </motion.div>
+            ) : isCaller && callStatus !== "CONNECTED" ? (
+              <p className="text-xs text-slate-400 mt-2 font-medium">
+                {callStatus === "RINGING" ? "Ringing..." : "Connecting direct P2P line..."}
+              </p>
+            ) : (
+              <p className="text-xs font-semibold text-emerald-400 mt-2 flex items-center justify-center gap-1.5">
+                <ShieldCheck className="w-4 h-4" />
+                <span>Zero server recording • Direct WebRTC</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -191,76 +224,136 @@ export default function CallOverlay({
         )}
 
         {/* Bottom Call Action Controls */}
-        <div className="relative z-10 p-8 pb-12 flex items-center justify-center gap-4 sm:gap-6 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent">
-          {/* Mute Button */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            transition={MOTION_SPRINGS.snappy}
-            onClick={() => {
-              triggerHaptic("medium");
-              const nextState = !isMuted;
-              setIsMuted(nextState);
-              onToggleMute(nextState);
-            }}
-            className={`h-14 w-14 rounded-full flex items-center justify-center transition border ${
-              isMuted
-                ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30"
-                : "bg-white/15 text-white hover:bg-white/25 border-white/20 backdrop-blur-md"
-            }`}
-          >
-            {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-          </motion.button>
+        <div className="relative z-10 p-8 pb-12 flex items-center justify-center bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent">
+          {!isCaller && callStatus !== "CONNECTED" ? (
+            /* Incoming Call Controls: Decline vs Receive */
+            <div className="flex items-center justify-center gap-10 sm:gap-16">
+              {/* Decline Button */}
+              <div className="flex flex-col items-center gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  whileHover={{ scale: 1.05 }}
+                  transition={MOTION_SPRINGS.snappy}
+                  onClick={() => {
+                    triggerHaptic("heavy");
+                    onEndCall();
+                  }}
+                  className="h-16 w-16 sm:h-18 sm:w-18 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-95 text-white flex items-center justify-center shadow-xl shadow-rose-600/40 border border-rose-400 transition cursor-pointer"
+                  title="Decline"
+                >
+                  <PhoneOff className="w-7 h-7 sm:w-8 sm:h-8" />
+                </motion.button>
+                <span className="text-xs font-bold text-rose-300 tracking-wide">Decline</span>
+              </div>
 
-          {/* Toggle Video Button (if video call) */}
-          {isVideo && (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              transition={MOTION_SPRINGS.snappy}
-              onClick={() => {
-                triggerHaptic("medium");
-                const nextState = !isVideoOff;
-                setIsVideoOff(nextState);
-                onToggleVideo(nextState);
-              }}
-              className={`h-14 w-14 rounded-full flex items-center justify-center transition border ${
-                isVideoOff
-                  ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30"
-                  : "bg-white/15 text-white hover:bg-white/25 border-white/20 backdrop-blur-md"
-              }`}
-            >
-              {isVideoOff ? <VideoOff className="w-6 h-6" /> : <VideoIcon className="w-6 h-6" />}
-            </motion.button>
+              {/* Receive / Answer Button */}
+              <div className="flex flex-col items-center gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  whileHover={{ scale: 1.08 }}
+                  transition={MOTION_SPRINGS.snappy}
+                  onClick={() => {
+                    triggerHaptic("success");
+                    onAcceptCall?.();
+                  }}
+                  className="h-16 w-16 sm:h-18 sm:w-18 rounded-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white flex items-center justify-center shadow-2xl shadow-emerald-500/50 ring-4 ring-emerald-400/40 border-2 border-emerald-300 transition cursor-pointer animate-pulse"
+                  title="Receive Call"
+                >
+                  <PhoneCall className="w-7 h-7 sm:w-8 sm:h-8 animate-bounce" />
+                </motion.button>
+                <span className="text-xs font-extrabold text-emerald-400 tracking-wide">Receive</span>
+              </div>
+            </div>
+          ) : (
+            /* Active / Outgoing In-Call Controls */
+            <div className="flex items-center justify-center gap-4 sm:gap-6">
+              {/* Mute Button */}
+              <div className="flex flex-col items-center gap-1.5">
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  transition={MOTION_SPRINGS.snappy}
+                  onClick={() => {
+                    triggerHaptic("medium");
+                    const nextState = !isMuted;
+                    setIsMuted(nextState);
+                    onToggleMute(nextState);
+                  }}
+                  className={`h-14 w-14 rounded-full flex items-center justify-center transition border cursor-pointer ${
+                    isMuted
+                      ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30"
+                      : "bg-white/15 text-white hover:bg-white/25 border-white/20 backdrop-blur-md"
+                  }`}
+                  title={isMuted ? "Unmute" : "Mute"}
+                >
+                  {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                </motion.button>
+                <span className="text-[11px] font-medium text-slate-400">{isMuted ? "Unmute" : "Mute"}</span>
+              </div>
+
+              {/* Toggle Video Button (if video call) */}
+              {isVideo && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    transition={MOTION_SPRINGS.snappy}
+                    onClick={() => {
+                      triggerHaptic("medium");
+                      const nextState = !isVideoOff;
+                      setIsVideoOff(nextState);
+                      onToggleVideo(nextState);
+                    }}
+                    className={`h-14 w-14 rounded-full flex items-center justify-center transition border cursor-pointer ${
+                      isVideoOff
+                        ? "bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30"
+                        : "bg-white/15 text-white hover:bg-white/25 border-white/20 backdrop-blur-md"
+                    }`}
+                    title={isVideoOff ? "Turn Camera On" : "Turn Camera Off"}
+                  >
+                    {isVideoOff ? <VideoOff className="w-6 h-6" /> : <VideoIcon className="w-6 h-6" />}
+                  </motion.button>
+                  <span className="text-[11px] font-medium text-slate-400">{isVideoOff ? "Camera Off" : "Camera"}</span>
+                </div>
+              )}
+
+              {/* Speaker Button */}
+              <div className="flex flex-col items-center gap-1.5">
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  transition={MOTION_SPRINGS.snappy}
+                  onClick={() => {
+                    triggerHaptic("light");
+                    setIsSpeakerOn(!isSpeakerOn);
+                  }}
+                  className={`h-14 w-14 rounded-full flex items-center justify-center transition border cursor-pointer ${
+                    !isSpeakerOn
+                      ? "bg-white/10 text-slate-400 border-white/10"
+                      : "bg-white/15 text-white hover:bg-white/25 border-white/20 backdrop-blur-md"
+                  }`}
+                  title="Speaker"
+                >
+                  {isSpeakerOn ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
+                </motion.button>
+                <span className="text-[11px] font-medium text-slate-400">Speaker</span>
+              </div>
+
+              {/* End Call Button */}
+              <div className="flex flex-col items-center gap-1.5">
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  transition={MOTION_SPRINGS.snappy}
+                  onClick={() => {
+                    triggerHaptic("heavy");
+                    onEndCall();
+                  }}
+                  className="h-14 w-14 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-xl shadow-rose-600/40 border border-rose-400 transition cursor-pointer"
+                  title="End Call"
+                >
+                  <PhoneOff className="w-6 h-6" />
+                </motion.button>
+                <span className="text-[11px] font-medium text-rose-400">{callStatus === "CONNECTED" ? "End" : "Cancel"}</span>
+              </div>
+            </div>
           )}
-
-          {/* Speaker Button */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            transition={MOTION_SPRINGS.snappy}
-            onClick={() => {
-              triggerHaptic("light");
-              setIsSpeakerOn(!isSpeakerOn);
-            }}
-            className={`h-14 w-14 rounded-full flex items-center justify-center transition border ${
-              !isSpeakerOn
-                ? "bg-white/10 text-slate-400 border-white/10"
-                : "bg-white/15 text-white hover:bg-white/25 border-white/20 backdrop-blur-md"
-            }`}
-          >
-            {isSpeakerOn ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
-          </motion.button>
-
-          {/* End Call Button */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            transition={MOTION_SPRINGS.snappy}
-            onClick={() => {
-              triggerHaptic("heavy");
-              onEndCall();
-            }}
-            className="h-16 w-16 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-xl shadow-rose-600/40 border border-rose-400 transition"
-          >
-            <PhoneOff className="w-7 h-7" />
-          </motion.button>
         </div>
       </motion.div>
     </AnimatePresence>
