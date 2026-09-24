@@ -530,6 +530,7 @@ export default function AlumniPassportCard({ user: initialUser }: AlumniPassport
           setShowScannerModal(false);
           setShowQrModal(true);
         }}
+        currentUser={user}
       />
 
       {/* Edit Profile Modal */}

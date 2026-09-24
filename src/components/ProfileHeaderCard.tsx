@@ -27,7 +27,7 @@ import {
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
 import EditProfileModal from "@/components/EditProfileModal";
-import { addLocalConnectedPeer, setActiveVaultUser } from "@/lib/e2ee/vault";
+import { addLocalConnectedPeer, getLocalConnectedPeerIds, setActiveVaultUser } from "@/lib/e2ee/vault";
 
 interface ProfileHeaderCardProps {
   user: {
@@ -292,7 +292,13 @@ export default function ProfileHeaderCard({
     e.target.value = "";
   };
 
-  const [relStatus, setRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">("NONE");
+  const [relStatus, setRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">(() => {
+    if (typeof window !== "undefined" && user?.id) {
+      const local = getLocalConnectedPeerIds(currentUser?.id);
+      if (local.includes(user.id)) return "CONNECTED";
+    }
+    return "NONE";
+  });
   const [mutualCount, setMutualCount] = useState<number>(0);
 
   // Fetch true relationship status and mutual connections from server
@@ -302,7 +308,19 @@ export default function ProfileHeaderCard({
       fetch(`/api/contacts/requests?targetUserId=${user.id}`)
         .then((r) => r.json())
         .then((data) => {
-          if (data.statusMap && data.statusMap[user.id]) {
+          const isConn =
+            data.targetRelationship?.status === "CONNECTED" ||
+            data.targetRelationship?.isFriend === true ||
+            data.statusMap?.[user.id] === "CONNECTED" ||
+            (Array.isArray(data.connectedPeerIds) && data.connectedPeerIds.includes(user.id)) ||
+            (Array.isArray(data.connectedFriends) && data.connectedFriends.some((f: any) => f.id === user.id));
+
+          if (isConn) {
+            setRelStatus("CONNECTED");
+            if (currentUser?.id) addLocalConnectedPeer(user.id, currentUser.id);
+          } else if (data.targetRelationship?.status) {
+            setRelStatus(data.targetRelationship.status);
+          } else if (data.statusMap && data.statusMap[user.id]) {
             setRelStatus(data.statusMap[user.id]);
           } else {
             setRelStatus("NONE");
@@ -436,7 +454,7 @@ export default function ProfileHeaderCard({
               <p className="text-xs font-bold">Alumni QR Code Scanned</p>
               <p className="text-[11px] text-white/80">
                 {relStatus === "CONNECTED"
-                  ? `You and ${user.name} are connected peers!`
+                  ? `You and ${user.name} are already connected!`
                   : relStatus === "PENDING_OUTGOING"
                   ? `Connection request sent to ${user.name}. Messaging unlocks upon acceptance.`
                   : relStatus === "PENDING_INCOMING"
@@ -451,10 +469,10 @@ export default function ProfileHeaderCard({
               <button
                 type="button"
                 onClick={handleGoToChat}
-                className="px-4 py-2 rounded-xl bg-white text-blue-700 text-xs font-bold shadow-xs hover:bg-blue-50 transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                className="px-4 py-2 rounded-xl bg-white text-emerald-800 text-xs font-bold shadow-xs hover:bg-emerald-50 transition flex items-center gap-1.5 cursor-pointer active:scale-95"
               >
-                <MessageSquare className="w-4 h-4" />
-                <span>Open Messages</span>
+                <MessageSquare className="w-4 h-4 text-emerald-600" />
+                <span>Tap to Message (SMS)</span>
               </button>
             ) : relStatus === "PENDING_OUTGOING" ? (
               <span className="px-3.5 py-2 rounded-xl bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 border border-white/30">
@@ -645,15 +663,15 @@ export default function ProfileHeaderCard({
                     <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
                       <span className="badge-connected inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold">
                         <CheckCircle2 className="w-4 h-4 text-[#138808]" />
-                        <span>Connected</span>
+                        <span>Already Connected</span>
                       </span>
                       <button
                         type="button"
                         onClick={handleGoToChat}
-                        className="btn-saffron flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition active:scale-98 cursor-pointer"
+                        className="btn-saffron flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition active:scale-98 cursor-pointer shadow-xs"
                       >
                         <MessageSquare className="w-4 h-4" />
-                        <span>Message</span>
+                        <span>Tap to Message (SMS)</span>
                         <ArrowRight className="w-4 h-4" />
                       </button>
                     </div>
@@ -862,6 +880,7 @@ export default function ProfileHeaderCard({
           setShowScannerModal(false);
           setShowQrModal(true);
         }}
+        currentUser={currentUser}
       />
 
       {/* Edit Profile Modal */}

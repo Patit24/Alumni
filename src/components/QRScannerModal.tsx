@@ -13,23 +13,26 @@ import {
   RefreshCw,
   MessageSquare,
   UserPlus,
+  User,
   Clock,
   Lock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { addLocalConnectedPeer } from "@/lib/e2ee/vault";
+import { addLocalConnectedPeer, getLocalConnectedPeerIds } from "@/lib/e2ee/vault";
 import jsQR from "jsqr";
 
 interface QRScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenMyQr?: () => void;
+  currentUser?: { id?: string; name?: string } | null;
 }
 
 export default function QRScannerModal({
   isOpen,
   onClose,
   onOpenMyQr,
+  currentUser,
 }: QRScannerModalProps) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -52,7 +55,7 @@ export default function QRScannerModal({
     batchYear?: number | null;
     avatarUrl?: string | null;
   } | null>(null);
-  const [scannedRelStatus, setScannedRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">("NONE");
+  const [scannedRelStatus, setScannedRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED" | "SELF">("NONE");
   const [actionLoading, setActionLoading] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
@@ -117,18 +120,46 @@ export default function QRScannerModal({
       }
 
       if (peer) {
-        setScannedPeer(peer);
         setActionNotice(null);
-        fetch(`/api/contacts/requests?targetUserId=${peer.id}`)
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.statusMap && data.statusMap[peer.id]) {
-              setScannedRelStatus(data.statusMap[peer.id]);
+
+        // Pre-check local storage vault to see if already connected
+        const localConnected = getLocalConnectedPeerIds(currentUser?.id);
+        let resolvedStatus: "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED" | "SELF" =
+          localConnected.includes(peer.id) ? "CONNECTED" : "NONE";
+
+        try {
+          const reqRes = await fetch(`/api/contacts/requests?targetUserId=${encodeURIComponent(peer.id)}`);
+          if (reqRes.ok) {
+            const data = await reqRes.json();
+            const myId = data.myUserId || currentUser?.id;
+
+            if (myId && myId === peer.id) {
+              resolvedStatus = "SELF";
             } else {
-              setScannedRelStatus("NONE");
+              const isConn =
+                data.targetRelationship?.status === "CONNECTED" ||
+                data.targetRelationship?.isFriend === true ||
+                data.statusMap?.[peer.id] === "CONNECTED" ||
+                (Array.isArray(data.connectedPeerIds) && data.connectedPeerIds.includes(peer.id)) ||
+                (Array.isArray(data.connectedFriends) && data.connectedFriends.some((f: any) => f.id === peer.id)) ||
+                resolvedStatus === "CONNECTED";
+
+              if (isConn) {
+                resolvedStatus = "CONNECTED";
+                addLocalConnectedPeer(peer.id, myId);
+              } else if (data.targetRelationship?.status) {
+                resolvedStatus = data.targetRelationship.status;
+              } else if (data.statusMap?.[peer.id]) {
+                resolvedStatus = data.statusMap[peer.id];
+              }
             }
-          })
-          .catch(() => setScannedRelStatus("NONE"));
+          }
+        } catch (statusErr) {
+          console.warn("Failed to check relationship status:", statusErr);
+        }
+
+        setScannedRelStatus(resolvedStatus);
+        setScannedPeer(peer);
       } else {
         setCameraError(`Could not find alumni matching "${target}". Check if the QR code is valid.`);
       }
@@ -345,6 +376,7 @@ export default function QRScannerModal({
   };
 
   const handleOpenMessages = (peerId: string) => {
+    addLocalConnectedPeer(peerId, currentUser?.id);
     onClose();
     router.push(`/messages/${peerId}`);
   };
@@ -419,40 +451,71 @@ export default function QRScannerModal({
               </div>
             )}
 
-            <div className="space-y-2 pt-1">
+            <div className="space-y-2.5 pt-1">
               {scannedRelStatus === "CONNECTED" ? (
-                <div className="space-y-2">
-                  <div className="badge-connected p-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 font-bold">
+                <div className="space-y-2.5">
+                  <div className="badge-connected p-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 font-bold shadow-xs">
                     <CheckCircle2 className="w-4 h-4 text-[#138808]" />
-                    <span>Connected Friends</span>
+                    <span>Already Connected</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleOpenMessages(scannedPeer.id)}
-                    className="btn-saffron w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                    className="btn-saffron w-full py-3 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 shadow-sm"
                   >
                     <MessageSquare className="w-4 h-4" />
-                    <span>Message</span>
+                    <span>Tap to Message (SMS)</span>
                     <ArrowRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleViewProfile(scannedPeer)}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-2xs"
+                  >
+                    <User className="w-4 h-4 text-slate-600" />
+                    <span>View Profile</span>
+                  </button>
+                </div>
+              ) : scannedRelStatus === "SELF" ? (
+                <div className="space-y-2.5">
+                  <div className="badge-ashoka p-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 font-bold shadow-xs">
+                    <User className="w-4 h-4 text-[#000080]" />
+                    <span>This is Your QR Code</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleViewProfile(scannedPeer)}
+                    className="btn-ashoka-navy w-full py-3 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 shadow-sm"
+                  >
+                    <User className="w-4 h-4" />
+                    <span>View Your Profile</span>
                   </button>
                 </div>
               ) : scannedRelStatus === "PENDING_OUTGOING" ? (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   <div className="badge-saffron p-3 rounded-2xl text-xs flex items-center justify-center gap-2 font-medium">
                     <Clock className="w-4 h-4 text-[#c2410c] shrink-0" />
                     <span>Request Sent</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-tight">
+                  <p className="text-[11px] text-slate-500 leading-tight text-center">
                     Waiting for {scannedPeer.name} to accept your request.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => handleViewProfile(scannedPeer)}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-2xs"
+                  >
+                    <User className="w-4 h-4 text-slate-600" />
+                    <span>View Profile</span>
+                  </button>
                 </div>
               ) : scannedRelStatus === "PENDING_INCOMING" ? (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   <button
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleAcceptConnectionRequest(scannedPeer.id)}
-                    className="btn-india-green w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
+                    className="btn-india-green w-full py-3 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50 shadow-sm"
                   >
                     {actionLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -461,17 +524,25 @@ export default function QRScannerModal({
                     )}
                     <span>Accept Connection</span>
                   </button>
-                  <p className="text-[11px] text-slate-500 leading-tight">
+                  <p className="text-[11px] text-slate-500 leading-tight text-center">
                     {scannedPeer.name} sent you a request! Accept to connect.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => handleViewProfile(scannedPeer)}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-2xs"
+                  >
+                    <User className="w-4 h-4 text-slate-600" />
+                    <span>View Profile</span>
+                  </button>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   <button
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleSendConnectionRequest(scannedPeer.id)}
-                    className="btn-saffron w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
+                    className="btn-saffron w-full py-3 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50 shadow-sm"
                   >
                     {actionLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -480,18 +551,33 @@ export default function QRScannerModal({
                     )}
                     <span>Connect</span>
                   </button>
-                  <p className="text-[11px] text-slate-500 leading-tight">
+                  <p className="text-[11px] text-slate-500 leading-tight text-center">
                     Send a connection request to connect and chat with {scannedPeer.name}.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => handleViewProfile(scannedPeer)}
+                    className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-2xs"
+                  >
+                    <User className="w-4 h-4 text-slate-600" />
+                    <span>View Profile</span>
+                  </button>
                 </div>
               )}
 
+              {/* Scan Another QR Button */}
               <button
                 type="button"
-                onClick={() => handleViewProfile(scannedPeer)}
-                className="w-full py-2 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer active:scale-98"
+                onClick={() => {
+                  setScannedPeer(null);
+                  setScannedRelStatus("NONE");
+                  setActionNotice(null);
+                  startCamera();
+                }}
+                className="w-full py-2 text-center text-xs text-slate-400 hover:text-slate-600 font-medium transition flex items-center justify-center gap-1.5 cursor-pointer pt-2.5 border-t border-slate-200/60"
               >
-                View Full Profile
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Scan Another QR Code</span>
               </button>
             </div>
           </div>

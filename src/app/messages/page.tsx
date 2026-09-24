@@ -766,6 +766,7 @@ export default function MessagesHubPage() {
         isOpen={showScannerModal}
         onClose={() => setShowScannerModal(false)}
         onOpenMyQr={() => { setShowScannerModal(false); setShowQrModal(true); }}
+        currentUser={currentUserProfile}
       />
     </div>
   );
