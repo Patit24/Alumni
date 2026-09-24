@@ -310,6 +310,13 @@ export default function MessagesHubPage() {
       return tb - ta;
     });
 
+  // Optimize click reactivity: prefetch direct chat pages
+  useEffect(() => {
+    connectedContacts.slice(0, 15).forEach((c) => {
+      router.prefetch(`/messages/${c.id}`);
+    });
+  }, [connectedContacts, router]);
+
   const filteredCalls = callLogs.filter(log => {
     if (!cleanFilter) return true;
     return log.peerName?.toLowerCase().includes(cleanFilter);

@@ -884,19 +884,18 @@ export default function DirectoryPage() {
                           {!isCurrentUser && (
                             <>
                               {rel === "CONNECTED" ? (
-                                <button
-                                  type="button"
+                                <Link
+                                  href={`/messages/${person.id}`}
+                                  prefetch={true}
                                   onClick={(e) => {
-                                    e.preventDefault();
                                     e.stopPropagation();
-                                    window.location.href = `/messages/${person.id}`;
                                   }}
                                   className="btn-saffron h-8 px-3 rounded-xl flex items-center gap-1 text-[11px] font-bold transition shadow-xs cursor-pointer active:scale-95"
                                   title="Message"
                                 >
                                   <MessageSquare className="w-3.5 h-3.5" />
                                   <span>Message</span>
-                                </button>
+                                </Link>
                               ) : rel === "PENDING_INCOMING" ? (
                                 <button
                                   type="button"

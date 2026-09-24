@@ -325,23 +325,21 @@ export default function InstitutionDiscoverySection({
               <div className="flex items-center gap-2 pt-1 border-t border-white/8">
                 <Link
                   href={`/profile/${person.id}`}
-                  className="flex-1 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-semibold border border-white/10 transition text-center active:scale-98"
+                  prefetch={true}
+                  className="flex-1 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-200 text-xs font-semibold border border-white/10 transition text-center active:scale-95 cursor-pointer"
                 >
                   View Profile
                 </Link>
 
                 {person.relationshipStatus === "CONNECTED" ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      router.push(`/messages/${person.id}`);
-                    }}
-                    className="btn-saffron px-3 py-1.5 rounded-xl text-white text-xs font-bold transition flex items-center gap-1 shrink-0 shadow-md shadow-[#ff9933]/20 active:scale-95"
+                  <Link
+                    href={`/messages/${person.id}`}
+                    prefetch={true}
+                    className="btn-saffron px-3 py-1.5 rounded-xl text-white text-xs font-bold transition flex items-center gap-1 shrink-0 shadow-md shadow-[#ff9933]/20 active:scale-95 cursor-pointer"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                     <span>Message</span>
-                  </button>
+                  </Link>
                 ) : person.relationshipStatus === "PENDING_OUTGOING" ? (
                   <span className="px-2.5 py-1.5 rounded-xl bg-white/5 text-slate-400 text-xs font-semibold flex items-center gap-1 shrink-0 border border-white/10">
                     <Clock className="w-3.5 h-3.5 text-slate-400" />

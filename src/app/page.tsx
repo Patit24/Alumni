@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import {
-  GraduationCap,
   Users,
   ShieldAlert,
   ShieldCheck,
@@ -20,7 +19,6 @@ import {
 import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
 import ClientAuthRedirect from "@/components/ClientAuthRedirect";
-import AlumniPassportCard from "@/components/AlumniPassportCard";
 import InstitutionDiscoverySection from "@/components/InstitutionDiscoverySection";
 import NavbarUserAvatar from "@/components/NavbarUserAvatar";
 
@@ -228,19 +226,26 @@ export default async function HomePage(props: {
       {/* Global Floating Sticky Header Bar */}
       <header className="sticky top-0 z-40 bg-[#0a0f1d]/90 backdrop-blur-xl border-b border-white/10 shadow-lg shadow-black/40">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-          {/* Alma Mater Identity */}
-          <Link href="/" className="flex items-center gap-3 group min-w-0">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#000080] via-[#000066] to-blue-900 text-white flex items-center justify-center shadow-md shadow-blue-900/30 shrink-0 group-hover:scale-105 transition-transform duration-200 border border-blue-500/30">
-              <GraduationCap className="w-5 h-5 text-indigo-200" />
+          {/* App Identity: Samparka */}
+          <Link href="/" prefetch={true} className="flex items-center gap-2.5 group min-w-0 select-none">
+            <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#FF9933] via-white to-[#138808] p-[1.5px] shadow-lg shadow-orange-500/20 shrink-0 group-hover:scale-105 transition-transform duration-200">
+              <div className="h-full w-full bg-[#0a0f1d] rounded-[14px] flex items-center justify-center relative overflow-hidden">
+                <div className="w-4 h-4 rounded-full border-2 border-[#000080] bg-blue-500/20 flex items-center justify-center shadow-xs">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#000080]" />
+                </div>
+              </div>
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold text-white tracking-tight truncate group-hover:text-[#FF9933] transition">
-                  {user.institution.name}
+                <span className="text-base sm:text-lg font-black tracking-tight text-white group-hover:text-[#FF9933] transition">
+                  Samparka
+                </span>
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md bg-[#138808]/20 text-[#22c55e] border border-[#138808]/40 tracking-wider">
+                  Live
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium truncate">
-                Class of {user.batchYear} {user.department ? `• ${user.department.name}` : ""}
+              <p className="text-[10px] text-slate-400 font-medium truncate">
+                Privacy-First Alumni & Campus Network
               </p>
             </div>
           </Link>
@@ -248,20 +253,9 @@ export default async function HomePage(props: {
           {/* Action Header Nav */}
           <div className="flex items-center gap-2 sm:gap-2.5">
             <Link
-              href="/messages"
-              className="h-9 px-3.5 sm:px-4 rounded-xl btn-saffron text-white flex items-center gap-2 text-xs font-bold transition shadow-md shadow-[#ff9933]/20 active:scale-95 shrink-0"
-              title="End-to-End Encrypted Messages & Calls"
-            >
-              <div className="relative flex items-center justify-center">
-                <Lock className="w-3.5 h-3.5" />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-[#FF9933] animate-pulse" />
-              </div>
-              <span className="tracking-tight">Messages</span>
-            </Link>
-
-            <Link
               href={`/profile/${user.id}`}
-              className="h-9 px-2.5 sm:px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 flex items-center gap-2 text-xs font-semibold transition shrink-0"
+              prefetch={true}
+              className="h-9 px-2.5 sm:px-3 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-200 flex items-center gap-2 text-xs font-semibold transition shrink-0"
               title="My Profile"
             >
               <NavbarUserAvatar
@@ -279,8 +273,6 @@ export default async function HomePage(props: {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
-        {/* Alumni Identity Passport Card */}
-        <AlumniPassportCard user={user as any} />
 
         {/* People from User's College / University / School Discovery Section */}
         <InstitutionDiscoverySection

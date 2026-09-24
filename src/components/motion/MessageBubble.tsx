@@ -105,14 +105,14 @@ export default function MessageBubble({
     <div className="relative group my-1.5 flex flex-col select-none">
       {/* Swipe to reply reveal icon behind bubble */}
       <div
-        className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-blue-600 transition-opacity pointer-events-none"
+        className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[#FF9933] transition-opacity pointer-events-none"
         style={{
           opacity: Math.min(1, dragX / 40),
           transform: `scale(${Math.min(1.2, 0.6 + dragX / 70)})`,
         }}
       >
-        <div className="h-7 w-7 rounded-full bg-blue-100 flex items-center justify-center">
-          <CornerUpLeft className="w-4 h-4 text-blue-600" />
+        <div className="h-7 w-7 rounded-full bg-[#FF9933]/20 border border-[#FF9933]/30 flex items-center justify-center">
+          <CornerUpLeft className="w-4 h-4 text-[#FF9933]" />
         </div>
       </div>
 
@@ -150,9 +150,9 @@ export default function MessageBubble({
           }}
           className={`relative max-w-[85%] sm:max-w-[72%] rounded-2xl px-3.5 py-2.5 text-xs transition-all ${
             isMe
-              ? "bg-gradient-to-br from-blue-600 via-blue-600 to-indigo-600 text-white rounded-br-xs shadow-sm shadow-blue-500/15 border border-blue-400/20"
-              : "bg-white/85 backdrop-blur-md text-slate-900 border border-white/70 shadow-xs rounded-bl-xs"
-          } ${showMenu ? "ring-2 ring-blue-500/40 shadow-lg scale-[1.02]" : ""}`}
+              ? "bg-gradient-to-br from-[#FF9933] via-[#F5820D] to-[#E67A00] text-white rounded-br-xs shadow-md shadow-[#FF9933]/20 border border-amber-300/30"
+              : "bg-[#131b2e]/90 backdrop-blur-md text-slate-100 border border-white/10 shadow-md shadow-black/30 rounded-bl-xs"
+          } ${showMenu ? "ring-2 ring-[#FF9933]/50 shadow-lg scale-[1.02]" : ""}`}
         >
           {/* View-Once Content or Standard Text */}
           {isViewOnce && !isMe ? (
@@ -165,9 +165,9 @@ export default function MessageBubble({
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => onRevealViewOnce?.(message)}
-                className="py-1 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold flex items-center gap-1.5 transition"
+                className="py-1 px-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold flex items-center gap-1.5 transition border border-white/10"
               >
-                <Flame className="w-3.5 h-3.5 text-amber-500" />
+                <Flame className="w-3.5 h-3.5 text-amber-400" />
                 <span>Tap to View Once</span>
               </motion.button>
             )
@@ -184,7 +184,7 @@ export default function MessageBubble({
               </p>
               {isConfidential && !isRevealed && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <span className="text-[10px] font-bold tracking-tight opacity-75 bg-black/20 text-white px-2 py-0.5 rounded-md backdrop-blur-xs">
+                  <span className="text-[10px] font-bold tracking-tight opacity-75 bg-black/40 text-white px-2 py-0.5 rounded-md backdrop-blur-xs">
                     Hover or hold to view
                   </span>
                 </div>
@@ -195,7 +195,7 @@ export default function MessageBubble({
           {/* Time & Delivery Status Checkmarks */}
           <div
             className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${
-              isMe ? "text-blue-100" : "text-slate-400"
+              isMe ? "text-amber-100/90" : "text-slate-400"
             }`}
           >
             <span>
@@ -213,16 +213,16 @@ export default function MessageBubble({
             {isMe && (
               <span className="inline-flex items-center ml-1" title={message.status}>
                 {message.status === "SENDING" && (
-                  <Clock className="w-2.5 h-2.5 text-blue-200/80 animate-pulse" />
+                  <Clock className="w-2.5 h-2.5 text-amber-200/80 animate-pulse" />
                 )}
                 {message.status === "SENT" && (
-                  <Check className="w-3.5 h-3.5 text-blue-200/85" strokeWidth={2.4} />
+                  <Check className="w-3.5 h-3.5 text-amber-100" strokeWidth={2.4} />
                 )}
                 {message.status === "DELIVERED" && (
-                  <CheckCheck className="w-3.5 h-3.5 text-blue-200/85" strokeWidth={2.4} />
+                  <CheckCheck className="w-3.5 h-3.5 text-amber-100" strokeWidth={2.4} />
                 )}
                 {message.status === "READ" && (
-                  <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb] drop-shadow-[0_0_2px_rgba(83,189,235,0.8)]" strokeWidth={2.6} />
+                  <CheckCheck className="w-3.5 h-3.5 text-sky-200 drop-shadow-[0_0_4px_rgba(255,255,255,0.8)]" strokeWidth={2.6} />
                 )}
               </span>
             )}
@@ -233,7 +233,7 @@ export default function MessageBubble({
             <div
               className={`absolute -bottom-2.5 ${
                 isMe ? "right-2" : "left-2"
-              } flex items-center gap-0.5 bg-white border border-slate-200 shadow-2xs rounded-full px-1.5 py-0.5 text-[11px]`}
+              } flex items-center gap-0.5 bg-[#0d1326] border border-white/15 shadow-md rounded-full px-1.5 py-0.5 text-[11px]`}
             >
               {reactions.map((emoji, idx) => (
                 <motion.span
@@ -260,7 +260,7 @@ export default function MessageBubble({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowMenu(false)}
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs"
+              className="fixed inset-0 bg-black/60 backdrop-blur-xs"
             />
 
             <motion.div
@@ -268,10 +268,10 @@ export default function MessageBubble({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 10 }}
               transition={MOTION_SPRINGS.snappy}
-              className="relative z-10 w-full max-w-xs bg-white/95 backdrop-blur-xl rounded-3xl border border-slate-200 shadow-2xl p-3 space-y-3"
+              className="relative z-10 w-full max-w-xs bg-[#0d1326]/95 backdrop-blur-2xl rounded-3xl border border-white/15 shadow-2xl p-3 space-y-3"
             >
               {/* Emoji Reaction Bar */}
-              <div className="flex items-center justify-around py-1 px-1 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="flex items-center justify-around py-1 px-1 bg-white/5 rounded-2xl border border-white/10">
                 {EMOJI_REACTIONS.map((emoji) => (
                   <motion.button
                     key={emoji}
@@ -287,24 +287,24 @@ export default function MessageBubble({
               </div>
 
               {/* Action Buttons */}
-              <div className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+              <div className="divide-y divide-white/10 text-xs font-semibold text-slate-200">
                 <button
                   onClick={() => {
                     triggerHaptic("light");
                     onReply?.(message);
                     setShowMenu(false);
                   }}
-                  className="w-full py-2.5 px-3 hover:bg-slate-50 flex items-center gap-2.5 rounded-xl transition text-left"
+                  className="w-full py-2.5 px-3 hover:bg-white/5 flex items-center gap-2.5 rounded-xl transition text-left"
                 >
-                  <Reply className="w-4 h-4 text-blue-600" />
+                  <Reply className="w-4 h-4 text-[#FF9933]" />
                   <span>Reply</span>
                 </button>
 
                 <button
                   onClick={handleCopy}
-                  className="w-full py-2.5 px-3 hover:bg-slate-50 flex items-center gap-2.5 rounded-xl transition text-left"
+                  className="w-full py-2.5 px-3 hover:bg-white/5 flex items-center gap-2.5 rounded-xl transition text-left"
                 >
-                  <Copy className="w-4 h-4 text-slate-600" />
+                  <Copy className="w-4 h-4 text-slate-400" />
                   <span>Copy Text</span>
                 </button>
 
@@ -315,7 +315,7 @@ export default function MessageBubble({
                       onDelete(message.id);
                       setShowMenu(false);
                     }}
-                    className="w-full py-2.5 px-3 hover:bg-rose-50 flex items-center gap-2.5 text-rose-600 rounded-xl transition text-left"
+                    className="w-full py-2.5 px-3 hover:bg-rose-500/10 flex items-center gap-2.5 text-rose-400 rounded-xl transition text-left"
                   >
                     <Trash2 className="w-4 h-4" />
                     <span>Delete Message</span>

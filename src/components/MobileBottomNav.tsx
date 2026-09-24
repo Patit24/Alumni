@@ -72,10 +72,11 @@ export default function MobileBottomNav() {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={true}
               onClick={() => {
                 if (!isActive) triggerHaptic("medium");
               }}
-              className="relative flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-full select-none focus:outline-none transition-colors"
+              className="relative flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-full select-none focus:outline-none transition-all active:scale-95 cursor-pointer"
             >
               {/* Active Spring Gliding Pill Indicator */}
               {isActive && (

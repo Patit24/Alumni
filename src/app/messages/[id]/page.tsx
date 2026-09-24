@@ -573,9 +573,10 @@ export default function DirectMessageChatPage(props: {
         privacyMode: messagePrivacy,
       };
 
-      await saveLocalMessage(localMsg);
+      // 2. Render instantly in UI (0ms latency) & persist in vault in parallel
       setMessages((prev) => [...prev, localMsg]);
       scrollToBottom();
+      saveLocalMessage(localMsg).catch(console.error);
 
       // 3. Direct real-time WebSocket broadcast to recipient (Instant delivery under 10ms, identical to typing indicator)
       realtimeSignaling.sendEncryptedMessage(peerId, {
@@ -778,66 +779,77 @@ export default function DirectMessageChatPage(props: {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-gradient-to-b from-slate-50 via-slate-100/70 to-slate-100 max-w-2xl mx-auto w-full border-x border-slate-200/60 shadow-xl relative overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-[#080811] text-white max-w-3xl mx-auto w-full border-x border-white/10 shadow-2xl relative overflow-hidden select-none">
+      {/* Ambient background glows */}
+      <div className="absolute top-0 left-1/4 w-72 h-72 bg-[#FF9933]/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-[#138808]/5 rounded-full blur-3xl pointer-events-none" />
+
       {/* Screen Notice Heuristic Toast */}
       {screenNotice && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-2xl bg-slate-900/90 text-white text-xs font-medium backdrop-blur shadow-lg flex items-center gap-2">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-2xl bg-[#0d1326]/95 border border-white/15 text-white text-xs font-medium backdrop-blur shadow-2xl flex items-center gap-2">
           <Scan className="w-3.5 h-3.5 text-amber-400" />
           <span>{screenNotice}</span>
         </div>
       )}
 
       {/* Top Frosted Glass Header with Safe-Area Notch Inset */}
-      <header className="sticky top-0 z-30 glass-header px-3 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+      <header className="sticky top-0 z-30 bg-[#0a0f1d]/90 backdrop-blur-2xl px-3 sm:px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 flex items-center justify-between border-b border-white/10 shadow-lg shadow-black/40">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <Link
             href="/messages"
-            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-slate-200/80 flex items-center justify-center text-slate-700 transition shrink-0"
+            prefetch={true}
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition active:scale-95 shrink-0"
           >
             <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           </Link>
 
-          <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xs sm:text-sm font-bold shadow-xs shadow-blue-500/20 shrink-0 overflow-hidden">
-            {peer?.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={peer.avatarUrl}
-                alt={peer.name}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              peer?.name?.charAt(0).toUpperCase() || "A"
-            )}
+          <div className="relative shrink-0">
+            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-2xl bg-gradient-to-tr from-[#000080] via-[#000066] to-blue-900 p-[1px] shadow-md shadow-blue-900/30 overflow-hidden">
+              {peer?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={peer.avatarUrl}
+                  alt={peer.name}
+                  className="w-full h-full object-cover rounded-[15px]"
+                />
+              ) : (
+                <div className="w-full h-full bg-[#0d1326] rounded-[15px] flex items-center justify-center text-xs sm:text-sm font-bold text-indigo-200">
+                  {peer?.name?.charAt(0).toUpperCase() || "A"}
+                </div>
+              )}
+            </div>
+            <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[#0a0f1d] ${connectionStatus === "CONNECTED" ? "bg-[#138808] shadow-[0_0_6px_#138808]" : "bg-slate-500"}`} />
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1 min-w-0">
-              <h2 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h2 className="text-xs sm:text-sm font-bold text-white truncate tracking-tight">
                 {peer?.name || "Alumni Contact"}
               </h2>
               {isSafetyVerified ? (
-                <span className="inline-flex items-center gap-0.5 text-[8px] sm:text-[9px] font-bold text-emerald-700 bg-emerald-100/80 px-1 py-0.2 rounded shrink-0" title="Cryptographically Verified">
-                  <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-600" /> Verified
+                <span className="inline-flex items-center gap-0.5 text-[8px] sm:text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded shrink-0" title="Cryptographically Verified">
+                  <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-400" /> Verified
                 </span>
               ) : (
                 peer?.verificationStatus === "VERIFIED" && (
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 )
               )}
             </div>
-            <p className="text-[10px] text-slate-500 truncate flex items-center gap-1.5">
+            <p className="text-[10px] sm:text-[11px] text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
               {isPeerTyping ? (
-                <span className="text-[#ff9933] font-semibold animate-pulse">Typing...</span>
+                <span className="text-[#FF9933] font-bold animate-pulse">Typing...</span>
               ) : (
                 <>
-                  <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${connectionStatus === "CONNECTED" ? "bg-[#138808]" : "bg-slate-300"}`} />
-                  <span className="truncate font-semibold text-slate-700">
+                  <span className="truncate font-medium text-slate-300">
                     {connectionStatus === "CONNECTED" ? "Connected" : "Not connected"}
                   </span>
-                  <span className="text-slate-300">·</span>
-                  <span className="truncate text-slate-400">E2EE</span>
+                  <span className="text-slate-600">·</span>
+                  <span className="truncate text-emerald-400/90 font-medium flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5 inline" /> E2EE
+                  </span>
                   {messagePrivacy !== "NORMAL" && (
-                    <span className="text-[#c2410c] font-bold shrink-0">🔥 Ephemeral</span>
+                    <span className="text-amber-400 font-bold shrink-0">🔥 Ephemeral</span>
                   )}
                 </>
               )}
@@ -849,10 +861,10 @@ export default function DirectMessageChatPage(props: {
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 pl-1">
           <button
             onClick={toggleConfidentialMode}
-            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl flex items-center justify-center transition ${
+            className={`h-8 w-8 sm:h-9 sm:w-9 rounded-xl flex items-center justify-center transition active:scale-95 ${
               isConfidentialMode
-                ? "bg-amber-500 text-white shadow-xs"
-                : "bg-slate-100/80 hover:bg-slate-200/80 text-slate-600"
+                ? "bg-amber-500 text-white shadow-[0_0_12px_rgba(245,158,11,0.4)]"
+                : "bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white"
             }`}
             title={isConfidentialMode ? "Confidential Shield Active" : "Enable Confidential Anti-Screenshot Shield"}
           >
@@ -862,7 +874,7 @@ export default function DirectMessageChatPage(props: {
           <button
             onClick={handleStartVoiceCall}
             disabled={connectionStatus !== "CONNECTED"}
-            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-emerald-50 hover:text-[#138808] text-slate-600 flex items-center justify-center transition disabled:opacity-30 disabled:pointer-events-none"
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/30 border border-white/10 text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
             title={connectionStatus !== "CONNECTED" ? "Connect to enable calls" : "Voice Call"}
           >
             <Phone className="w-4 h-4" />
@@ -871,7 +883,7 @@ export default function DirectMessageChatPage(props: {
           <button
             onClick={handleStartVideoCall}
             disabled={connectionStatus !== "CONNECTED"}
-            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-blue-50 hover:text-[#000080] text-slate-600 flex items-center justify-center transition disabled:opacity-30 disabled:pointer-events-none"
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-blue-500/20 hover:text-blue-400 hover:border-blue-500/30 border border-white/10 text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
             title={connectionStatus !== "CONNECTED" ? "Connect to enable calls" : "Video Call"}
           >
             <Video className="w-4 h-4" />
@@ -879,7 +891,7 @@ export default function DirectMessageChatPage(props: {
 
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-slate-200/80 text-slate-600 flex items-center justify-center transition relative"
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition active:scale-95 relative"
             title="Options"
           >
             <MoreVertical className="w-4 h-4" />
@@ -889,14 +901,14 @@ export default function DirectMessageChatPage(props: {
 
       {/* Confidential Anti-Screenshot Shield Active Banner */}
       {isConfidentialMode && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 px-3 py-1.5 text-[11px] text-amber-900 flex items-center justify-between">
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-3.5 py-1.5 text-[11px] text-amber-200 flex items-center justify-between backdrop-blur-md">
           <div className="flex items-center gap-1.5 font-semibold">
-            <EyeOff className="w-3.5 h-3.5 text-amber-600" />
+            <EyeOff className="w-3.5 h-3.5 text-amber-400" />
             <span>Confidential Shield Active • Messages blurred until hovered or held</span>
           </div>
           <button
             onClick={toggleConfidentialMode}
-            className="text-[10px] font-bold text-amber-700 hover:underline ml-2"
+            className="text-[10px] font-bold text-amber-400 hover:underline ml-2"
           >
             Turn Off
           </button>
@@ -921,10 +933,12 @@ export default function DirectMessageChatPage(props: {
 
       {/* Relationship Banner: Only shown when NOT yet connected */}
       {connectionStatus !== "CONNECTED" && (
-        <div className="bg-[#fff7ed] border-b border-orange-200/70 p-3 sm:px-4 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2 min-w-0">
-            <ShieldAlert className="w-4 h-4 text-[#ff9933] shrink-0" />
-            <p className="text-orange-950 text-[11px] leading-tight">
+        <div className="bg-[#141b2e]/90 backdrop-blur-md border-b border-white/10 p-3 sm:px-4 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-8 w-8 rounded-xl bg-[#FF9933]/15 border border-[#FF9933]/30 flex items-center justify-center shrink-0">
+              <ShieldAlert className="w-4 h-4 text-[#FF9933]" />
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
               {connectionStatus === "PENDING_INCOMING" ? (
                 <><strong>Connection Request:</strong> {peer?.name || "This user"} wants to connect with you. Accept to unlock voice & video calls.</>
               ) : connectionStatus === "PENDING_OUTGOING" ? (
@@ -939,13 +953,13 @@ export default function DirectMessageChatPage(props: {
               <>
                 <button
                   onClick={() => handleUpdateTrust("CONNECTED")}
-                  className="btn-india-green flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer"
+                  className="btn-india-green flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer shadow-md active:scale-95 transition"
                 >
                   Accept Connection
                 </button>
                 <button
                   onClick={() => handleUpdateTrust("BLOCKED")}
-                  className="px-3 py-1.5 rounded-xl bg-slate-200/80 hover:bg-rose-100 hover:text-rose-700 text-slate-700 font-medium text-[11px] transition active:scale-98 cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 border border-white/10 font-semibold text-[11px] transition active:scale-95 cursor-pointer"
                 >
                   Decline
                 </button>
@@ -953,7 +967,7 @@ export default function DirectMessageChatPage(props: {
             ) : connectionStatus === "NONE" ? (
               <button
                 onClick={() => handleUpdateTrust("CONNECTED")}
-                className="btn-saffron flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer"
+                className="btn-saffron flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer shadow-md shadow-[#FF9933]/20 active:scale-95 transition"
               >
                 Connect
               </button>
@@ -964,23 +978,23 @@ export default function DirectMessageChatPage(props: {
 
       {/* Options Dropdown Menu */}
       {showMenu && (
-        <div className="absolute top-14 right-4 z-40 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 text-xs divide-y divide-slate-100">
+        <div className="absolute top-16 right-4 z-40 w-60 rounded-2xl bg-[#0d1326]/95 backdrop-blur-2xl border border-white/15 shadow-2xl py-2 text-xs divide-y divide-white/10">
           <div className="py-1">
             <button
               onClick={() => {
                 toggleConfidentialMode();
                 setShowMenu(false);
               }}
-              className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-700"
+              className="w-full text-left px-4 py-2.5 hover:bg-white/5 flex items-center gap-2.5 font-medium text-slate-200 transition"
             >
               {isConfidentialMode ? (
                 <>
-                  <Eye className="w-4 h-4 text-amber-600" />
+                  <Eye className="w-4 h-4 text-amber-400" />
                   <span>Disable Confidential Shield</span>
                 </>
               ) : (
                 <>
-                  <EyeOff className="w-4 h-4 text-slate-600" />
+                  <EyeOff className="w-4 h-4 text-slate-400" />
                   <span>Enable Confidential Shield</span>
                 </>
               )}
@@ -990,9 +1004,9 @@ export default function DirectMessageChatPage(props: {
                 setShowSafetyModal(true);
                 setShowMenu(false);
               }}
-              className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-700"
+              className="w-full text-left px-4 py-2.5 hover:bg-white/5 flex items-center gap-2.5 font-medium text-slate-200 transition"
             >
-              <KeyRound className="w-4 h-4 text-indigo-600" />
+              <KeyRound className="w-4 h-4 text-indigo-400" />
               <span>Verify Safety Fingerprint</span>
             </button>
             <button
@@ -1000,9 +1014,9 @@ export default function DirectMessageChatPage(props: {
                 setShowRevealModal(true);
                 setShowMenu(false);
               }}
-              className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-700"
+              className="w-full text-left px-4 py-2.5 hover:bg-white/5 flex items-center gap-2.5 font-medium text-slate-200 transition"
             >
-              <Eye className="w-4 h-4 text-emerald-600" />
+              <Eye className="w-4 h-4 text-emerald-400" />
               <span>Reveal More Profile Info</span>
             </button>
             {trustLevel !== "TRUSTED" ? (
@@ -1011,7 +1025,7 @@ export default function DirectMessageChatPage(props: {
                   handleUpdateTrust("TRUSTED");
                   setShowMenu(false);
                 }}
-                className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-emerald-700"
+                className="w-full text-left px-4 py-2.5 hover:bg-white/5 flex items-center gap-2.5 font-medium text-emerald-400 transition"
               >
                 <UserCheck className="w-4 h-4" />
                 <span>Mark as Trusted Contact</span>
@@ -1022,9 +1036,9 @@ export default function DirectMessageChatPage(props: {
                   handleUpdateTrust("CONNECTED");
                   setShowMenu(false);
                 }}
-                className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 font-medium text-slate-600"
+                className="w-full text-left px-4 py-2.5 hover:bg-white/5 flex items-center gap-2.5 font-medium text-slate-300 transition"
               >
-                <Check className="w-4 h-4 text-emerald-600" />
+                <Check className="w-4 h-4 text-emerald-400" />
                 <span>Trusted (Tap to Standard)</span>
               </button>
             )}
@@ -1033,7 +1047,7 @@ export default function DirectMessageChatPage(props: {
           <div className="py-1">
             <button
               onClick={handleClearHistory}
-              className="w-full text-left px-4 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2 font-medium"
+              className="w-full text-left px-4 py-2.5 hover:bg-rose-500/10 text-rose-400 flex items-center gap-2.5 font-medium transition"
             >
               <Trash2 className="w-4 h-4" />
               <span>Clear Local History</span>
@@ -1043,7 +1057,7 @@ export default function DirectMessageChatPage(props: {
                 handleUpdateTrust("BLOCKED");
                 setShowMenu(false);
               }}
-              className="w-full text-left px-4 py-2 hover:bg-rose-50 text-rose-600 flex items-center gap-2 font-medium"
+              className="w-full text-left px-4 py-2.5 hover:bg-rose-500/10 text-rose-400 flex items-center gap-2.5 font-medium transition"
             >
               <UserX className="w-4 h-4" />
               <span>Block Contact</span>
@@ -1074,34 +1088,34 @@ export default function DirectMessageChatPage(props: {
       <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-2.5 scroll-smooth overscroll-contain">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-2">
-            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+            <Loader2 className="w-6 h-6 animate-spin text-[#FF9933]" />
             <p className="text-xs font-medium">Establishing secure E2EE channel...</p>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-3.5 max-w-sm mx-auto px-2">
-            <div className="glass-card p-5 sm:p-6 rounded-3xl text-center space-y-3 w-full border border-white/80 shadow-md">
-              <div className="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-xs mx-auto">
+            <div className="bg-[#0f172a]/80 backdrop-blur-xl p-5 sm:p-6 rounded-3xl text-center space-y-3 w-full border border-white/10 shadow-2xl">
+              <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shadow-xs mx-auto">
                 <Lock className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-xs sm:text-sm font-bold text-slate-900">
+                <p className="text-xs sm:text-sm font-bold text-white">
                   End-to-End Encrypted Session
                 </p>
-                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
                   Secured with NIST P-256 ECDH + AES-256-GCM. Decryption keys never leave your device.
                 </p>
               </div>
 
               {/* Revealed Profile Info Badges if any */}
               {(peerReveals.phone || peerReveals.email || peerReveals.work) && (
-                <div className="p-3 bg-slate-50/90 rounded-2xl border border-slate-200/80 text-left text-xs space-y-1.5 w-full">
+                <div className="p-3 bg-white/5 rounded-2xl border border-white/10 text-left text-xs space-y-1.5 w-full">
                   <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                     Profile shared by {peer?.name}:
                   </p>
-                  {peerReveals.phone && peer?.phone && <p className="font-semibold text-slate-800">📱 {peer.phone}</p>}
-                  {peerReveals.email && peer?.email && <p className="font-semibold text-slate-800">✉️ {peer.email}</p>}
+                  {peerReveals.phone && peer?.phone && <p className="font-semibold text-slate-200">📱 {peer.phone}</p>}
+                  {peerReveals.email && peer?.email && <p className="font-semibold text-slate-200">✉️ {peer.email}</p>}
                   {peerReveals.work && (peer?.currentRole || peer?.currentCompany) && (
-                    <p className="font-semibold text-slate-800">
+                    <p className="font-semibold text-slate-200">
                       💼 {peer.currentRole || "Alumni"}{peer.currentCompany ? ` at ${peer.currentCompany}` : ""}
                     </p>
                   )}
@@ -1187,18 +1201,18 @@ export default function DirectMessageChatPage(props: {
 
       {/* Safety Number Verification Modal */}
       {showSafetyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl text-center space-y-4">
-            <div className="h-12 w-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-3xl bg-[#0d1326] border border-white/15 p-6 shadow-2xl text-center space-y-4">
+            <div className="h-12 w-12 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto">
               <KeyRound className="w-6 h-6" />
             </div>
 
-            <h3 className="text-sm font-bold text-slate-900">Safety Fingerprint Verification</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <h3 className="text-sm font-bold text-white">Safety Fingerprint Verification</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
               Compare this 30-digit cryptographic fingerprint with <strong>{peer?.name}</strong> in person or over video to confirm no MITM tampering:
             </p>
 
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs font-bold text-slate-800 tracking-wider">
+            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 font-mono text-xs font-bold text-[#FF9933] tracking-wider">
               {safetyNumber || "Calculating fingerprint..."}
             </div>
 
@@ -1206,14 +1220,14 @@ export default function DirectMessageChatPage(props: {
               <button
                 type="button"
                 onClick={() => setShowSafetyModal(false)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold transition active:scale-95"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmSafetyVerification}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+                className="flex-1 py-2.5 rounded-xl btn-india-green text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Mark as Verified</span>
@@ -1225,59 +1239,59 @@ export default function DirectMessageChatPage(props: {
 
       {/* Reveal More Info Modal */}
       {showRevealModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-3xl bg-[#0d1326] border border-white/15 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">Mutual Profile Reveal</h3>
+              <h3 className="text-sm font-bold text-white">Mutual Profile Reveal</h3>
               <button
                 onClick={() => setShowRevealModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-white p-1"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-400 leading-relaxed">
               By default, contacts only see your username and alumni batch. Select what you would like to reveal to <strong>{peer?.name}</strong>:
             </p>
 
             <div className="space-y-2.5">
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-slate-800">Phone Number</p>
+                  <p className="text-xs font-semibold text-slate-200">Phone Number</p>
                   <p className="text-[10px] text-slate-400">Share your mobile contact</p>
                 </div>
                 <input
                   type="checkbox"
                   checked={myReveals.phone}
                   onChange={() => handleToggleReveal("phone")}
-                  className="h-4 w-4 text-blue-600 rounded"
+                  className="h-4 w-4 text-[#FF9933] rounded accent-[#FF9933]"
                 />
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-slate-800">Email Address</p>
+                  <p className="text-xs font-semibold text-slate-200">Email Address</p>
                   <p className="text-[10px] text-slate-400">Share your email contact</p>
                 </div>
                 <input
                   type="checkbox"
                   checked={myReveals.email}
                   onChange={() => handleToggleReveal("email")}
-                  className="h-4 w-4 text-blue-600 rounded"
+                  className="h-4 w-4 text-[#FF9933] rounded accent-[#FF9933]"
                 />
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-slate-800">Current Role & Company</p>
+                  <p className="text-xs font-semibold text-slate-200">Current Role & Company</p>
                   <p className="text-[10px] text-slate-400">Share your workplace info</p>
                 </div>
                 <input
                   type="checkbox"
                   checked={myReveals.work}
                   onChange={() => handleToggleReveal("work")}
-                  className="h-4 w-4 text-blue-600 rounded"
+                  className="h-4 w-4 text-[#FF9933] rounded accent-[#FF9933]"
                 />
               </div>
             </div>
@@ -1285,7 +1299,7 @@ export default function DirectMessageChatPage(props: {
             <button
               type="button"
               onClick={() => setShowRevealModal(false)}
-              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs"
+              className="w-full py-2.5 rounded-xl btn-saffron text-white text-xs font-bold transition shadow-md shadow-[#FF9933]/25 active:scale-95 cursor-pointer"
             >
               Done
             </button>
