@@ -533,21 +533,18 @@ export const CONNECTED_CHATS_KEY = "alumni_connected_peer_ids";
 export function getLocalConnectedPeerIds(userId?: string): string[] {
   if (typeof window === "undefined") return [];
   const uid = userId || getActiveVaultUserId();
+  if (!uid) return [];
   const set = new Set<string>();
   try {
-    if (uid) {
-      const scopedKey = `alumni_connected_peer_ids_${uid}`;
-      const raw = localStorage.getItem(scopedKey);
-      if (raw) {
-        const list = JSON.parse(raw);
-        if (Array.isArray(list)) list.forEach((id: string) => { if (id && id !== uid) set.add(id); });
-      }
-    }
-    const globalKey = "alumni_connected_peer_ids_global";
-    const rawGlobal = localStorage.getItem(globalKey);
-    if (rawGlobal) {
-      const list = JSON.parse(rawGlobal);
+    const scopedKey = `alumni_connected_peer_ids_${uid}`;
+    const raw = localStorage.getItem(scopedKey);
+    if (raw) {
+      const list = JSON.parse(raw);
       if (Array.isArray(list)) list.forEach((id: string) => { if (id && id !== uid) set.add(id); });
+    }
+    // Clean up deprecated global key to prevent cross-account leak
+    if (localStorage.getItem("alumni_connected_peer_ids_global")) {
+      localStorage.removeItem("alumni_connected_peer_ids_global");
     }
   } catch {}
   return Array.from(set);
@@ -556,28 +553,31 @@ export function getLocalConnectedPeerIds(userId?: string): string[] {
 export function addLocalConnectedPeer(peerId: string, userId?: string): void {
   if (typeof window === "undefined" || !peerId) return;
   const uid = userId || getActiveVaultUserId();
-  if (uid && peerId === uid) return; // Never add self as connected peer!
+  if (!uid || peerId === uid) return; // Never add self as connected peer!
   try {
-    // 1. Save to global list so it is NEVER lost even before user session finishes loading
-    const globalKey = "alumni_connected_peer_ids_global";
-    const rawGlobal = localStorage.getItem(globalKey);
-    const globalList: string[] = rawGlobal ? JSON.parse(rawGlobal) : [];
-    if (!globalList.includes(peerId)) {
-      globalList.unshift(peerId);
-      localStorage.setItem(globalKey, JSON.stringify(globalList));
+    const scopedKey = `alumni_connected_peer_ids_${uid}`;
+    const rawScoped = localStorage.getItem(scopedKey);
+    const scopedList: string[] = rawScoped ? JSON.parse(rawScoped) : [];
+    if (!scopedList.includes(peerId)) {
+      scopedList.unshift(peerId);
+      localStorage.setItem(scopedKey, JSON.stringify(scopedList));
     }
+    window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+  } catch {}
+}
 
-    // 2. Save to scoped key if uid is present
-    if (uid) {
-      const scopedKey = `alumni_connected_peer_ids_${uid}`;
-      const rawScoped = localStorage.getItem(scopedKey);
-      const scopedList: string[] = rawScoped ? JSON.parse(rawScoped) : [];
-      if (!scopedList.includes(peerId)) {
-        scopedList.unshift(peerId);
-        localStorage.setItem(scopedKey, JSON.stringify(scopedList));
-      }
+export function removeLocalConnectedPeer(peerId: string, userId?: string): void {
+  if (typeof window === "undefined" || !peerId) return;
+  const uid = userId || getActiveVaultUserId();
+  if (!uid) return;
+  try {
+    const scopedKey = `alumni_connected_peer_ids_${uid}`;
+    const rawScoped = localStorage.getItem(scopedKey);
+    if (rawScoped) {
+      const scopedList: string[] = JSON.parse(rawScoped);
+      const filtered = scopedList.filter((id) => id !== peerId);
+      localStorage.setItem(scopedKey, JSON.stringify(filtered));
     }
-
     window.dispatchEvent(new CustomEvent("connection-requests-updated"));
   } catch {}
 }

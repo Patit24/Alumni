@@ -325,7 +325,7 @@ export default function ProfileHeaderCard({
       return;
     }
     setConnecting(true);
-    // Optimistic UI update: mark as pending request
+    // Optimistic UI update
     setRelStatus("PENDING_OUTGOING");
 
     try {
@@ -335,10 +335,10 @@ export default function ProfileHeaderCard({
         body: JSON.stringify({ targetUserId: user.id, action: "REQUEST" }),
       });
       const data = await res.json();
-      if (data.status === "ACCEPTED" || data.status === "CONNECTED") {
+      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || data.isFriend) {
         setRelStatus("CONNECTED");
         addLocalConnectedPeer(user.id, currentUser.id);
-      } else if (data.status === "PENDING") {
+      } else {
         setRelStatus("PENDING_OUTGOING");
       }
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
@@ -367,7 +367,7 @@ export default function ProfileHeaderCard({
         body: JSON.stringify({ targetUserId: user.id, action: "ACCEPT" }),
       });
       const data = await res.json();
-      if (data.status === "ACCEPTED" || data.status === "CONNECTED") {
+      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || data.isFriend) {
         setRelStatus("CONNECTED");
         if (currentUser?.id) addLocalConnectedPeer(user.id, currentUser.id);
       }
@@ -396,6 +396,23 @@ export default function ProfileHeaderCard({
     }
   };
 
+  const handleCancelConnect = async () => {
+    setConnecting(true);
+    setRelStatus("NONE");
+    try {
+      await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: user.id, action: "CANCEL" }),
+      });
+      window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
   const handleGoToChat = () => {
     if (currentUser?.id) {
       setActiveVaultUser(currentUser.id);
@@ -404,18 +421,6 @@ export default function ProfileHeaderCard({
       addLocalConnectedPeer(user.id);
     }
     router.push(`/messages/${user.id}`);
-  };
-
-  const handleConnectForChat = async () => {
-    if (relStatus === "CONNECTED") {
-      handleGoToChat();
-    } else if (relStatus === "PENDING_INCOMING") {
-      await handleAcceptConnect();
-      handleGoToChat();
-    } else {
-      await handleSendConnect();
-      handleGoToChat();
-    }
   };
 
   return (
@@ -634,30 +639,46 @@ export default function ProfileHeaderCard({
                   </button>
                 </>
               ) : (
-                /* Visiting Another Member's Profile -> Relationship Aware Button */
+                /* Visiting Another Member's Profile -> Canonical Relationship Aware Button */
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   {relStatus === "CONNECTED" ? (
-                    <button
-                      type="button"
-                      onClick={handleGoToChat}
-                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition active:scale-98 cursor-pointer"
-                    >
-                      <MessageSquare className="w-4 h-4" />
-                      <span>Message</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                      <span className="badge-connected inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-[#138808]" />
+                        <span>Connected</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleGoToChat}
+                        className="btn-saffron flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition active:scale-98 cursor-pointer"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        <span>Message</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
                   ) : relStatus === "PENDING_OUTGOING" ? (
-                    <span className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200 transition">
-                      <Clock className="w-4 h-4 text-slate-400" />
-                      <span>Request Sent</span>
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="badge-saffron inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold">
+                        <Clock className="w-4 h-4 text-[#c2410c]" />
+                        <span>Request Sent</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCancelConnect}
+                        disabled={connecting}
+                        className="px-3 py-2 rounded-xl text-xs text-slate-500 hover:text-slate-800 transition disabled:opacity-50 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   ) : relStatus === "PENDING_INCOMING" ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
                         onClick={handleAcceptConnect}
                         disabled={connecting}
-                        className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-500/25 transition active:scale-98 cursor-pointer disabled:opacity-50"
+                        className="btn-india-green flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition active:scale-98 cursor-pointer disabled:opacity-50"
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>{connecting ? "Accepting..." : "Accept"}</span>
@@ -677,19 +698,10 @@ export default function ProfileHeaderCard({
                         type="button"
                         onClick={handleSendConnect}
                         disabled={connecting}
-                        className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/25 transition active:scale-98 cursor-pointer ring-2 ring-blue-500/30 disabled:opacity-50"
+                        className="btn-saffron flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition active:scale-98 cursor-pointer disabled:opacity-50"
                       >
                         <UserPlus className="w-4 h-4" />
                         <span>{connecting ? "Connecting..." : "Connect"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleGoToChat}
-                        className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition active:scale-98 cursor-pointer flex items-center gap-1.5"
-                        title="Direct Message"
-                      >
-                        <MessageSquare className="w-4 h-4 text-blue-600" />
-                        <span className="hidden xs:inline">Message</span>
                       </button>
                     </div>
                   )}

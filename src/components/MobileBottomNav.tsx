@@ -64,18 +64,18 @@ export default function MobileBottomNav() {
               href={item.href}
               className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-2xl transition-all duration-200 relative ${
                 isActive
-                  ? "text-blue-600 font-bold scale-105"
+                  ? "text-[#ff9933] font-bold scale-105"
                   : "text-slate-400 hover:text-slate-600 font-medium"
               }`}
             >
               <div
                 className={`p-1 rounded-xl transition relative ${
-                  isActive ? "bg-blue-50 text-blue-600" : ""
+                  isActive ? "bg-orange-50 text-[#ff9933]" : ""
                 }`}
               >
                 <Icon className="w-5 h-5" />
                 {Boolean(item.badge && item.badge > 0) && (
-                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-extrabold flex items-center justify-center shadow-xs animate-pulse">
+                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#138808] text-white text-[9px] font-extrabold flex items-center justify-center shadow-xs animate-pulse">
                     {item.badge}
                   </span>
                 )}

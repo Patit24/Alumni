@@ -321,14 +321,14 @@ export default function DirectoryPage() {
           </div>
         </div>
 
-        {/* LinkedIn-Style Network Tabs */}
+        {/* Network Tabs */}
         <div className="max-w-4xl mx-auto flex items-center gap-2 pt-2 border-t border-slate-100 mt-2.5">
           <button
             type="button"
             onClick={() => setActiveTab("discover")}
             className={`pb-2 px-3 text-xs font-bold transition border-b-2 flex items-center gap-1.5 cursor-pointer ${
               activeTab === "discover"
-                ? "border-blue-600 text-blue-600"
+                ? "border-[#ff9933] text-[#ff9933]"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
@@ -345,14 +345,14 @@ export default function DirectoryPage() {
             onClick={() => setActiveTab("connections")}
             className={`pb-2 px-3 text-xs font-bold transition border-b-2 flex items-center gap-1.5 cursor-pointer ${
               activeTab === "connections"
-                ? "border-blue-600 text-blue-600"
+                ? "border-[#ff9933] text-[#ff9933]"
                 : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >
             <UserCheck className="w-4 h-4" />
             <span>My Connections</span>
             {myConnections.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-700 text-[10px] font-extrabold">
+              <span className="px-1.5 py-0.2 rounded-full bg-emerald-50 text-[#138808] border border-emerald-200 text-[10px] font-extrabold">
                 {myConnections.length}
               </span>
             )}
@@ -597,12 +597,12 @@ export default function DirectoryPage() {
                         </div>
                       </Link>
 
-                      {/* Direct Encrypted Message Button */}
+                      {/* Direct Message Button */}
                       <div className="flex items-center gap-2 shrink-0">
                         <Link
                           href={`/messages/${friend.id}`}
-                          className="h-9 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 text-xs font-bold transition shadow-xs active:scale-95"
-                          title="Open Encrypted Chat"
+                          className="btn-saffron h-8 px-3.5 rounded-xl flex items-center gap-1.5 text-xs font-bold transition shadow-xs active:scale-95 cursor-pointer"
+                          title="Message"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
                           <span>Message</span>
@@ -891,18 +891,18 @@ export default function DirectoryPage() {
                                     e.stopPropagation();
                                     window.location.href = `/messages/${person.id}`;
                                   }}
-                                  className="h-8 px-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 flex items-center gap-1 text-[11px] font-bold transition shadow-2xs cursor-pointer"
-                                  title="Send Encrypted Message"
+                                  className="btn-saffron h-8 px-3 rounded-xl flex items-center gap-1 text-[11px] font-bold transition shadow-xs cursor-pointer active:scale-95"
+                                  title="Message"
                                 >
                                   <MessageSquare className="w-3.5 h-3.5" />
-                                  <span className="hidden sm:inline">Message</span>
+                                  <span>Message</span>
                                 </button>
                               ) : rel === "PENDING_INCOMING" ? (
                                 <button
                                   type="button"
                                   disabled={isLoading}
                                   onClick={(e) => handleAccept(e, person.id)}
-                                  className="h-8 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 text-[11px] font-bold transition shadow-xs active:scale-95 disabled:opacity-50 cursor-pointer"
+                                  className="btn-india-green h-8 px-3 rounded-xl flex items-center gap-1 text-[11px] font-bold transition shadow-xs active:scale-95 disabled:opacity-50 cursor-pointer"
                                   title="Accept Connection Request"
                                 >
                                   {isLoading ? (
@@ -914,31 +914,31 @@ export default function DirectoryPage() {
                                 </button>
                               ) : rel === "PENDING_OUTGOING" ? (
                                 <span
-                                  className="h-8 px-2.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200/80 flex items-center gap-1 text-[11px] font-semibold"
+                                  className="badge-saffron h-8 px-2.5 rounded-xl flex items-center gap-1 text-[11px] font-semibold"
                                   title="Request Pending"
                                 >
-                                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                                  <span className="hidden sm:inline">Requested</span>
+                                  <Clock className="w-3.5 h-3.5 text-[#c2410c]" />
+                                  <span>Requested</span>
                                 </span>
                               ) : (
                                 <button
                                   type="button"
                                   disabled={isLoading}
                                   onClick={(e) => handleConnect(e, person.id)}
-                                  className="h-8 px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/60 flex items-center gap-1 text-[11px] font-bold transition shadow-2xs active:scale-95 disabled:opacity-50 cursor-pointer"
-                                  title="Connect with Alumni"
+                                  className="btn-saffron h-8 px-3 rounded-xl flex items-center gap-1 text-[11px] font-bold transition shadow-xs active:scale-95 disabled:opacity-50 cursor-pointer"
+                                  title="Connect"
                                 >
                                   {isLoading ? (
                                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                   ) : (
-                                    <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                                    <UserPlus className="w-3.5 h-3.5" />
                                   )}
                                   <span>Connect</span>
                                 </button>
                               )}
                             </>
                           )}
-                          <div className="p-2 rounded-xl text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition">
+                          <div className="p-2 rounded-xl text-slate-300 group-hover:text-orange-500 group-hover:translate-x-0.5 transition">
                             <ChevronRight className="w-5 h-5" />
                           </div>
                         </div>

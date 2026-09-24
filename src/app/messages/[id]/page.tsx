@@ -182,8 +182,7 @@ export default function DirectMessageChatPage(props: {
         setActiveVaultUser(user.id);
         setCurrentUser({ id: user.id, name: user.name });
 
-        // Fetch peer profile from directory, trust, and connection relationship
-        // cache: 'no-store' prevents stale data from showing wrong connection status after accept
+        // Fetch peer profile from directory, trust, and canonical connection relationship
         const [peerRes, trustRes, connRes] = await Promise.all([
           fetch(`/api/directory?id=${peerId}`, { cache: "no-store" }),
           fetch(`/api/contacts/trust?contactId=${peerId}`, { cache: "no-store" }),
@@ -193,18 +192,24 @@ export default function DirectMessageChatPage(props: {
         let relStatus: "CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE" = "NONE";
         if (connRes.ok) {
           const cData = await connRes.json();
-          if (cData.statusMap && cData.statusMap[peerId]) {
+          if (cData.targetRelationship?.status) {
+            relStatus = cData.targetRelationship.status;
+          } else if (cData.statusMap && cData.statusMap[peerId]) {
             relStatus = cData.statusMap[peerId];
+          }
+          if (Array.isArray(cData.connectedPeerIds) && cData.connectedPeerIds.includes(peerId)) {
+            relStatus = "CONNECTED";
           }
         }
 
         if (trustRes.ok) {
           const tData = await trustRes.json();
           if (tData.success) {
-            setTrustLevel(tData.trustLevel);
-            // Trust level from contactTrust table is authoritative — override statusMap if CONNECTED/TRUSTED
-            if (tData.trustLevel === "CONNECTED" || tData.trustLevel === "TRUSTED") {
+            if (relStatus === "CONNECTED" || tData.trustLevel === "CONNECTED" || tData.trustLevel === "TRUSTED") {
+              setTrustLevel(tData.trustLevel === "TRUSTED" ? "TRUSTED" : "CONNECTED");
               relStatus = "CONNECTED";
+            } else {
+              setTrustLevel(tData.trustLevel);
             }
             setIsSafetyVerified(tData.isVerified);
             if (tData.peerReveals) setPeerReveals(tData.peerReveals);
@@ -820,15 +825,19 @@ export default function DirectMessageChatPage(props: {
                 )
               )}
             </div>
-            <p className="text-[10px] text-slate-500 truncate flex items-center gap-1">
+            <p className="text-[10px] text-slate-500 truncate flex items-center gap-1.5">
               {isPeerTyping ? (
-                <span className="text-blue-600 font-semibold animate-pulse">Typing...</span>
+                <span className="text-[#ff9933] font-semibold animate-pulse">Typing...</span>
               ) : (
                 <>
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                  <span className="truncate">E2EE Protected</span>
+                  <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${connectionStatus === "CONNECTED" ? "bg-[#138808]" : "bg-slate-300"}`} />
+                  <span className="truncate font-semibold text-slate-700">
+                    {connectionStatus === "CONNECTED" ? "Connected" : "Not connected"}
+                  </span>
+                  <span className="text-slate-300">·</span>
+                  <span className="truncate text-slate-400">E2EE</span>
                   {messagePrivacy !== "NORMAL" && (
-                    <span className="text-amber-600 font-bold shrink-0">🔥 Ephemeral</span>
+                    <span className="text-[#c2410c] font-bold shrink-0">🔥 Ephemeral</span>
                   )}
                 </>
               )}
@@ -845,15 +854,15 @@ export default function DirectMessageChatPage(props: {
                 ? "bg-amber-500 text-white shadow-xs"
                 : "bg-slate-100/80 hover:bg-slate-200/80 text-slate-600"
             }`}
-            title={isConfidentialMode ? "Confidential Shield Active (Hover/tap to reveal)" : "Enable Confidential Anti-Screenshot Shield"}
+            title={isConfidentialMode ? "Confidential Shield Active" : "Enable Confidential Anti-Screenshot Shield"}
           >
             {isConfidentialMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
 
           <button
             onClick={handleStartVoiceCall}
-            disabled={trustLevel === "REQUEST" || trustLevel === "UNKNOWN" || connectionStatus !== "CONNECTED"}
-            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-emerald-50 hover:text-emerald-600 text-slate-600 flex items-center justify-center transition disabled:opacity-40"
+            disabled={connectionStatus !== "CONNECTED"}
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-emerald-50 hover:text-[#138808] text-slate-600 flex items-center justify-center transition disabled:opacity-30 disabled:pointer-events-none"
             title={connectionStatus !== "CONNECTED" ? "Connect to enable calls" : "Voice Call"}
           >
             <Phone className="w-4 h-4" />
@@ -861,8 +870,8 @@ export default function DirectMessageChatPage(props: {
 
           <button
             onClick={handleStartVideoCall}
-            disabled={trustLevel === "REQUEST" || trustLevel === "UNKNOWN" || connectionStatus !== "CONNECTED"}
-            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-blue-50 hover:text-blue-600 text-slate-600 flex items-center justify-center transition disabled:opacity-40"
+            disabled={connectionStatus !== "CONNECTED"}
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-100/80 hover:bg-blue-50 hover:text-[#000080] text-slate-600 flex items-center justify-center transition disabled:opacity-30 disabled:pointer-events-none"
             title={connectionStatus !== "CONNECTED" ? "Connect to enable calls" : "Video Call"}
           >
             <Video className="w-4 h-4" />
@@ -910,28 +919,45 @@ export default function DirectMessageChatPage(props: {
         </div>
       )}
 
-      {/* Responsive Glassmorphic Trust Handshake Banner */}
-      {(trustLevel === "REQUEST" || trustLevel === "UNKNOWN") && (
-        <div className="bg-blue-50/90 backdrop-blur-md border-b border-blue-200/70 p-3 sm:px-4 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+      {/* Relationship Banner: Only shown when NOT yet connected */}
+      {connectionStatus !== "CONNECTED" && (
+        <div className="bg-[#fff7ed] border-b border-orange-200/70 p-3 sm:px-4 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 min-w-0">
-            <ShieldAlert className="w-4 h-4 text-blue-600 shrink-0" />
-            <p className="text-blue-950 text-[11px] leading-tight">
-              <strong>Message Request:</strong> Limited profile visible. Connect to unlock voice & video calling.
+            <ShieldAlert className="w-4 h-4 text-[#ff9933] shrink-0" />
+            <p className="text-orange-950 text-[11px] leading-tight">
+              {connectionStatus === "PENDING_INCOMING" ? (
+                <><strong>Connection Request:</strong> {peer?.name || "This user"} wants to connect with you. Accept to unlock voice & video calls.</>
+              ) : connectionStatus === "PENDING_OUTGOING" ? (
+                <><strong>Request Sent:</strong> Waiting for {peer?.name || "user"} to accept your connection.</>
+              ) : (
+                <>Connect with {peer?.name || "this alumnus"} to unlock voice & video calling.</>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto w-full sm:w-auto">
-            <button
-              onClick={() => handleUpdateTrust("CONNECTED")}
-              className="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[11px] transition shadow-xs active:scale-98"
-            >
-              Accept & Connect
-            </button>
-            <button
-              onClick={() => handleUpdateTrust("BLOCKED")}
-              className="px-3 py-1.5 rounded-xl bg-slate-200/80 hover:bg-rose-100 hover:text-rose-700 text-slate-700 font-medium text-[11px] transition active:scale-98"
-            >
-              Block
-            </button>
+            {connectionStatus === "PENDING_INCOMING" ? (
+              <>
+                <button
+                  onClick={() => handleUpdateTrust("CONNECTED")}
+                  className="btn-india-green flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer"
+                >
+                  Accept Connection
+                </button>
+                <button
+                  onClick={() => handleUpdateTrust("BLOCKED")}
+                  className="px-3 py-1.5 rounded-xl bg-slate-200/80 hover:bg-rose-100 hover:text-rose-700 text-slate-700 font-medium text-[11px] transition active:scale-98 cursor-pointer"
+                >
+                  Decline
+                </button>
+              </>
+            ) : connectionStatus === "NONE" ? (
+              <button
+                onClick={() => handleUpdateTrust("CONNECTED")}
+                className="btn-saffron flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer"
+              >
+                Connect
+              </button>
+            ) : null}
           </div>
         </div>
       )}

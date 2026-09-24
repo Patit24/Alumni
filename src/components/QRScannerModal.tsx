@@ -421,23 +421,29 @@ export default function QRScannerModal({
 
             <div className="space-y-2 pt-1">
               {scannedRelStatus === "CONNECTED" ? (
-                <button
-                  type="button"
-                  onClick={() => handleOpenMessages(scannedPeer.id)}
-                  className="w-full py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm shadow-blue-500/25 cursor-pointer active:scale-98"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  <span>Open Messages</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                <div className="space-y-2">
+                  <div className="badge-connected p-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-[#138808]" />
+                    <span>Connected Friends</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenMessages(scannedPeer.id)}
+                    className="btn-saffron w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Message</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               ) : scannedRelStatus === "PENDING_OUTGOING" ? (
                 <div className="space-y-2">
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs flex items-center justify-center gap-2 font-medium">
-                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>Connection Request Pending</span>
+                  <div className="badge-saffron p-3 rounded-2xl text-xs flex items-center justify-center gap-2 font-medium">
+                    <Clock className="w-4 h-4 text-[#c2410c] shrink-0" />
+                    <span>Request Sent</span>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-tight">
-                    Waiting for {scannedPeer.name} to accept your request. Once accepted, both of you can chat.
+                    Waiting for {scannedPeer.name} to accept your request.
                   </p>
                 </div>
               ) : scannedRelStatus === "PENDING_INCOMING" ? (
@@ -446,17 +452,17 @@ export default function QRScannerModal({
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleAcceptConnectionRequest(scannedPeer.id)}
-                    className="w-full py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-98 disabled:opacity-50"
+                    className="btn-india-green w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
                   >
                     {actionLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <CheckCircle2 className="w-4 h-4" />
                     )}
-                    <span>Accept Connection Request</span>
+                    <span>Accept Connection</span>
                   </button>
                   <p className="text-[11px] text-slate-500 leading-tight">
-                    {scannedPeer.name} already sent you a request! Accept to start chatting.
+                    {scannedPeer.name} sent you a request! Accept to connect.
                   </p>
                 </div>
               ) : (
@@ -465,17 +471,17 @@ export default function QRScannerModal({
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleSendConnectionRequest(scannedPeer.id)}
-                    className="w-full py-2.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm shadow-blue-500/25 cursor-pointer active:scale-98 disabled:opacity-50"
+                    className="btn-saffron w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
                   >
                     {actionLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <UserPlus className="w-4 h-4" />
                     )}
-                    <span>Send Connection Request</span>
+                    <span>Connect</span>
                   </button>
                   <p className="text-[11px] text-slate-500 leading-tight">
-                    Send a connection request to {scannedPeer.name}. Once accepted, both of you can chat.
+                    Send a connection request to connect and chat with {scannedPeer.name}.
                   </p>
                 </div>
               )}

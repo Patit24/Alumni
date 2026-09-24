@@ -1,13 +1,93 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #fafaf7;
+  --foreground: #111111;
+  --saffron-primary: #ff9933;
+  --saffron-hover: #e67e17;
+  --saffron-soft: #fff7ed;
+  --india-green: #138808;
+  --india-green-hover: #0f6e06;
+  --india-green-soft: #f0fdf4;
+  --ashoka-navy: #000080;
+  --ashoka-navy-hover: #000066;
+  --ashoka-navy-soft: #eef2ff;
+  --ivory-white: #fafaf7;
+  --card-white: #ffffff;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-saffron: #ff9933;
+  --color-saffron-hover: #e67e17;
+  --color-saffron-soft: #fff7ed;
+  --color-india-green: #138808;
+  --color-india-green-soft: #f0fdf4;
+  --color-ashoka-navy: #000080;
+  --color-ashoka-navy-soft: #eef2ff;
+  --color-ivory: #fafaf7;
+}
+
+/* Indian-Flag Inspired Sophisticated Semantic UI Classes */
+.btn-saffron {
+  background-color: #ff9933;
+  color: #ffffff;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 10px -1px rgba(255, 153, 51, 0.35);
+}
+.btn-saffron:hover {
+  background-color: #e67e17;
+  box-shadow: 0 4px 14px -1px rgba(255, 153, 51, 0.45);
+}
+.btn-saffron:active {
+  transform: scale(0.98);
+}
+
+.btn-india-green {
+  background-color: #138808;
+  color: #ffffff;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 10px -1px rgba(19, 136, 8, 0.35);
+}
+.btn-india-green:hover {
+  background-color: #0f6e06;
+  box-shadow: 0 4px 14px -1px rgba(19, 136, 8, 0.45);
+}
+.btn-india-green:active {
+  transform: scale(0.98);
+}
+
+.btn-ashoka-navy {
+  background-color: #000080;
+  color: #ffffff;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 10px -1px rgba(0, 0, 128, 0.3);
+}
+.btn-ashoka-navy:hover {
+  background-color: #000066;
+  box-shadow: 0 4px 14px -1px rgba(0, 0, 128, 0.4);
+}
+.btn-ashoka-navy:active {
+  transform: scale(0.98);
+}
+
+.badge-connected {
+  background-color: #f0fdf4;
+  color: #138808;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-saffron {
+  background-color: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+
+.badge-ashoka {
+  background-color: #eef2ff;
+  color: #000080;
+  border: 1px solid #c7d2fe;
 }
 
 body {

@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { broadcastFeedEvent } from "@/lib/supabase-broadcast";
+import { getConnectedFriends } from "@/lib/connection-service";
 
 export const dynamic = "force-dynamic";
 
@@ -17,38 +18,9 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const filter = searchParams.get("filter") || "ALL"; // "ALL", "SAVED", "JOBS", "MENTORSHIP", "BATCH"
 
-    // 1. Resolve user's accepted friends, trusted contacts, message peers, and community connections
-    const [connectionReqs, contactTrusts, messagePeers, myCommunities] = await Promise.all([
-      db.connectionRequest.findMany({
-        where: {
-          OR: [
-            { senderId: user.id },
-            { receiverId: user.id },
-          ],
-          status: { in: ["ACCEPTED", "CONNECTED"] },
-        },
-        select: { senderId: true, receiverId: true },
-      }),
-      db.contactTrust.findMany({
-        where: {
-          OR: [
-            { userId: user.id },
-            { contactId: user.id },
-          ],
-          trustLevel: { in: ["CONNECTED", "TRUSTED"] },
-        },
-        select: { userId: true, contactId: true },
-      }),
-      db.encryptedMessageQueue.findMany({
-        where: {
-          OR: [
-            { senderId: user.id },
-            { recipientId: user.id },
-          ],
-        },
-        select: { senderId: true, recipientId: true },
-        take: 300,
-      }),
+    // 1. Resolve user's accepted friends and community connections
+    const [connectedFriends, myCommunities] = await Promise.all([
+      getConnectedFriends(user.id),
       db.communityMember.findMany({
         where: { userId: user.id, status: "ACTIVE" },
         select: { communityId: true },
@@ -57,21 +29,9 @@ export async function GET(req: Request) {
 
     const friendIdsSet = new Set<string>();
     friendIdsSet.add(user.id); // User can always see their own posts
+    connectedFriends.forEach((f) => friendIdsSet.add(f.id));
 
-    connectionReqs.forEach((r) => {
-      if (r.senderId && r.senderId !== user.id) friendIdsSet.add(r.senderId);
-      if (r.receiverId && r.receiverId !== user.id) friendIdsSet.add(r.receiverId);
-    });
 
-    contactTrusts.forEach((t) => {
-      if (t.userId && t.userId !== user.id) friendIdsSet.add(t.userId);
-      if (t.contactId && t.contactId !== user.id) friendIdsSet.add(t.contactId);
-    });
-
-    messagePeers.forEach((m) => {
-      if (m.senderId && m.senderId !== user.id) friendIdsSet.add(m.senderId);
-      if (m.recipientId && m.recipientId !== user.id) friendIdsSet.add(m.recipientId);
-    });
 
     if (myCommunities.length > 0) {
       const communityIds = myCommunities.map((c) => c.communityId);

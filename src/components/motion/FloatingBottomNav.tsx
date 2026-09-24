@@ -58,7 +58,7 @@ export default function FloatingBottomNav({
         <Link
           href="/"
           onClick={() => triggerHaptic("light")}
-          className="relative flex items-center justify-center p-2 rounded-full text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition select-none"
+          className="relative flex items-center justify-center p-2 rounded-full text-slate-500 hover:text-[#ff9933] hover:bg-orange-50/80 transition select-none"
           title="Home"
         >
           <Home className="w-4 h-4" />
@@ -84,7 +84,7 @@ export default function FloatingBottomNav({
                 <motion.div
                   layoutId="activeTabPill"
                   transition={MOTION_SPRINGS.snappy}
-                  className="absolute inset-0 bg-blue-600 rounded-full shadow-md shadow-blue-500/25"
+                  className="absolute inset-0 bg-[#000080] rounded-full shadow-md shadow-[#000080]/20"
                 />
               )}
 
@@ -102,7 +102,7 @@ export default function FloatingBottomNav({
                   <Icon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                   {/* Badge Notification */}
                   {Boolean(tab.badge && tab.badge > 0) && (
-                    <span className="absolute -top-1.5 -right-2 h-4 w-4 rounded-full bg-rose-500 text-white text-[9px] font-extrabold flex items-center justify-center border-2 border-white">
+                    <span className="absolute -top-1.5 -right-2 h-4 w-4 rounded-full bg-[#138808] text-white text-[9px] font-extrabold flex items-center justify-center border-2 border-white shadow-xs">
                       {tab.badge}
                     </span>
                   )}

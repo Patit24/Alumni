@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Search, Plus, QrCode, Scan, Lock, ShieldCheck,
-  MessageSquare, Phone, Users, CheckCircle2, X,
+  MessageSquare, Phone, Users, CheckCircle2, Check, X,
   ChevronRight, Loader2, PhoneMissed, PhoneIncoming,
   PhoneOutgoing, Trash2, UserPlus, RefreshCw,
 } from "lucide-react";
@@ -272,15 +272,18 @@ export default function MessagesHubPage() {
 
   const handleQuickConnectAndChat = async (targetUserId: string) => {
     triggerHaptic("medium");
-    addLocalConnectedPeer(targetUserId, currentUserId || undefined);
-    setConnectedPeerIds((prev) => new Set(prev).add(targetUserId));
-    window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     try {
-      await fetch("/api/contacts/connect", {
+      const res = await fetch("/api/contacts/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId, action: "REQUEST" }),
       });
+      const data = await res.json();
+      if (data.isFriend || data.status === "CONNECTED") {
+        addLocalConnectedPeer(targetUserId, currentUserId || undefined);
+        setConnectedPeerIds((prev) => new Set(prev).add(targetUserId));
+      }
+      window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch {}
     router.push(`/messages/${targetUserId}`);
   };
@@ -345,7 +348,7 @@ export default function MessagesHubPage() {
             </button>
             <Link
               href="/directory"
-              className="h-8 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm active:scale-95"
+              className="btn-saffron h-8 px-3 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm active:scale-95"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>New Chat</span>
@@ -362,7 +365,7 @@ export default function MessagesHubPage() {
               placeholder={tab === "CALLS" ? "Search calls…" : "Search conversations…"}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-9 py-2 rounded-xl bg-slate-100 border border-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:border-slate-200 transition"
+              className="w-full pl-9 pr-9 py-2 rounded-xl bg-slate-100 border border-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30 focus:bg-white focus:border-orange-200 transition"
             />
             {searchQuery && (
               <button
@@ -387,18 +390,20 @@ export default function MessagesHubPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={MOTION_SPRINGS.gentle}
-              className="mx-4 mt-4 rounded-2xl bg-blue-600 text-white shadow-md overflow-hidden"
+              className="mx-4 mt-4 rounded-3xl bg-gradient-to-r from-[#000080] via-[#000066] to-blue-900 text-white shadow-xl shadow-indigo-950/15 overflow-hidden border border-blue-900/40"
             >
-              <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+              <div className="px-4 pt-3.5 pb-2.5 flex items-center justify-between border-b border-white/10">
                 <div className="flex items-center gap-2">
-                  <UserPlus className="w-4 h-4" />
+                  <div className="p-1 rounded-lg bg-orange-500/20 text-[#ff9933]">
+                    <UserPlus className="w-4 h-4" />
+                  </div>
                   <span className="text-sm font-bold">
                     {incomingRequests.length} Connection {incomingRequests.length === 1 ? "Request" : "Requests"}
                   </span>
                 </div>
-                <span className="text-xs text-blue-200">Accept to start chatting</span>
+                <span className="text-xs text-orange-200 font-medium">Accept to connect</span>
               </div>
-              <div className="divide-y divide-blue-500/30">
+              <div className="divide-y divide-white/10">
                 {incomingRequests.map(req => (
                   <motion.div
                     key={req.id}
@@ -418,14 +423,16 @@ export default function MessagesHubPage() {
                       <button
                         disabled={requestsLoading}
                         onClick={() => handleAcceptRequest(req.user.id)}
-                        className="h-8 px-3 rounded-xl bg-white text-blue-700 text-xs font-bold hover:bg-blue-50 transition active:scale-90 disabled:opacity-50"
+                        className="btn-india-green h-8 px-3.5 rounded-xl text-xs font-bold transition active:scale-90 disabled:opacity-50 flex items-center gap-1"
                       >
-                        Accept
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Accept</span>
                       </button>
                       <button
                         disabled={requestsLoading}
                         onClick={() => handleDeclineRequest(req.user.id)}
-                        className="h-8 w-8 rounded-xl bg-blue-500/40 hover:bg-blue-500/60 text-white flex items-center justify-center transition active:scale-90 disabled:opacity-50"
+                        className="h-8 w-8 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition active:scale-90 disabled:opacity-50"
+                        title="Decline"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
