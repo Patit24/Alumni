@@ -22,7 +22,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#f8fafc",
+  themeColor: "#080811",
 };
 
 export default function RootLayout({
@@ -31,8 +31,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900 selection:bg-blue-100 selection:text-blue-900">
+    <html lang="en" className="h-full antialiased dark">
+      <body className="min-h-full flex flex-col bg-[#080811] text-white selection:bg-[#ff9933]/30 selection:text-orange-200">
         <GlobalRealtimeProvider />
         <AntiScreenshotShield />
         {children}

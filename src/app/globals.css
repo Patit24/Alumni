@@ -1,19 +1,22 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafaf7;
-  --foreground: #111111;
+  --background: #080811;
+  --foreground: #f8fafc;
+  --surface-dark: #0f1523;
+  --surface-card: #121929;
+  --border-dark: rgba(255, 255, 255, 0.09);
   --saffron-primary: #ff9933;
   --saffron-hover: #e67e17;
-  --saffron-soft: #fff7ed;
+  --saffron-soft: rgba(255, 153, 51, 0.15);
   --india-green: #138808;
   --india-green-hover: #0f6e06;
-  --india-green-soft: #f0fdf4;
+  --india-green-soft: rgba(19, 136, 8, 0.18);
   --ashoka-navy: #000080;
   --ashoka-navy-hover: #000066;
-  --ashoka-navy-soft: #eef2ff;
+  --ashoka-navy-soft: rgba(0, 0, 128, 0.2);
   --ivory-white: #fafaf7;
-  --card-white: #ffffff;
+  --card-white: #111726;
 }
 
 @theme inline {
@@ -21,38 +24,38 @@
   --color-foreground: var(--foreground);
   --color-saffron: #ff9933;
   --color-saffron-hover: #e67e17;
-  --color-saffron-soft: #fff7ed;
+  --color-saffron-soft: rgba(255, 153, 51, 0.15);
   --color-india-green: #138808;
-  --color-india-green-soft: #f0fdf4;
+  --color-india-green-soft: rgba(19, 136, 8, 0.18);
   --color-ashoka-navy: #000080;
-  --color-ashoka-navy-soft: #eef2ff;
+  --color-ashoka-navy-soft: rgba(0, 0, 128, 0.2);
   --color-ivory: #fafaf7;
 }
 
 /* Indian-Flag Inspired Sophisticated Semantic UI Classes */
 .btn-saffron {
-  background-color: #ff9933;
+  background: linear-gradient(135deg, #ff9933 0%, #ea580c 100%);
   color: #ffffff;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 2px 10px -1px rgba(255, 153, 51, 0.35);
+  box-shadow: 0 4px 16px -1px rgba(255, 153, 51, 0.35);
 }
 .btn-saffron:hover {
-  background-color: #e67e17;
-  box-shadow: 0 4px 14px -1px rgba(255, 153, 51, 0.45);
+  filter: brightness(1.08);
+  box-shadow: 0 6px 20px -1px rgba(255, 153, 51, 0.45);
 }
 .btn-saffron:active {
   transform: scale(0.98);
 }
 
 .btn-india-green {
-  background-color: #138808;
+  background: linear-gradient(135deg, #16a34a 0%, #138808 100%);
   color: #ffffff;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 2px 10px -1px rgba(19, 136, 8, 0.35);
+  box-shadow: 0 4px 16px -1px rgba(19, 136, 8, 0.35);
 }
 .btn-india-green:hover {
-  background-color: #0f6e06;
-  box-shadow: 0 4px 14px -1px rgba(19, 136, 8, 0.45);
+  filter: brightness(1.08);
+  box-shadow: 0 6px 20px -1px rgba(19, 136, 8, 0.45);
 }
 .btn-india-green:active {
   transform: scale(0.98);
@@ -72,22 +75,35 @@
   transform: scale(0.98);
 }
 
+.btn-tricolor {
+  background: linear-gradient(130deg, #ff9933 0%, #cc5a00 45%, #138808 100%);
+  color: #ffffff;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 0 1px rgba(255, 153, 51, 0.3), 0 8px 32px rgba(255, 120, 0, 0.35);
+}
+.btn-tricolor:hover {
+  filter: brightness(1.08);
+}
+.btn-tricolor:active {
+  transform: scale(0.98);
+}
+
 .badge-connected {
-  background-color: #f0fdf4;
-  color: #138808;
-  border: 1px solid #bbf7d0;
+  background-color: rgba(19, 136, 8, 0.16);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
 }
 
 .badge-saffron {
-  background-color: #fff7ed;
-  color: #c2410c;
-  border: 1px solid #fed7aa;
+  background-color: rgba(255, 153, 51, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(251, 146, 60, 0.3);
 }
 
 .badge-ashoka {
-  background-color: #eef2ff;
-  color: #000080;
-  border: 1px solid #c7d2fe;
+  background-color: rgba(30, 58, 138, 0.4);
+  color: #93c5fd;
+  border: 1px solid rgba(96, 165, 250, 0.3);
 }
 
 body {
@@ -125,37 +141,37 @@ input, textarea, select {
 
 /* Custom Glassmorphism & Micro-animations */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(17, 23, 38, 0.88);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 .glass-header {
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(10, 15, 29, 0.92);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-composer {
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(10, 15, 29, 0.94);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-top: 1px solid rgba(226, 232, 240, 0.7);
-  box-shadow: 0 -4px 20px -2px rgba(15, 23, 42, 0.04);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 -8px 24px -2px rgba(0, 0, 0, 0.5);
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(17, 23, 38, 0.82);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.6);
 }
 
 .glass-card-dark {
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(10, 15, 29, 0.9);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.1);

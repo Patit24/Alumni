@@ -224,22 +224,22 @@ export default async function HomePage(props: {
     : null;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col pb-20 sm:pb-12">
+    <div className="min-h-screen bg-[#080811] text-white flex flex-col pb-28 sm:pb-16">
       {/* Global Floating Sticky Header Bar */}
-      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-slate-200/80 shadow-2xs">
+      <header className="sticky top-0 z-40 bg-[#0a0f1d]/90 backdrop-blur-xl border-b border-white/10 shadow-lg shadow-black/40">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           {/* Alma Mater Identity */}
           <Link href="/" className="flex items-center gap-3 group min-w-0">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-slate-900 via-indigo-950 to-blue-900 text-white flex items-center justify-center shadow-xs shrink-0 group-hover:scale-105 transition-transform duration-200">
+            <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#000080] via-[#000066] to-blue-900 text-white flex items-center justify-center shadow-md shadow-blue-900/30 shrink-0 group-hover:scale-105 transition-transform duration-200 border border-blue-500/30">
               <GraduationCap className="w-5 h-5 text-indigo-200" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold text-slate-900 tracking-tight truncate group-hover:text-blue-600 transition">
+                <span className="text-sm font-bold text-white tracking-tight truncate group-hover:text-[#FF9933] transition">
                   {user.institution.name}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-medium truncate">
+              <p className="text-[11px] text-slate-400 font-medium truncate">
                 Class of {user.batchYear} {user.department ? `• ${user.department.name}` : ""}
               </p>
             </div>
@@ -249,19 +249,19 @@ export default async function HomePage(props: {
           <div className="flex items-center gap-2 sm:gap-2.5">
             <Link
               href="/messages"
-              className="h-9 px-3.5 sm:px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-xs font-bold transition shadow-xs shadow-blue-500/20 active:scale-95 shrink-0"
+              className="h-9 px-3.5 sm:px-4 rounded-xl btn-saffron text-white flex items-center gap-2 text-xs font-bold transition shadow-md shadow-[#ff9933]/20 active:scale-95 shrink-0"
               title="End-to-End Encrypted Messages & Calls"
             >
               <div className="relative flex items-center justify-center">
                 <Lock className="w-3.5 h-3.5" />
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-blue-600 animate-pulse" />
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-[#FF9933] animate-pulse" />
               </div>
               <span className="tracking-tight">Messages</span>
             </Link>
 
             <Link
               href={`/profile/${user.id}`}
-              className="h-9 px-2.5 sm:px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-2 text-xs font-semibold transition shrink-0"
+              className="h-9 px-2.5 sm:px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 flex items-center gap-2 text-xs font-semibold transition shrink-0"
               title="My Profile"
             >
               <NavbarUserAvatar
@@ -296,7 +296,7 @@ export default async function HomePage(props: {
             </h2>
             <Link
               href="/explore"
-              className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 transition"
+              className="text-xs font-bold text-[#FF9933] hover:text-orange-400 flex items-center gap-1 transition"
             >
               <span>All Features</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -307,55 +307,55 @@ export default async function HomePage(props: {
             {/* Alumni Directory */}
             <Link
               href="/directory"
-              className="p-3.5 rounded-2xl bg-white border border-slate-200/80 hover:border-blue-300 hover:shadow-xs transition group flex items-center gap-3"
+              className="p-3.5 rounded-2xl bg-[#111726]/80 border border-white/10 hover:border-[#FF9933]/40 hover:bg-white/[0.04] transition group flex items-center gap-3 backdrop-blur-xl"
             >
-              <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <div className="h-10 w-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Users className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition truncate">
+                <p className="text-xs font-bold text-white group-hover:text-[#FF9933] transition truncate">
                   Network
                 </p>
-                <p className="text-[11px] text-slate-500 truncate">Find Alumni</p>
+                <p className="text-[11px] text-slate-400 truncate">Find Alumni</p>
               </div>
             </Link>
 
             {/* Jobs & Referrals */}
             <Link
               href="/jobs"
-              className="p-3.5 rounded-2xl bg-white border border-slate-200/80 hover:border-purple-300 hover:shadow-xs transition group flex items-center gap-3"
+              className="p-3.5 rounded-2xl bg-[#111726]/80 border border-white/10 hover:border-purple-400/40 hover:bg-white/[0.04] transition group flex items-center gap-3 backdrop-blur-xl"
             >
-              <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <div className="h-10 w-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Briefcase className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 group-hover:text-purple-600 transition truncate">
+                <p className="text-xs font-bold text-white group-hover:text-purple-300 transition truncate">
                   Jobs
                 </p>
-                <p className="text-[11px] text-slate-500 truncate">Referrals</p>
+                <p className="text-[11px] text-slate-400 truncate">Referrals</p>
               </div>
             </Link>
 
             {/* Senior Mentorship */}
             <Link
               href="/mentorship"
-              className="p-3.5 rounded-2xl bg-white border border-slate-200/80 hover:border-teal-300 hover:shadow-xs transition group flex items-center gap-3"
+              className="p-3.5 rounded-2xl bg-[#111726]/80 border border-white/10 hover:border-emerald-400/40 hover:bg-white/[0.04] transition group flex items-center gap-3 backdrop-blur-xl"
             >
-              <div className="h-10 w-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <div className="h-10 w-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Sparkles className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 group-hover:text-teal-600 transition truncate">
+                <p className="text-xs font-bold text-white group-hover:text-emerald-300 transition truncate">
                   Mentorship
                 </p>
-                <p className="text-[11px] text-slate-500 truncate">1-on-1 Help</p>
+                <p className="text-[11px] text-slate-400 truncate">1-on-1 Help</p>
               </div>
             </Link>
 
             {/* Explore Hub */}
             <Link
               href="/explore"
-              className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs hover:shadow-md transition group flex items-center gap-3 active:scale-95"
+              className="p-3.5 rounded-2xl bg-gradient-to-r from-[#FF9933] via-orange-600 to-[#138808] text-white shadow-md shadow-[#ff9933]/20 hover:opacity-95 transition group flex items-center gap-3 active:scale-95"
             >
               <div className="h-10 w-10 rounded-xl bg-white/20 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                 <Compass className="w-5 h-5" />
@@ -364,7 +364,7 @@ export default async function HomePage(props: {
                 <p className="text-xs font-bold text-white transition truncate">
                   Explore Hub
                 </p>
-                <p className="text-[11px] text-blue-100 truncate">More Features</p>
+                <p className="text-[11px] text-orange-100 truncate">More Features</p>
               </div>
             </Link>
           </div>

@@ -18,8 +18,9 @@ import {
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
 import { motion, AnimatePresence } from "framer-motion";
-import FloatingBottomNav, { NavTab } from "@/components/motion/FloatingBottomNav";
 import { triggerHaptic, MOTION_SPRINGS } from "@/lib/motion/tokens";
+
+export type NavTab = "CHATS" | "CALLS" | "CONTACTS" | "PRIVACY";
 
 interface AlumniContact {
   id: string;
@@ -315,18 +316,21 @@ export default function MessagesHubPage() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-[#080811] text-white flex flex-col">
       {/* ── HEADER ─────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-200/70 shadow-sm">
+      <header className="sticky top-0 z-30 bg-[#0a0f1d]/90 backdrop-blur-2xl border-b border-white/10 shadow-lg shadow-black/40">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           {/* Title */}
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-[#FF9933] to-[#FF8008] text-white flex items-center justify-center shadow-md shadow-[#ff9933]/20">
               <Lock className="w-4 h-4" />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-slate-900 leading-tight">Messages</h1>
-              <p className="text-[10px] text-emerald-600 font-semibold">End-to-End Encrypted</p>
+              <h1 className="text-sm font-bold text-white leading-tight">Messages</h1>
+              <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                End-to-End Encrypted
+              </p>
             </div>
           </div>
 
@@ -334,14 +338,14 @@ export default function MessagesHubPage() {
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowQrModal(true)}
-              className="h-8 w-8 rounded-xl bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 flex items-center justify-center transition active:scale-90"
+              className="h-8 w-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 flex items-center justify-center transition active:scale-90"
               title="My QR Code"
             >
               <QrCode className="w-4 h-4" />
             </button>
             <button
               onClick={() => setShowScannerModal(true)}
-              className="h-8 w-8 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 flex items-center justify-center transition active:scale-90"
+              className="h-8 w-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 flex items-center justify-center transition active:scale-90"
               title="Scan QR Code"
             >
               <Scan className="w-4 h-4" />
@@ -356,8 +360,8 @@ export default function MessagesHubPage() {
           </div>
         </div>
 
-        {/* Search bar */}
-        <div className="max-w-2xl mx-auto px-4 pb-3">
+        {/* Search bar & Sub-tab navigation */}
+        <div className="max-w-2xl mx-auto px-4 pb-3 space-y-2.5">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
@@ -365,16 +369,62 @@ export default function MessagesHubPage() {
               placeholder={tab === "CALLS" ? "Search calls…" : "Search conversations…"}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-9 py-2 rounded-xl bg-slate-100 border border-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#ff9933]/30 focus:bg-white focus:border-orange-200 transition"
+              className="w-full pl-9 pr-9 py-2 rounded-xl bg-[#111726] border border-white/10 text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#ff9933]/40 focus:border-[#ff9933]/50 transition"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 transition"
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-white transition"
               >
                 <X className="w-4 h-4" />
               </button>
             )}
+          </div>
+
+          {/* Sub-tab segmented bar with Framer Motion spring pill */}
+          <div className="flex items-center gap-1 p-1 bg-[#111726]/80 border border-white/10 rounded-2xl">
+            {(
+              [
+                { id: "CHATS" as const, label: "Chats", icon: MessageSquare, badge: incomingRequests.length || undefined },
+                { id: "CALLS" as const, label: "Calls", icon: Phone, badge: callLogs.filter(c => c.status === "MISSED").length || undefined },
+                { id: "CONTACTS" as const, label: "Contacts", icon: Users, badge: connectedContacts.length || undefined },
+                { id: "PRIVACY" as const, label: "Privacy", icon: ShieldCheck, badge: undefined },
+              ] as { id: NavTab; label: string; icon: typeof MessageSquare; badge?: number }[]
+            ).map((t) => {
+              const Icon = t.icon;
+              const isActive = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    triggerHaptic("light");
+                    setTab(t.id);
+                  }}
+                  className={`relative flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl text-xs font-semibold transition-all duration-200 select-none ${
+                    isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="messagesSubTab"
+                      className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#FF9933] to-[#FF8008] shadow-sm shadow-[#ff9933]/30"
+                      transition={MOTION_SPRINGS.bouncy}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{t.label}</span>
+                    {t.badge !== undefined && t.badge > 0 && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold leading-none ${
+                        isActive ? "bg-white text-slate-900" : "bg-[#ff9933]/25 text-orange-300"
+                      }`}>
+                        {t.badge}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </header>
@@ -390,7 +440,7 @@ export default function MessagesHubPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={MOTION_SPRINGS.gentle}
-              className="mx-4 mt-4 rounded-3xl bg-gradient-to-r from-[#000080] via-[#000066] to-blue-900 text-white shadow-xl shadow-indigo-950/15 overflow-hidden border border-blue-900/40"
+              className="mx-4 mt-4 rounded-3xl bg-gradient-to-r from-[#000080]/90 via-[#000066]/90 to-blue-950/90 text-white shadow-xl shadow-black/40 overflow-hidden border border-blue-500/30"
             >
               <div className="px-4 pt-3.5 pb-2.5 flex items-center justify-between border-b border-white/10">
                 <div className="flex items-center gap-2">
@@ -449,19 +499,19 @@ export default function MessagesHubPage() {
           <section className="mt-4">
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <Loader2 className="w-7 h-7 animate-spin text-blue-600" />
-                <p className="text-sm text-slate-500">Loading conversations…</p>
+                <Loader2 className="w-7 h-7 animate-spin text-[#FF9933]" />
+                <p className="text-sm text-slate-400">Loading conversations…</p>
               </div>
             ) : connectedContacts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 px-6 text-center gap-4">
-                <div className="h-16 w-16 rounded-3xl bg-blue-50 border border-blue-100 flex items-center justify-center">
-                  <MessageSquare className="w-8 h-8 text-blue-600" />
+                <div className="h-16 w-16 rounded-3xl bg-[#111726] border border-white/10 flex items-center justify-center shadow-lg shadow-black/40">
+                  <MessageSquare className="w-8 h-8 text-[#FF9933]" />
                 </div>
                 <div className="space-y-1.5">
-                  <h3 className="text-base font-bold text-slate-900">
+                  <h3 className="text-base font-bold text-white">
                     {searchQuery ? "No matches found" : "No chats yet"}
                   </h3>
-                  <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+                  <p className="text-sm text-slate-400 max-w-xs leading-relaxed">
                     {searchQuery
                       ? "Try a different name or username."
                       : "Connect with alumni to start encrypted conversations. Only mutual connections appear here."}
@@ -470,7 +520,7 @@ export default function MessagesHubPage() {
                 {!searchQuery && (
                   <Link
                     href="/directory"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold shadow-sm hover:bg-blue-700 transition active:scale-95"
+                    className="btn-saffron inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold shadow-lg shadow-[#ff9933]/20 transition active:scale-95"
                   >
                     <Users className="w-4 h-4" />
                     Find Alumni
@@ -480,30 +530,30 @@ export default function MessagesHubPage() {
                 {/* Quick Start Suggested Alumni */}
                 {!searchQuery && contacts.filter((c) => c.id !== currentUserId).length > 0 && (
                   <div className="mt-6 w-full max-w-md text-left">
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5 px-1">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-1">
                       Start Chatting With Alumni
                     </p>
-                    <div className="bg-white rounded-2xl border border-slate-200/80 divide-y divide-slate-100 shadow-sm overflow-hidden">
+                    <div className="bg-[#111726]/80 rounded-2xl border border-white/10 divide-y divide-white/8 shadow-lg shadow-black/40 overflow-hidden backdrop-blur-xl">
                       {contacts
                         .filter((c) => c.id !== currentUserId)
                         .slice(0, 5)
                         .map((person) => (
                           <div
                             key={person.id}
-                            className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition"
+                            className="p-3 flex items-center justify-between gap-3 hover:bg-white/5 transition"
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               <Avatar name={person.name} src={person.avatarUrl} size={40} />
                               <div className="min-w-0">
-                                <p className="text-sm font-bold text-slate-900 truncate">{person.name}</p>
-                                <p className="text-xs text-slate-500 truncate">
+                                <p className="text-sm font-bold text-white truncate">{person.name}</p>
+                                <p className="text-xs text-slate-400 truncate">
                                   {person.currentRole || `Class of ${person.batchYear}`}
                                 </p>
                               </div>
                             </div>
                             <button
                               onClick={() => handleQuickConnectAndChat(person.id)}
-                              className="h-8 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shrink-0 transition active:scale-95 flex items-center gap-1.5 shadow-sm"
+                              className="btn-saffron h-8 px-3 rounded-xl text-white text-xs font-semibold shrink-0 transition active:scale-95 flex items-center gap-1.5 shadow-sm"
                             >
                               <MessageSquare className="w-3.5 h-3.5" />
                               <span>Chat</span>
@@ -515,7 +565,7 @@ export default function MessagesHubPage() {
                 )}
               </div>
             ) : (
-              <div className="bg-white mx-4 rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
+              <div className="bg-[#111726]/80 mx-4 rounded-2xl border border-white/10 shadow-lg shadow-black/40 overflow-hidden divide-y divide-white/8 backdrop-blur-xl">
                 <AnimatePresence initial={false}>
                   {connectedContacts.map(contact => {
                     const lastMsg = latestMessages.get(contact.id);
@@ -530,8 +580,8 @@ export default function MessagesHubPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, x: -40 }}
                         transition={MOTION_SPRINGS.gentle}
-                        whileTap={{ scale: 0.985, backgroundColor: "#f8fafc" }}
-                        className="relative flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors select-none"
+                        whileTap={{ scale: 0.985, backgroundColor: "rgba(255,255,255,0.06)" }}
+                        className="relative flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition-colors select-none"
                         onClick={() => {
                           triggerHaptic("light");
                           addLocalConnectedPeer(contact.id, currentUserId || undefined);
@@ -541,21 +591,21 @@ export default function MessagesHubPage() {
                         {/* Avatar + online dot */}
                         <div className="relative shrink-0">
                           <Avatar name={contact.name} src={contact.avatarUrl} size={50} />
-                          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white" />
+                          <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-[#111726]" />
                         </div>
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <p className="text-sm font-bold text-slate-900 truncate">
+                              <p className="text-sm font-bold text-white truncate">
                                 {contact.name}
                               </p>
                               {isPinned && (
-                                <span className="text-blue-500 shrink-0 text-[10px]">📌</span>
+                                <span className="text-orange-400 shrink-0 text-[10px]">📌</span>
                               )}
                               {contact.verificationStatus === "VERIFIED" && (
-                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                               )}
                             </div>
                             {lastMsg && (
@@ -571,13 +621,13 @@ export default function MessagesHubPage() {
                                 {isOutgoing && (
                                   <span className="text-[11px] shrink-0 leading-none">
                                     {lastMsg.status === "READ"
-                                      ? <span className="text-blue-500 font-bold">✓✓</span>
+                                      ? <span className="text-blue-400 font-bold">✓✓</span>
                                       : lastMsg.status === "DELIVERED"
                                         ? <span className="text-slate-400 font-bold">✓✓</span>
                                         : <span className="text-slate-400">✓</span>}
                                   </span>
                                 )}
-                                <p className="text-sm text-slate-500 truncate">{lastMsg.text}</p>
+                                <p className="text-sm text-slate-300 truncate">{lastMsg.text}</p>
                               </>
                             ) : (
                               <p className="text-sm text-slate-400 truncate">
@@ -590,7 +640,7 @@ export default function MessagesHubPage() {
                         </div>
 
                         {/* Chevron */}
-                        <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                        <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
                       </motion.div>
                     );
                   })}
@@ -612,19 +662,19 @@ export default function MessagesHubPage() {
                       setCallLogs([]);
                     }
                   }}
-                  className="text-xs text-rose-500 hover:text-rose-700 font-semibold flex items-center gap-1 px-3 py-1 rounded-lg hover:bg-rose-50 transition"
+                  className="text-xs text-rose-400 hover:text-rose-300 font-semibold flex items-center gap-1 px-3 py-1 rounded-lg hover:bg-rose-500/10 transition"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Clear History
                 </button>
               </div>
             )}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
+            <div className="bg-[#111726]/80 rounded-2xl border border-white/10 shadow-lg shadow-black/40 overflow-hidden divide-y divide-white/8 backdrop-blur-xl">
               {filteredCalls.length === 0 ? (
                 <div className="py-16 flex flex-col items-center gap-3 text-center px-8">
-                  <Phone className="w-10 h-10 text-slate-300" />
+                  <Phone className="w-10 h-10 text-slate-500" />
                   <div>
-                    <p className="text-sm font-semibold text-slate-700">No call records</p>
+                    <p className="text-sm font-semibold text-slate-200">No call records</p>
                     <p className="text-xs text-slate-400 mt-1">Voice and video calls will appear here.</p>
                   </div>
                 </div>
@@ -632,19 +682,19 @@ export default function MessagesHubPage() {
                 filteredCalls.map(log => {
                   const CallIcon = log.status === "MISSED" ? PhoneMissed
                     : log.direction === "INCOMING" ? PhoneIncoming : PhoneOutgoing;
-                  const iconColor = log.status === "MISSED" ? "text-rose-500" : "text-emerald-500";
+                  const iconColor = log.status === "MISSED" ? "text-rose-400" : "text-emerald-400";
                   return (
                     <motion.div
                       key={log.id}
                       whileTap={{ scale: 0.98 }}
-                      className="flex items-center gap-3.5 px-4 py-3 hover:bg-slate-50 transition cursor-pointer"
+                      className="flex items-center gap-3.5 px-4 py-3 hover:bg-white/[0.04] transition cursor-pointer"
                       onClick={() => router.push(`/messages/${log.peerId}`)}
                     >
-                      <div className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 ${log.status === "MISSED" ? "bg-rose-50" : "bg-emerald-50"}`}>
+                      <div className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 ${log.status === "MISSED" ? "bg-rose-500/15" : "bg-emerald-500/15"}`}>
                         <CallIcon className={`w-5 h-5 ${iconColor}`} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-900 truncate">{log.peerName || "Unknown"}</p>
+                        <p className="text-sm font-bold text-white truncate">{log.peerName || "Unknown"}</p>
                         <p className="text-[11px] text-slate-400 truncate">
                           {log.callType === "VIDEO" ? "Video" : "Voice"} · {log.status}
                           {log.durationSeconds ? ` · ${Math.floor(log.durationSeconds / 60)}m ${log.durationSeconds % 60}s` : ""}
@@ -667,15 +717,15 @@ export default function MessagesHubPage() {
             <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-3 px-1">
               All Connected Alumni
             </p>
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
+            <div className="bg-[#111726]/80 rounded-2xl border border-white/10 shadow-lg shadow-black/40 overflow-hidden divide-y divide-white/8 backdrop-blur-xl">
               {connectedContacts.length === 0 ? (
                 <div className="py-14 flex flex-col items-center gap-3 text-center px-8">
-                  <Users className="w-10 h-10 text-slate-300" />
+                  <Users className="w-10 h-10 text-slate-500" />
                   <div>
-                    <p className="text-sm font-semibold text-slate-700">No connections yet</p>
+                    <p className="text-sm font-semibold text-slate-200">No connections yet</p>
                     <p className="text-xs text-slate-400 mt-1">Connect with alumni from the directory.</p>
                   </div>
-                  <Link href="/directory" className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold transition hover:bg-blue-700">
+                  <Link href="/directory" className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl btn-saffron text-white text-xs font-bold transition">
                     <Users className="w-3.5 h-3.5" /> Browse Directory
                   </Link>
                 </div>
@@ -692,7 +742,7 @@ export default function MessagesHubPage() {
                     <motion.div
                       key={contact.id}
                       whileTap={{ scale: 0.985 }}
-                      className="flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-slate-50 transition"
+                      className="flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition"
                       onClick={() => {
                         triggerHaptic("light");
                         router.push(`/messages/${contact.id}`);
@@ -700,12 +750,12 @@ export default function MessagesHubPage() {
                     >
                       <Avatar name={contact.name} src={contact.avatarUrl} size={44} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-900 truncate">{contact.name}</p>
-                        <p className="text-[11px] text-slate-500 truncate">
+                        <p className="text-sm font-bold text-white truncate">{contact.name}</p>
+                        <p className="text-[11px] text-slate-400 truncate">
                           {contact.currentRole || `Class of ${contact.batchYear}`}
                         </p>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                      <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
                     </motion.div>
                   ))
               )}
@@ -716,26 +766,26 @@ export default function MessagesHubPage() {
         {/* ── PRIVACY TAB ── */}
         {tab === "PRIVACY" && (
           <section className="mt-4 mx-4 space-y-3">
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden divide-y divide-slate-100">
+            <div className="bg-[#111726]/80 rounded-2xl border border-white/10 shadow-lg shadow-black/40 overflow-hidden divide-y divide-white/8 backdrop-blur-xl">
               {[
-                { label: "Privacy Settings", sub: "Receipts, typing, online status", href: "/settings/privacy", icon: ShieldCheck, color: "text-emerald-600 bg-emerald-50" },
-                { label: "Privacy Dashboard", sub: "Active sessions and threat log", href: "/settings/privacy/dashboard", icon: ShieldCheck, color: "text-blue-600 bg-blue-50" },
+                { label: "Privacy Settings", sub: "Receipts, typing, online status", href: "/settings/privacy", icon: ShieldCheck, color: "text-emerald-400 bg-emerald-500/15" },
+                { label: "Privacy Dashboard", sub: "Active sessions and threat log", href: "/settings/privacy/dashboard", icon: ShieldCheck, color: "text-blue-400 bg-blue-500/15" },
               ].map(item => {
                 const Icon = item.icon;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="flex items-center gap-3.5 px-4 py-4 hover:bg-slate-50 transition"
+                    className="flex items-center gap-3.5 px-4 py-4 hover:bg-white/[0.04] transition"
                   >
                     <div className={`h-10 w-10 rounded-2xl flex items-center justify-center shrink-0 ${item.color}`}>
                       <Icon className="w-5 h-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-slate-900">{item.label}</p>
-                      <p className="text-[11px] text-slate-500">{item.sub}</p>
+                      <p className="text-sm font-bold text-white">{item.label}</p>
+                      <p className="text-[11px] text-slate-400">{item.sub}</p>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
                   </Link>
                 );
               })}
@@ -746,14 +796,6 @@ export default function MessagesHubPage() {
           </section>
         )}
       </main>
-
-      {/* ── BOTTOM FLOATING NAV ─────────────────────────────────── */}
-      <FloatingBottomNav
-        activeTab={tab}
-        onTabChange={setTab}
-        unreadCount={incomingRequests.length}
-        missedCallsCount={callLogs.filter(c => c.status === "MISSED").length}
-      />
 
       {/* ── MODALS ──────────────────────────────────────────────── */}
       <QRCodeModal
