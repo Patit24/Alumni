@@ -323,22 +323,22 @@ export default function EditProfileModal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-lg bg-[#0a0f1d] rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-white backdrop-blur-xl"
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white sticky top-0 z-10">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#0a0f1d] sticky top-0 z-10">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Edit Alumni Profile</h2>
+            <h2 className="text-base font-bold text-white">Edit Alumni Profile</h2>
             <p className="text-xs text-slate-400">Update photo, cover, role, and location</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+            className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -346,28 +346,28 @@ export default function EditProfileModal({
 
         <form onSubmit={handleSubmit} className="overflow-y-auto p-5 sm:p-6 space-y-6 flex-1">
           {error && (
-            <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <div className="p-3 rounded-2xl bg-rose-950/60 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {success && (
-            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
-              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>Profile updated successfully!</span>
             </div>
           )}
 
           {/* 1. COVER PICTURE SELECTION */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
               <span>Cover Picture</span>
               {coverUrl && (
                 <button
                   type="button"
                   onClick={() => setCoverUrl(null)}
-                  className="text-rose-600 hover:text-rose-700 text-[11px] font-semibold flex items-center gap-1 normal-case"
+                  className="text-rose-400 hover:text-rose-300 text-[11px] font-semibold flex items-center gap-1 normal-case"
                 >
                   <Trash2 className="w-3 h-3" /> Reset to Gradient
                 </button>
@@ -375,7 +375,7 @@ export default function EditProfileModal({
             </label>
 
             {/* Cover Preview Card */}
-            <div className="relative h-28 sm:h-32 w-full rounded-2xl overflow-hidden border border-slate-200 group bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900">
+            <div className="relative h-28 sm:h-32 w-full rounded-2xl overflow-hidden border border-white/10 group bg-gradient-to-r from-slate-950 via-[#111726] to-slate-950">
               {coverUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={coverUrl} alt="Cover preview" className="w-full h-full object-cover" />
@@ -389,7 +389,7 @@ export default function EditProfileModal({
               <button
                 type="button"
                 onClick={() => coverInputRef.current?.click()}
-                className="absolute bottom-2.5 right-2.5 px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/80 text-white text-xs font-semibold backdrop-blur-md transition flex items-center gap-1.5 shadow-sm"
+                className="absolute bottom-2.5 right-2.5 px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/80 text-white text-xs font-semibold backdrop-blur-md transition flex items-center gap-1.5 shadow-sm border border-white/15"
               >
                 <Camera className="w-3.5 h-3.5" />
                 <span>Upload Cover Photo</span>
@@ -413,7 +413,7 @@ export default function EditProfileModal({
                     type="button"
                     onClick={() => setCoverUrl(preset.url)}
                     className={`h-12 rounded-xl overflow-hidden relative border transition group text-left ${
-                      coverUrl === preset.url ? "ring-2 ring-blue-600 border-transparent" : "border-slate-200"
+                      coverUrl === preset.url ? "ring-2 ring-[#FF9933] border-transparent" : "border-white/10"
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -428,8 +428,8 @@ export default function EditProfileModal({
           </div>
 
           {/* 2. PROFILE PICTURE (AVATAR) SELECTION */}
-          <div className="space-y-2 pt-2 border-t border-slate-100">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+          <div className="space-y-2 pt-2 border-t border-white/10">
+            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
               Profile Picture
             </label>
 
@@ -438,7 +438,7 @@ export default function EditProfileModal({
                 onClick={() => avatarInputRef.current?.click()}
                 className="relative cursor-pointer group shrink-0"
               >
-                <div className="h-20 w-20 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center font-black text-2xl shadow-md overflow-hidden ring-4 ring-slate-100 transition group-hover:ring-blue-300">
+                <div className="h-20 w-20 rounded-2xl bg-gradient-to-tr from-[#FF9933] via-orange-600 to-[#138808] text-white flex items-center justify-center font-black text-2xl shadow-md overflow-hidden ring-4 ring-white/10 transition group-hover:ring-[#FF9933]/50">
                   {avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={avatarUrl} alt="Avatar Preview" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
@@ -447,7 +447,7 @@ export default function EditProfileModal({
                   )}
                 </div>
                 <div
-                  className="absolute inset-0 rounded-2xl bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[1px]"
+                  className="absolute inset-0 rounded-2xl bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[1px]"
                   title="Upload profile photo"
                 >
                   <Camera className="w-5 h-5 drop-shadow-sm" />
@@ -458,7 +458,7 @@ export default function EditProfileModal({
                     e.stopPropagation();
                     avatarInputRef.current?.click();
                   }}
-                  className="absolute -bottom-1 -right-1 p-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-md transition hover:scale-110 active:scale-95 cursor-pointer"
+                  className="absolute -bottom-1 -right-1 p-2 rounded-full bg-[#FF9933] hover:bg-orange-500 text-white shadow-md transition hover:scale-110 active:scale-95 cursor-pointer ring-2 ring-[#0a0f1d]"
                   title="Upload profile photo"
                 >
                   <Camera className="w-3.5 h-3.5" />
@@ -477,7 +477,7 @@ export default function EditProfileModal({
                   <button
                     type="button"
                     onClick={() => avatarInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition active:scale-98 cursor-pointer shadow-xs"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold border border-white/10 transition active:scale-98 cursor-pointer shadow-xs"
                   >
                     <Camera className="w-3.5 h-3.5" />
                     <span>Upload Photo</span>
@@ -486,7 +486,7 @@ export default function EditProfileModal({
                     <button
                       type="button"
                       onClick={() => setAvatarUrl(null)}
-                      className="px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 text-xs font-semibold transition active:scale-98 cursor-pointer border border-rose-200/60"
+                      className="px-3 py-1.5 rounded-xl text-rose-400 hover:bg-rose-500/10 text-xs font-semibold transition active:scale-98 cursor-pointer border border-rose-500/30"
                     >
                       Remove
                     </button>
@@ -500,13 +500,13 @@ export default function EditProfileModal({
           </div>
 
           {/* 3. PROFILE DETAILS */}
-          <div className="space-y-3.5 pt-2 border-t border-slate-100">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+          <div className="space-y-3.5 pt-2 border-t border-white/10">
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
               Personal & Professional Details
             </h3>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
+              <label className="text-xs font-semibold text-slate-300 block mb-1">
                 Full Name *
               </label>
               <input
@@ -514,14 +514,14 @@ export default function EditProfileModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your Name"
-                className="w-full p-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
+                className="w-full p-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] font-medium transition"
                 required
               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
                   Current Role / Title
                 </label>
                 <div className="relative">
@@ -531,13 +531,13 @@ export default function EditProfileModal({
                     value={currentRole}
                     onChange={(e) => setCurrentRole(e.target.value)}
                     placeholder="e.g. Software Engineer"
-                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] transition"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
                   Current Company / Organization
                 </label>
                 <div className="relative">
@@ -547,7 +547,7 @@ export default function EditProfileModal({
                     value={currentCompany}
                     onChange={(e) => setCurrentCompany(e.target.value)}
                     placeholder="e.g. Google, PPR Global"
-                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] transition"
                   />
                 </div>
               </div>
@@ -555,7 +555,7 @@ export default function EditProfileModal({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
                   City / Location
                 </label>
                 <div className="relative">
@@ -565,13 +565,13 @@ export default function EditProfileModal({
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="e.g. Basirhat, Kolkata"
-                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] transition"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
                   LinkedIn URL
                 </label>
                 <div className="relative">
@@ -581,14 +581,14 @@ export default function EditProfileModal({
                     value={linkedinUrl}
                     onChange={(e) => setLinkedinUrl(e.target.value)}
                     placeholder="https://linkedin.com/in/..."
-                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] transition"
                   />
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">
+              <label className="text-xs font-semibold text-slate-300 block mb-1">
                 Bio / About You
               </label>
               <textarea
@@ -596,36 +596,36 @@ export default function EditProfileModal({
                 onChange={(e) => setBio(e.target.value)}
                 placeholder="Share a short summary about your background, interests, or what you're working on..."
                 rows={3}
-                className="w-full p-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                className="w-full p-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] resize-none transition"
               />
             </div>
 
             {/* Academic & Institution Discovery */}
-            <div className="space-y-3 pt-3 border-t border-slate-100">
+            <div className="space-y-3 pt-3 border-t border-white/10">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div>
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
                     {instType === "SCHOOL" ? (
-                      <School className="w-4 h-4 text-blue-600" />
+                      <School className="w-4 h-4 text-[#FF9933]" />
                     ) : (
-                      <GraduationCap className="w-4 h-4 text-blue-600" />
+                      <GraduationCap className="w-4 h-4 text-[#FF9933]" />
                     )}
                     <span>{instType === "SCHOOL" ? "School Details" : "College / University Details"}</span>
                   </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-[11px] text-slate-400 mt-0.5">
                     Institution affiliation helps alumni and classmates discover you.
                   </p>
                 </div>
 
                 {/* School vs College Selector */}
-                <div className="flex rounded-xl bg-slate-100 p-0.5">
+                <div className="flex rounded-xl bg-white/5 p-0.5 border border-white/10">
                   <button
                     type="button"
                     onClick={() => setInstType("COLLEGE")}
                     className={`py-1 px-2.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
                       instType === "COLLEGE"
-                        ? "bg-white text-blue-700 shadow-2xs"
-                        : "text-slate-600 hover:text-slate-900"
+                        ? "bg-gradient-to-r from-[#FF9933] to-[#FF8008] text-white shadow-xs"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
                     <GraduationCap className="w-3 h-3" />
@@ -636,8 +636,8 @@ export default function EditProfileModal({
                     onClick={() => setInstType("SCHOOL")}
                     className={`py-1 px-2.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
                       instType === "SCHOOL"
-                        ? "bg-white text-blue-700 shadow-2xs"
-                        : "text-slate-600 hover:text-slate-900"
+                        ? "bg-gradient-to-r from-[#FF9933] to-[#FF8008] text-white shadow-xs"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
                     <School className="w-3 h-3" />
@@ -647,13 +647,13 @@ export default function EditProfileModal({
               </div>
 
               <div className="relative">
-                <label className="text-xs font-semibold text-slate-700 block mb-1">
+                <label className="text-xs font-semibold text-slate-300 block mb-1">
                   {instType === "SCHOOL" ? "School Name *" : "College / University / Campus Name *"}
                 </label>
                 <div className="relative">
                   <School className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
                   {loadingSuggestions && (
-                    <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin absolute right-3 top-3" />
+                    <Loader2 className="w-3.5 h-3.5 text-[#FF9933] animate-spin absolute right-3 top-3" />
                   )}
                   <input
                     type="text"
@@ -664,14 +664,14 @@ export default function EditProfileModal({
                     }}
                     onFocus={() => setShowSuggestions(true)}
                     placeholder={instType === "SCHOOL" ? "e.g. DPS, St. Xavier's School, Kendriya Vidyalaya" : "e.g. Kalyani Government Engineering College, Jadavpur University"}
-                    className="w-full pl-9 pr-8 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
+                    className="w-full pl-9 pr-8 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] font-medium transition"
                     required
                   />
                 </div>
 
                 {/* Institution suggestions dropdown */}
                 {showSuggestions && (instSuggestions.length > 0 || institutionName.trim().length >= 2) && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 max-h-48 overflow-y-auto">
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a0f1d] rounded-xl border border-white/10 shadow-2xl z-20 max-h-48 overflow-y-auto">
                     {instSuggestions.map((inst) => (
                       <button
                         key={inst.id}
@@ -681,9 +681,9 @@ export default function EditProfileModal({
                           setShowSuggestions(false);
                           if (inst.type === "SCHOOL") setInstType("SCHOOL");
                         }}
-                        className="w-full text-left px-3.5 py-2 text-xs hover:bg-blue-50 transition flex items-center justify-between border-b border-slate-100 last:border-0"
+                        className="w-full text-left px-3.5 py-2 text-xs hover:bg-white/10 transition flex items-center justify-between border-b border-white/5 last:border-0"
                       >
-                        <span className="font-semibold text-slate-800">{inst.name}</span>
+                        <span className="font-semibold text-white">{inst.name}</span>
                         {inst.city && (
                           <span className="text-[10px] text-slate-400 ml-2">{inst.city}</span>
                         )}
@@ -695,7 +695,7 @@ export default function EditProfileModal({
                         onClick={() => {
                           setShowSuggestions(false);
                         }}
-                        className="w-full text-left px-3.5 py-2 text-xs bg-amber-50/70 hover:bg-amber-100 text-amber-800 transition flex items-center gap-1.5 font-semibold border-t border-amber-200/50"
+                        className="w-full text-left px-3.5 py-2 text-xs bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 transition flex items-center gap-1.5 font-semibold border-t border-amber-500/30"
                       >
                         <span>✓ Use &quot;{institutionName.trim()}&quot; as custom {instType === "SCHOOL" ? "school" : "institution"}</span>
                       </button>
@@ -704,8 +704,8 @@ export default function EditProfileModal({
                 )}
 
                 {!loadingSuggestions && institutionName.trim().length >= 2 && instSuggestions.length === 0 && (
-                  <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1">
-                    <span className="text-emerald-600 font-bold">✓</span>
+                  <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                    <span className="text-emerald-400 font-bold">✓</span>
                     <span>&quot;{institutionName.trim()}&quot; will be saved as your custom {instType === "SCHOOL" ? "school" : "institution"}.</span>
                   </p>
                 )}
@@ -713,7 +713,7 @@ export default function EditProfileModal({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
                     {instType === "SCHOOL" ? "Class / Stream" : "Department / Stream"}
                   </label>
                   <div className="relative">
@@ -723,13 +723,13 @@ export default function EditProfileModal({
                       value={departmentName}
                       onChange={(e) => setDepartmentName(e.target.value)}
                       placeholder={instType === "SCHOOL" ? "e.g. 10th Standard, 12th Science" : "e.g. MCA, CSE, IT"}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] transition"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
                     {instType === "SCHOOL" ? "Board / Section" : "Course / Degree"}
                   </label>
                   <div className="relative">
@@ -739,13 +739,13 @@ export default function EditProfileModal({
                       value={course}
                       onChange={(e) => setCourse(e.target.value)}
                       placeholder={instType === "SCHOOL" ? "e.g. CBSE, ICSE, State Board" : "e.g. B.Tech, BCA, MCA"}
-                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] transition"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 block mb-1">
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">
                     {instType === "SCHOOL" ? "Passing Year / Class of" : "Graduation Year / Class"}
                   </label>
                   <div className="relative">
@@ -757,7 +757,7 @@ export default function EditProfileModal({
                       value={batchYear}
                       onChange={(e) => setBatchYear(e.target.value)}
                       placeholder="e.g. 2026"
-                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] font-medium transition"
                     />
                   </div>
                 </div>
@@ -766,11 +766,11 @@ export default function EditProfileModal({
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+          <div className="pt-3 border-t border-white/10 flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/10 transition"
             >
               Cancel
             </button>
@@ -778,7 +778,7 @@ export default function EditProfileModal({
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-2 shadow-sm shadow-blue-500/25 disabled:opacity-50 active:scale-98"
+              className="btn-saffron px-5 py-2 rounded-xl text-white text-xs font-bold transition flex items-center gap-2 shadow-md shadow-[#ff9933]/25 disabled:opacity-50 active:scale-98"
             >
               {saving ? (
                 <>

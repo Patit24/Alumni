@@ -547,43 +547,6 @@ export default function MessagesHubPage() {
                     Find Alumni
                   </Link>
                 )}
-
-                {/* Quick Start Suggested Alumni */}
-                {!searchQuery && contacts.filter((c) => c.id !== currentUserId).length > 0 && (
-                  <div className="mt-6 w-full max-w-md text-left">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5 px-1">
-                      Start Chatting With Alumni
-                    </p>
-                    <div className="bg-[#111726]/80 rounded-2xl border border-white/10 divide-y divide-white/8 shadow-lg shadow-black/40 overflow-hidden backdrop-blur-xl">
-                      {contacts
-                        .filter((c) => c.id !== currentUserId)
-                        .slice(0, 5)
-                        .map((person) => (
-                          <div
-                            key={person.id}
-                            className="p-3 flex items-center justify-between gap-3 hover:bg-white/5 transition"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <Avatar name={person.name} src={person.avatarUrl} size={40} />
-                              <div className="min-w-0">
-                                <p className="text-sm font-bold text-white truncate">{person.name}</p>
-                                <p className="text-xs text-slate-400 truncate">
-                                  {person.currentRole || `Class of ${person.batchYear}`}
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => handleQuickConnectAndChat(person.id)}
-                              className="btn-saffron h-8 px-3 rounded-xl text-white text-xs font-semibold shrink-0 transition active:scale-95 flex items-center gap-1.5 shadow-sm"
-                            >
-                              <MessageSquare className="w-3.5 h-3.5" />
-                              <span>Chat</span>
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="bg-[#111726]/80 mx-4 rounded-2xl border border-white/10 shadow-lg shadow-black/40 overflow-hidden divide-y divide-white/8 backdrop-blur-xl">

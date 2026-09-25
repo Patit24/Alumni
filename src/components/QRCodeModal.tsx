@@ -186,40 +186,40 @@ export default function QRCodeModal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm bg-white rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4"
+        className="w-full max-w-sm bg-[#0a0f1d] rounded-3xl border border-white/10 p-6 shadow-2xl space-y-4 text-white backdrop-blur-xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <div className="h-8 w-8 rounded-xl bg-[#FF9933]/15 text-[#FF9933] border border-[#FF9933]/30 flex items-center justify-center">
               <QrCode className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">QR Code Connect</h2>
+              <h2 className="text-sm font-bold text-white">QR Code Connect</h2>
               <p className="text-[10px] text-slate-400">In-Person & Instant Key Exchange</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 font-bold text-sm"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition font-bold text-sm"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-2xl text-xs font-semibold">
+        <div className="flex items-center bg-white/5 p-1 rounded-2xl text-xs font-semibold border border-white/10">
           <button
             type="button"
             onClick={() => setTab("MY_CODE")}
             className={`flex-1 py-1.5 rounded-xl transition ${
               tab === "MY_CODE"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-gradient-to-r from-[#FF9933] to-[#FF8008] text-white font-bold shadow-md shadow-[#ff9933]/25"
+                : "text-slate-400 hover:text-white"
             }`}
           >
             My QR Code
@@ -229,8 +229,8 @@ export default function QRCodeModal({
             onClick={() => setTab("SCAN_CONNECT")}
             className={`flex-1 py-1.5 rounded-xl transition ${
               tab === "SCAN_CONNECT"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-gradient-to-r from-[#FF9933] to-[#FF8008] text-white font-bold shadow-md shadow-[#ff9933]/25"
+                : "text-slate-400 hover:text-white"
             }`}
           >
             Scan & Connect
@@ -240,7 +240,7 @@ export default function QRCodeModal({
         {/* TAB 1: My QR Code */}
         {tab === "MY_CODE" && (
           <div className="space-y-4 text-center">
-            <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs inline-block">
+            <div className="p-3.5 bg-white rounded-2xl border border-white/20 shadow-lg inline-block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={qrDataUrl || fallbackQrUrl}
@@ -251,10 +251,10 @@ export default function QRCodeModal({
 
             <div>
               <div className="flex items-center justify-center gap-1.5">
-                <p className="text-sm font-bold text-slate-900">{displayName}</p>
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <p className="text-sm font-bold text-white">{displayName}</p>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
               </div>
-              <p className="text-xs font-mono font-semibold text-blue-600 mt-0.5">
+              <p className="text-xs font-mono font-semibold text-blue-300 mt-0.5">
                 @{username}
               </p>
               <p className="text-[10px] text-slate-400 mt-0.5">
@@ -266,11 +266,11 @@ export default function QRCodeModal({
               <button
                 type="button"
                 onClick={handleCopyLink}
-                className="flex-1 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                className="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 border border-white/10"
               >
                 {copied ? (
                   <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" /> Copied!
+                    <Check className="w-3.5 h-3.5 text-emerald-400" /> Copied!
                   </>
                 ) : (
                   <>
@@ -281,21 +281,21 @@ export default function QRCodeModal({
               <button
                 type="button"
                 onClick={handleShare}
-                className="flex-1 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+                className="btn-saffron flex-1 py-2 px-3 rounded-xl text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-[#ff9933]/20"
               >
                 <Share2 className="w-3.5 h-3.5" /> Share QR
               </button>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-emerald-50 text-[11px] text-emerald-800 text-left flex items-start gap-2">
-              <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-[11px] text-emerald-300 text-left flex items-start gap-2">
+              <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
               <span>
                 Scanning your QR code allows peers to view your profile and start an end-to-end encrypted chat instantly.
               </span>
             </div>
 
             {/* Separated Button for Scanning a Batchmate's QR */}
-            <div className="pt-2 border-t border-slate-100">
+            <div className="pt-2 border-t border-white/10">
               <button
                 type="button"
                 onClick={() => {
@@ -306,9 +306,9 @@ export default function QRCodeModal({
                     setTab("SCAN_CONNECT");
                   }
                 }}
-                className="w-full py-2.5 px-4 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center justify-center gap-2 border border-indigo-200/80 cursor-pointer active:scale-98 shadow-2xs"
+                className="w-full py-2.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold transition flex items-center justify-center gap-2 border border-white/10 cursor-pointer active:scale-98 shadow-sm"
               >
-                <Scan className="w-4 h-4 text-indigo-600" />
+                <Scan className="w-4 h-4 text-[#FF9933]" />
                 <span>Scan Batchmate&apos;s QR Code</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
@@ -319,13 +319,13 @@ export default function QRCodeModal({
         {/* TAB 2: Scan / Connect by Username or Link */}
         {tab === "SCAN_CONNECT" && (
           <div className="space-y-4">
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Enter any batchmate&apos;s <strong>@username</strong> or paste their connect link to start a secure encrypted chat:
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Enter any batchmate&apos;s <strong className="text-white">@username</strong> or paste their connect link to start a secure encrypted chat:
             </p>
 
             <form onSubmit={handleConnectManual} className="space-y-3">
               <div>
-                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
                   Username or Connect Link:
                 </label>
                 <input
@@ -333,20 +333,20 @@ export default function QRCodeModal({
                   placeholder="@patit_7x92 or https://alumni.../messages?connect=..."
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
-                  className="w-full p-2.5 text-xs rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono"
+                  className="w-full p-2.5 text-xs rounded-2xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] font-mono transition"
                 />
               </div>
 
               {errorMessage && (
-                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/30 text-rose-300 text-[11px] flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                   <span>{errorMessage}</span>
                 </div>
               )}
 
               {successMessage && (
-                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] flex items-start gap-2">
-                  <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-[11px] flex items-start gap-2">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <span>{successMessage}</span>
                 </div>
               )}
@@ -354,7 +354,7 @@ export default function QRCodeModal({
               <button
                 type="submit"
                 disabled={!manualInput.trim() || resolving}
-                className="w-full py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                className="btn-saffron w-full py-2.5 rounded-2xl text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-[#ff9933]/20 disabled:opacity-50"
               >
                 {resolving ? (
                   <>
@@ -370,8 +370,8 @@ export default function QRCodeModal({
               </button>
             </form>
 
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-1.5">
-              <p className="text-xs font-semibold text-slate-700">In-Person Camera Scanning</p>
+            <div className="p-3 rounded-2xl bg-white/5 border border-white/10 text-center space-y-1.5">
+              <p className="text-xs font-semibold text-white">In-Person Camera Scanning</p>
               <p className="text-[10px] text-slate-400">
                 You can also point your mobile camera directly at any alumnus&apos;s QR Code to open their chat link instantly!
               </p>

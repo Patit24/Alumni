@@ -392,26 +392,26 @@ export default function QRScannerModal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm bg-white rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
+        className="w-full max-w-sm bg-[#0a0f1d] rounded-3xl border border-white/10 p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto text-white backdrop-blur-xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <div className="h-9 w-9 rounded-2xl bg-[#FF9933]/15 text-[#FF9933] border border-[#FF9933]/30 flex items-center justify-center">
               <Camera className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">Scan Alumni QR</h2>
+              <h2 className="text-sm font-bold text-white">Scan Alumni QR</h2>
               <p className="text-[10px] text-slate-400">Point at any peer&apos;s QR code to connect</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 transition"
+            className="text-slate-400 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition"
           >
             <X className="w-4 h-4" />
           </button>
@@ -419,8 +419,8 @@ export default function QRScannerModal({
 
         {/* Successful Scan Card */}
         {scannedPeer ? (
-          <div className="p-5 bg-slate-50/90 border border-slate-200 rounded-3xl space-y-4 text-center">
-            <div className="h-16 w-16 mx-auto rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-2xl font-black shadow-md overflow-hidden">
+          <div className="p-5 bg-white/[0.04] border border-white/10 rounded-3xl space-y-4 text-center">
+            <div className="h-16 w-16 mx-auto rounded-2xl bg-gradient-to-tr from-[#FF9933] via-orange-600 to-[#138808] text-white flex items-center justify-center text-2xl font-black shadow-md overflow-hidden ring-1 ring-white/20">
               {scannedPeer.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={scannedPeer.avatarUrl} alt={scannedPeer.name} className="w-full h-full object-cover" />
@@ -430,15 +430,15 @@ export default function QRScannerModal({
             </div>
 
             <div>
-              <div className="inline-flex items-center gap-1 text-blue-800 text-xs font-bold bg-blue-100/80 px-2.5 py-0.5 rounded-full mb-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+              <div className="inline-flex items-center gap-1 text-emerald-300 text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full mb-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                 Alumni QR Found
               </div>
-              <h3 className="text-base font-black text-slate-900">{scannedPeer.name}</h3>
+              <h3 className="text-base font-black text-white">{scannedPeer.name}</h3>
               {scannedPeer.username && (
-                <p className="text-xs font-mono font-semibold text-blue-600">@{scannedPeer.username}</p>
+                <p className="text-xs font-mono font-semibold text-blue-300">@{scannedPeer.username}</p>
               )}
-              <p className="text-[11px] text-slate-500 mt-1">
+              <p className="text-[11px] text-slate-300 mt-1">
                 {scannedPeer.currentRole && scannedPeer.currentCompany
                   ? `${scannedPeer.currentRole} at ${scannedPeer.currentCompany}`
                   : `Class of ${scannedPeer.batchYear || 2026}`}
@@ -447,7 +447,7 @@ export default function QRScannerModal({
 
             {/* Action notification notice */}
             {actionNotice && (
-              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs font-medium text-center">
+              <div className="p-2.5 rounded-xl bg-blue-950/60 border border-blue-500/30 text-blue-300 text-xs font-medium text-center">
                 {actionNotice}
               </div>
             )}
@@ -471,16 +471,16 @@ export default function QRScannerModal({
                   <button
                     type="button"
                     onClick={() => handleViewProfile(scannedPeer)}
-                    className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-2xs"
+                    className="w-full py-2.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold border border-white/10 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-sm"
                   >
-                    <User className="w-4 h-4 text-slate-600" />
+                    <User className="w-4 h-4 text-slate-300" />
                     <span>View Profile</span>
                   </button>
                 </div>
               ) : scannedRelStatus === "SELF" ? (
                 <div className="space-y-2.5">
                   <div className="badge-ashoka p-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 font-bold shadow-xs">
-                    <User className="w-4 h-4 text-[#000080]" />
+                    <User className="w-4 h-4 text-blue-300" />
                     <span>This is Your QR Code</span>
                   </div>
                   <button
@@ -498,15 +498,15 @@ export default function QRScannerModal({
                     <Clock className="w-4 h-4 text-[#c2410c] shrink-0" />
                     <span>Request Sent</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-tight text-center">
+                  <p className="text-[11px] text-slate-400 leading-tight text-center">
                     Waiting for {scannedPeer.name} to accept your request.
                   </p>
                   <button
                     type="button"
                     onClick={() => handleViewProfile(scannedPeer)}
-                    className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-2xs"
+                    className="w-full py-2.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold border border-white/10 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-sm"
                   >
-                    <User className="w-4 h-4 text-slate-600" />
+                    <User className="w-4 h-4 text-slate-300" />
                     <span>View Profile</span>
                   </button>
                 </div>
@@ -525,15 +525,15 @@ export default function QRScannerModal({
                     )}
                     <span>Accept Connection</span>
                   </button>
-                  <p className="text-[11px] text-slate-500 leading-tight text-center">
+                  <p className="text-[11px] text-slate-400 leading-tight text-center">
                     {scannedPeer.name} sent you a request! Accept to connect.
                   </p>
                   <button
                     type="button"
                     onClick={() => handleViewProfile(scannedPeer)}
-                    className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-2xs"
+                    className="w-full py-2.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold border border-white/10 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-sm"
                   >
-                    <User className="w-4 h-4 text-slate-600" />
+                    <User className="w-4 h-4 text-slate-300" />
                     <span>View Profile</span>
                   </button>
                 </div>
@@ -552,15 +552,15 @@ export default function QRScannerModal({
                     )}
                     <span>Connect</span>
                   </button>
-                  <p className="text-[11px] text-slate-500 leading-tight text-center">
+                  <p className="text-[11px] text-slate-400 leading-tight text-center">
                     Send a connection request to connect and chat with {scannedPeer.name}.
                   </p>
                   <button
                     type="button"
                     onClick={() => handleViewProfile(scannedPeer)}
-                    className="w-full py-2.5 px-4 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-200 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-2xs"
+                    className="w-full py-2.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold border border-white/10 transition cursor-pointer active:scale-98 flex items-center justify-center gap-2 shadow-sm"
                   >
-                    <User className="w-4 h-4 text-slate-600" />
+                    <User className="w-4 h-4 text-slate-300" />
                     <span>View Profile</span>
                   </button>
                 </div>
@@ -575,7 +575,7 @@ export default function QRScannerModal({
                   setActionNotice(null);
                   startCamera();
                 }}
-                className="w-full py-2 text-center text-xs text-slate-400 hover:text-slate-600 font-medium transition flex items-center justify-center gap-1.5 cursor-pointer pt-2.5 border-t border-slate-200/60"
+                className="w-full py-2 text-center text-xs text-slate-400 hover:text-white font-medium transition flex items-center justify-center gap-1.5 cursor-pointer pt-2.5 border-t border-white/10"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Scan Another QR Code</span>
@@ -585,7 +585,7 @@ export default function QRScannerModal({
         ) : (
           <>
             {/* Live Camera Viewfinder */}
-            <div className="relative w-full aspect-square bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 flex items-center justify-center">
+            <div className="relative w-full aspect-square bg-slate-950 rounded-2xl overflow-hidden border border-white/10 flex items-center justify-center">
               <video
                 ref={videoRef}
                 className="w-full h-full object-cover"
@@ -595,12 +595,12 @@ export default function QRScannerModal({
 
               {/* Viewfinder Overlay */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-48 h-48 border-2 border-dashed border-white/70 rounded-2xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]">
-                  <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-blue-400 rounded-tl" />
-                  <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-blue-400 rounded-tr" />
-                  <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-blue-400 rounded-bl" />
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-blue-400 rounded-br" />
-                  <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent absolute top-1/2 -translate-y-1/2 animate-pulse" />
+                <div className="w-48 h-48 border-2 border-dashed border-[#FF9933]/80 rounded-2xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]">
+                  <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-[#FF9933] rounded-tl" />
+                  <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-[#FF9933] rounded-tr" />
+                  <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-[#138808] rounded-bl" />
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-[#138808] rounded-br" />
+                  <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-[#FF9933] to-transparent absolute top-1/2 -translate-y-1/2 animate-pulse" />
                 </div>
               </div>
 
@@ -608,15 +608,15 @@ export default function QRScannerModal({
               <button
                 type="button"
                 onClick={() => setFacingMode((prev) => (prev === "environment" ? "user" : "environment"))}
-                className="absolute top-2.5 right-2.5 p-2 rounded-xl bg-black/50 text-white/90 backdrop-blur-md hover:bg-black/70 transition"
+                className="absolute top-2.5 right-2.5 p-2 rounded-xl bg-black/60 text-white/90 backdrop-blur-md hover:bg-black transition border border-white/15"
                 title="Switch Camera"
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
 
               {resolving && (
-                <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xs flex flex-col items-center justify-center text-white gap-2 p-4 text-center">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-xs flex flex-col items-center justify-center text-white gap-2 p-4 text-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#FF9933]" />
                   <p className="text-xs font-semibold">Resolving Scanned Alumni...</p>
                 </div>
               )}
@@ -624,16 +624,16 @@ export default function QRScannerModal({
 
             {/* Error Message */}
             {cameraError && (
-              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="p-3 rounded-2xl bg-rose-950/60 border border-rose-500/30 text-rose-300 text-[11px] flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                 <span>{cameraError}</span>
               </div>
             )}
 
             {/* Alternative Actions: Upload or Show My QR */}
             <div className="grid grid-cols-2 gap-2">
-              <label className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer text-center">
-                <Upload className="w-3.5 h-3.5 text-slate-500" />
+              <label className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-semibold border border-white/10 transition flex items-center justify-center gap-1.5 cursor-pointer text-center">
+                <Upload className="w-3.5 h-3.5 text-[#FF9933]" />
                 <span>Upload QR</span>
                 <input
                   type="file"
@@ -650,16 +650,16 @@ export default function QRScannerModal({
                     stopCamera();
                     onOpenMyQr();
                   }}
-                  className="py-2.5 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200/80 transition flex items-center justify-center gap-1.5 cursor-pointer text-center"
+                  className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-semibold border border-white/10 transition flex items-center justify-center gap-1.5 cursor-pointer text-center"
                 >
                   <span>Show My QR</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <ArrowRight className="w-3.5 h-3.5 text-[#FF9933]" />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={startCamera}
-                  className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer text-center"
+                  className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-semibold border border-white/10 transition flex items-center justify-center gap-1.5 cursor-pointer text-center"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Restart Camera</span>
@@ -681,12 +681,12 @@ export default function QRScannerModal({
                   placeholder="Enter User ID, @username or link..."
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
-                  className="flex-1 p-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono"
+                  className="flex-1 p-2.5 text-xs rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:outline-none focus:border-[#FF9933]/50 focus:bg-[#080811] font-mono transition"
                 />
                 <button
                   type="submit"
                   disabled={!manualInput.trim() || resolving}
-                  className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition disabled:opacity-40"
+                  className="btn-saffron p-2.5 rounded-xl text-white text-xs font-semibold transition disabled:opacity-40"
                 >
                   Go
                 </button>

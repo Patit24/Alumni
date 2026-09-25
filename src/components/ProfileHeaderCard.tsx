@@ -503,7 +503,7 @@ export default function ProfileHeaderCard({
         </div>
       )}
 
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div className="bg-[#111726]/80 rounded-3xl border border-white/10 shadow-xl shadow-black/40 backdrop-blur-xl overflow-hidden text-white">
         {/* Cover Banner */}
         <div className="h-32 sm:h-44 relative overflow-hidden group">
           {user.coverUrl ? (
@@ -514,9 +514,10 @@ export default function ProfileHeaderCard({
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 relative">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.35),transparent_50%)]" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.25),transparent_50%)]" />
+            <div className="w-full h-full bg-gradient-to-r from-[#0a0f1d] via-[#111726] to-[#0a0f1d] relative">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,153,51,0.22),transparent_55%)]" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,128,0.25),transparent_60%)]" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(19,136,8,0.18),transparent_50%)]" />
             </div>
           )}
 
@@ -525,7 +526,7 @@ export default function ProfileHeaderCard({
               <button
                 type="button"
                 onClick={() => quickCoverInputRef.current?.click()}
-                className="absolute top-3 right-3 px-3 py-1.5 rounded-xl bg-black/50 hover:bg-black/70 text-white text-xs font-semibold backdrop-blur-md transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                className="absolute top-3 right-3 px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/80 text-white text-xs font-semibold backdrop-blur-md transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer border border-white/15"
                 title="Change cover picture"
               >
                 <Camera className="w-3.5 h-3.5" />
@@ -542,13 +543,13 @@ export default function ProfileHeaderCard({
           )}
 
           {/* Banner Labels */}
-          <div className="absolute bottom-3 left-4 hidden sm:flex items-center gap-2 text-white/80 text-xs font-medium tracking-wide drop-shadow-md">
-            <Building className="w-3.5 h-3.5 text-indigo-300" />
+          <div className="absolute bottom-3 left-4 hidden sm:flex items-center gap-2 text-white/90 text-xs font-medium tracking-wide drop-shadow-md">
+            <Building className="w-3.5 h-3.5 text-[#FF9933]" />
             <span>{user.institution.name}</span>
           </div>
 
           <div className="absolute bottom-3 right-4 flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/40 text-white/95 text-[11px] font-medium backdrop-blur-md border border-white/20 shadow-sm">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/50 text-emerald-400 text-[11px] font-semibold backdrop-blur-md border border-emerald-500/30 shadow-sm">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
               <span>End-to-End Encrypted</span>
             </span>
@@ -562,7 +563,7 @@ export default function ProfileHeaderCard({
             <div className="relative group shrink-0">
               <div
                 onClick={() => isOwnProfile && quickAvatarInputRef.current?.click()}
-                className={`h-24 w-24 sm:h-28 sm:w-28 rounded-2xl ring-4 ring-white bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center font-black text-3xl sm:text-4xl shadow-lg shadow-slate-900/15 shrink-0 overflow-hidden select-none ${isOwnProfile ? "cursor-pointer" : ""}`}
+                className={`h-24 w-24 sm:h-28 sm:w-28 rounded-2xl ring-4 ring-white/10 bg-gradient-to-tr from-[#FF9933] via-orange-600 to-[#138808] text-white flex items-center justify-center font-black text-3xl sm:text-4xl shadow-xl shadow-black/60 shrink-0 overflow-hidden select-none ${isOwnProfile ? "cursor-pointer" : ""}`}
               >
                 {user.avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -590,7 +591,7 @@ export default function ProfileHeaderCard({
                   <button
                     type="button"
                     onClick={() => quickAvatarInputRef.current?.click()}
-                    className="absolute inset-0 rounded-2xl bg-black/40 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer backdrop-blur-[2px] z-10"
+                    className="absolute inset-0 rounded-2xl bg-black/50 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer backdrop-blur-[2px] z-10"
                     title="Change profile picture"
                   >
                     <Camera className="w-6 h-6 drop-shadow-sm" />
@@ -608,7 +609,7 @@ export default function ProfileHeaderCard({
                     type="button"
                     onClick={() => quickAvatarInputRef.current?.click()}
                     disabled={uploadingAvatar}
-                    className="absolute -bottom-1 -left-1 p-2 rounded-xl bg-slate-900/90 hover:bg-slate-900 text-white ring-2 ring-white shadow-md hover:scale-110 active:scale-95 transition cursor-pointer flex items-center justify-center z-15 disabled:opacity-50"
+                    className="absolute -bottom-1 -left-1 p-2 rounded-xl bg-[#0a0f1d] hover:bg-black text-white ring-2 ring-white/15 border border-white/10 shadow-md hover:scale-110 active:scale-95 transition cursor-pointer flex items-center justify-center z-15 disabled:opacity-50"
                     title="Change profile picture"
                   >
                     <Camera className="w-3.5 h-3.5 text-white" />
@@ -618,7 +619,7 @@ export default function ProfileHeaderCard({
 
               {isVerified && (
                 <div
-                  className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-emerald-500 text-white ring-2 ring-white flex items-center justify-center shadow-xs z-15"
+                  className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-emerald-500 text-white ring-2 ring-[#0a0f1d] flex items-center justify-center shadow-xs z-15"
                   title="Verified Alumni Member"
                 >
                   <CheckCircle2 className="w-4 h-4 text-white" />
@@ -633,7 +634,7 @@ export default function ProfileHeaderCard({
                   <button
                     type="button"
                     onClick={() => setShowEditModal(true)}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition active:scale-98 cursor-pointer"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold border border-white/10 shadow-xs transition active:scale-95 cursor-pointer"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>Edit Profile</span>
@@ -641,17 +642,17 @@ export default function ProfileHeaderCard({
                   <button
                     type="button"
                     onClick={() => setShowQrModal(true)}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200/80 transition active:scale-98 cursor-pointer"
+                    className="btn-saffron flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-bold shadow-md shadow-[#ff9933]/20 transition active:scale-95 cursor-pointer"
                   >
-                    <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                    <QrCode className="w-3.5 h-3.5" />
                     <span>My QR</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowScannerModal(true)}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition active:scale-98 cursor-pointer border border-slate-200/60"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold border border-white/10 transition active:scale-95 cursor-pointer"
                   >
-                    <Scan className="w-3.5 h-3.5 text-blue-600" />
+                    <Scan className="w-3.5 h-3.5 text-orange-400" />
                     <span>Scan QR</span>
                   </button>
                 </>
@@ -684,7 +685,7 @@ export default function ProfileHeaderCard({
                         type="button"
                         onClick={handleCancelConnect}
                         disabled={connecting}
-                        className="px-3 py-2 rounded-xl text-xs text-slate-500 hover:text-slate-800 transition disabled:opacity-50 cursor-pointer"
+                        className="px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-white transition disabled:opacity-50 cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -704,7 +705,7 @@ export default function ProfileHeaderCard({
                         type="button"
                         onClick={handleRejectConnect}
                         disabled={connecting}
-                        className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200/80 transition active:scale-98 cursor-pointer disabled:opacity-50"
+                        className="px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-semibold border border-white/10 transition active:scale-98 cursor-pointer disabled:opacity-50"
                       >
                         Decline
                       </button>
@@ -726,7 +727,7 @@ export default function ProfileHeaderCard({
                   <button
                     type="button"
                     onClick={() => setShowQrModal(true)}
-                    className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition shrink-0"
+                    className="p-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-slate-300 transition shrink-0 border border-white/10"
                     title="View QR Code"
                   >
                     <QrCode className="w-4 h-4" />
@@ -739,24 +740,24 @@ export default function ProfileHeaderCard({
           {/* Typography & Profile Info */}
           <div className="space-y-2">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                 {user.name}
               </h1>
               {user.username && (
-                <span className="text-xs font-mono font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                <span className="text-xs font-mono font-semibold text-blue-300 bg-[#000080]/30 border border-blue-500/30 px-2.5 py-0.5 rounded-lg">
                   @{user.username}
                 </span>
               )}
               {isVerified && (
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Verified Member</span>
                 </span>
               )}
             </div>
 
-            <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-              <Briefcase className="w-4 h-4 text-slate-400 shrink-0" />
+            <p className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
+              <Briefcase className="w-4 h-4 text-orange-400 shrink-0" />
               <span>
                 {user.currentRole && user.currentCompany
                   ? `${user.currentRole} at ${user.currentCompany}`
@@ -765,33 +766,33 @@ export default function ProfileHeaderCard({
             </p>
 
             {/* Meta Chips */}
-            <div className="flex items-center gap-2 pt-1 flex-wrap text-xs font-medium text-slate-500">
+            <div className="flex items-center gap-2 pt-1 flex-wrap text-xs font-medium text-slate-400">
               {formattedCity && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/90 text-slate-700">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300">
                   <MapPin className="w-3.5 h-3.5 text-slate-400" />
                   <span>{formattedCity}</span>
                 </span>
               )}
 
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100/90 text-slate-700">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300">
                 <Building className="w-3.5 h-3.5 text-slate-400" />
                 <span>{user.institution.name}</span>
               </span>
 
               {user.course && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#FF9933]/15 text-[#FF9933] border border-[#FF9933]/30">
                   <span>{user.course}</span>
                 </span>
               )}
 
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100">
-                <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                <GraduationCap className="w-3.5 h-3.5 text-blue-400" />
                 <span>Class of {user.batchYear} {user.department ? `(${user.department.name})` : ""}</span>
               </span>
 
               {!isOwnProfile && mutualCount > 0 && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/80 font-semibold">
-                  <Users className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
+                  <Users className="w-3.5 h-3.5 text-emerald-400" />
                   <span>{mutualCount} mutual connection{mutualCount > 1 ? "s" : ""}</span>
                 </span>
               )}
@@ -799,13 +800,13 @@ export default function ProfileHeaderCard({
 
             {/* Bio */}
             {user.bio && (
-              <p className="text-xs text-slate-600 pt-2 leading-relaxed italic border-t border-slate-100">
+              <p className="text-xs text-slate-300 pt-2 leading-relaxed italic border-t border-white/10">
                 &ldquo;{user.bio}&rdquo;
               </p>
             )}
 
             {/* Social & Contact row */}
-            <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2.5 text-xs">
+            <div className="pt-3 border-t border-white/10 flex flex-wrap items-center gap-2.5 text-xs">
               {user.linkedinUrl && (
                 <a
                   href={user.linkedinUrl}
@@ -818,8 +819,8 @@ export default function ProfileHeaderCard({
               )}
 
               {user.phone && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-medium">
-                  <Phone className="w-3.5 h-3.5 text-slate-500" />
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 font-medium">
+                  <Phone className="w-3.5 h-3.5 text-slate-400" />
                   {isOwnProfile || user.isPhoneVisible ? (
                     <span>{user.phone}</span>
                   ) : (
@@ -835,30 +836,30 @@ export default function ProfileHeaderCard({
       </div>
 
       {/* Education & Batch Details Card (Dynamically reactive to profile edits & custom college) */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm space-y-4">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-          <GraduationCap className="w-4 h-4 text-blue-600" /> Education & Batch Details
+      <div className="bg-[#111726]/80 rounded-3xl border border-white/10 p-6 shadow-xl shadow-black/40 backdrop-blur-xl space-y-4 text-white">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          <GraduationCap className="w-4 h-4 text-blue-400" /> Education & Batch Details
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+          <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/8">
             <p className="text-[11px] font-semibold text-slate-400 uppercase">Institution</p>
-            <p className="text-xs font-bold text-slate-800 mt-1">{user.institution?.name || "Not specified"}</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">{user.institution?.city || formattedCity || "India"}</p>
+            <p className="text-xs font-bold text-white mt-1">{user.institution?.name || "Not specified"}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{user.institution?.city || formattedCity || "India"}</p>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+          <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/8">
             <p className="text-[11px] font-semibold text-slate-400 uppercase">Graduation Batch</p>
-            <p className="text-xs font-bold text-slate-800 mt-1">Class of {user.batchYear || "—"}</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">Alumni Network Member</p>
+            <p className="text-xs font-bold text-white mt-1">Class of {user.batchYear || "—"}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Alumni Network Member</p>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+          <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/8">
             <p className="text-[11px] font-semibold text-slate-400 uppercase">Department / Degree</p>
-            <p className="text-xs font-bold text-slate-800 mt-1">
+            <p className="text-xs font-bold text-white mt-1">
               {user.course || user.department?.name || "General"}
             </p>
-            <p className="text-[10px] text-slate-500 mt-0.5">Academic Degree</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Academic Degree</p>
           </div>
         </div>
       </div>

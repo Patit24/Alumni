@@ -719,10 +719,10 @@ export default function FeedSection({
                 key={tab}
                 whileTap={{ scale: 0.96 }}
                 onClick={() => setFilter(tab)}
-                className={`text-xs font-semibold px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                className={`text-xs font-semibold px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md ${
                   isActive
-                    ? "bg-slate-900 text-white shadow-xs"
-                    : "bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50"
+                    ? "bg-gradient-to-r from-[#FF9933] to-[#FF8008] text-white shadow-md shadow-[#ff9933]/25 font-bold"
+                    : "bg-[#111726]/80 text-slate-300 border border-white/10 hover:bg-white/10 hover:text-white"
                 }`}
               >
                 {tab === "SAVED" && (
@@ -735,7 +735,7 @@ export default function FeedSection({
         </div>
 
         {/* Live Indicator */}
-        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200/80 rounded-full text-[11px] font-medium text-slate-600 shadow-2xs shrink-0">
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-[#111726]/80 border border-white/10 rounded-full text-[11px] font-medium text-slate-300 shadow-sm backdrop-blur-md shrink-0">
           <span className="relative flex h-2 w-2">
             <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
               isRealtimeActive ? "bg-emerald-400" : "bg-amber-400"
@@ -754,9 +754,9 @@ export default function FeedSection({
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5 text-xs font-semibold text-emerald-800 flex items-center gap-2 shadow-xs"
+            className="rounded-2xl bg-emerald-950/60 border border-emerald-500/30 p-3.5 text-xs font-semibold text-emerald-300 flex items-center gap-2 shadow-sm backdrop-blur-md"
           >
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{successMessage}</span>
           </motion.div>
         )}
@@ -767,20 +767,22 @@ export default function FeedSection({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-xs space-y-3"
+        className="bg-[#111726]/80 rounded-3xl border border-white/10 p-4 sm:p-5 shadow-xl shadow-black/40 space-y-3 backdrop-blur-xl text-white"
       >
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs shadow-blue-500/20 overflow-hidden">
-            {currentUserAvatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={currentUserAvatar}
-                alt={currentUserName}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              currentUserName.charAt(0)
-            )}
+          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#FF9933] via-white to-[#138808] p-[1.5px] shrink-0 shadow-md shadow-orange-500/10">
+            <div className="h-full w-full rounded-[14px] bg-[#0a0f1d] flex items-center justify-center font-bold text-sm text-white overflow-hidden">
+              {currentUserAvatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={currentUserAvatar}
+                  alt={currentUserName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                currentUserName.charAt(0)
+              )}
+            </div>
           </div>
           <form onSubmit={handleCreatePost} className="flex-1 min-w-0">
             <input
@@ -789,22 +791,22 @@ export default function FeedSection({
               onChange={(e) => setNewPostText(e.target.value)}
               disabled={posting || uploadingImage}
               placeholder="Share an update, placement, or tip with your alumni network..."
-              className="w-full bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-xs text-slate-900 placeholder:text-slate-400 rounded-2xl px-4 py-2.5 border border-transparent focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition disabled:opacity-60"
+              className="w-full bg-white/5 hover:bg-white/[0.08] focus:bg-[#0a0f1d] text-xs text-white placeholder:text-slate-400 rounded-2xl px-4 py-2.5 border border-white/10 focus:border-[#FF9933]/60 focus:ring-1 focus:ring-[#FF9933]/30 focus:outline-none transition disabled:opacity-60"
             />
           </form>
         </div>
 
         {/* Uploading / Processing Image Progress */}
         {uploadingImage && (
-          <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-blue-50 border border-blue-200/80 text-xs text-blue-700 font-medium">
-            <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />
+          <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-blue-950/50 border border-blue-500/30 text-xs text-blue-300 font-medium">
+            <Loader2 className="w-4 h-4 animate-spin text-[#FF9933] shrink-0" />
             <span>Optimizing and compressing photo for instant feed display...</span>
           </div>
         )}
 
         {/* Selected Image Thumbnail Preview */}
         {selectedImage && (
-          <div className="relative inline-block mt-2 rounded-2xl overflow-hidden border border-slate-200 shadow-xs max-w-xs">
+          <div className="relative inline-block mt-2 rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={selectedImage}
@@ -814,7 +816,7 @@ export default function FeedSection({
             <button
               type="button"
               onClick={() => setSelectedImage(null)}
-              className="absolute top-2 right-2 bg-slate-900/80 hover:bg-slate-950 text-white rounded-full p-1 transition shadow-md"
+              className="absolute top-2 right-2 bg-black/70 hover:bg-black text-white rounded-full p-1 transition shadow-md"
               title="Remove photo"
             >
               <X className="w-3.5 h-3.5" />
@@ -832,36 +834,36 @@ export default function FeedSection({
         />
 
         {/* Composer Action Bar */}
-        <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
-          <div className="flex items-center gap-1 sm:gap-2 text-slate-500 text-xs overflow-x-auto no-scrollbar py-0.5">
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10">
+          <div className="flex items-center gap-1 sm:gap-2 text-slate-400 text-xs overflow-x-auto no-scrollbar py-0.5">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={posting || uploadingImage}
-              className="flex items-center gap-1.5 hover:text-blue-600 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition disabled:opacity-50 whitespace-nowrap font-medium text-slate-600"
+              className="flex items-center gap-1.5 hover:text-white cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-white/5 transition disabled:opacity-50 whitespace-nowrap font-medium text-slate-300"
             >
-              <ImageIcon className="w-4 h-4 text-emerald-500 shrink-0" />
+              <ImageIcon className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>{uploadingImage ? "Processing..." : selectedImage ? "Change Photo" : "Photo"}</span>
             </button>
             <Link
               href="/reunions"
-              className="flex items-center gap-1.5 hover:text-amber-600 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition whitespace-nowrap font-medium text-slate-600"
+              className="flex items-center gap-1.5 hover:text-[#FF9933] cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-white/5 transition whitespace-nowrap font-medium text-slate-300"
             >
-              <PartyPopper className="w-4 h-4 text-amber-500 shrink-0" />
+              <PartyPopper className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="hidden xs:inline">Plan</span> Reunion
             </Link>
             <Link
               href="/jobs"
-              className="flex items-center gap-1.5 hover:text-purple-600 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition whitespace-nowrap font-medium text-slate-600"
+              className="flex items-center gap-1.5 hover:text-purple-300 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-white/5 transition whitespace-nowrap font-medium text-slate-300"
             >
-              <Briefcase className="w-4 h-4 text-purple-500 shrink-0" />
+              <Briefcase className="w-4 h-4 text-purple-400 shrink-0" />
               <span>Referral</span>
             </Link>
             <Link
               href="/mentorship"
-              className="flex items-center gap-1.5 hover:text-indigo-600 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-slate-50 transition whitespace-nowrap font-medium text-slate-600"
+              className="flex items-center gap-1.5 hover:text-emerald-300 cursor-pointer px-2.5 py-1.5 rounded-xl hover:bg-white/5 transition whitespace-nowrap font-medium text-slate-300"
             >
-              <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>Mentorship</span>
             </Link>
           </div>
@@ -871,7 +873,7 @@ export default function FeedSection({
             whileTap={{ scale: 0.96 }}
             onClick={handleCreatePost}
             disabled={posting || uploadingImage || (!newPostText.trim() && !selectedImage)}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-xs shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#FF9933] to-[#FF8008] hover:opacity-95 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-md shadow-[#ff9933]/25 shrink-0"
           >
             {posting ? (
               <>
@@ -890,13 +892,13 @@ export default function FeedSection({
 
       {/* Feed Stream */}
       {loading ? (
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center flex flex-col items-center gap-2">
-          <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
-          <p className="text-xs text-slate-500 font-medium">Loading live alumni network feed...</p>
+        <div className="bg-[#111726]/80 rounded-3xl border border-white/10 p-8 text-center flex flex-col items-center gap-2 backdrop-blur-xl shadow-xl shadow-black/40">
+          <RefreshCw className="w-6 h-6 text-[#FF9933] animate-spin" />
+          <p className="text-xs text-slate-400 font-medium">Loading live alumni network feed...</p>
         </div>
       ) : feed.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center">
-          <p className="text-xs text-slate-500">No feed items found for this filter.</p>
+        <div className="bg-[#111726]/80 rounded-3xl border border-white/10 p-10 text-center backdrop-blur-xl shadow-xl shadow-black/40">
+          <p className="text-xs text-slate-400">No feed items found for this filter.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -910,13 +912,13 @@ export default function FeedSection({
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: Math.min(index * 0.03, 0.3) }}
-                className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:border-slate-300 transition space-y-3"
+                className="bg-[#111726]/80 rounded-3xl border border-white/10 p-5 shadow-xl shadow-black/40 hover:border-white/20 transition space-y-3 backdrop-blur-xl text-white"
               >
                 {/* Author Info Header */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <Link href={`/profile/${item.actor.id}`} className="shrink-0">
-                      <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-xs hover:opacity-90 transition overflow-hidden">
+                      <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 ring-1 ring-white/15 text-white flex items-center justify-center font-bold text-sm shadow-md hover:opacity-90 transition overflow-hidden">
                         {item.actor.avatarUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -933,18 +935,18 @@ export default function FeedSection({
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <Link
                           href={`/profile/${item.actor.id}`}
-                          className="text-xs font-bold text-slate-900 hover:text-blue-600 transition truncate"
+                          className="text-xs font-bold text-white hover:text-[#FF9933] transition truncate"
                         >
                           {item.actor.name}
                         </Link>
                         {item.actor.verificationStatus === "VERIFIED" && (
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                         )}
                         <span className="text-[10px] text-slate-400 shrink-0">
                           • {calculateTimeAgo(item.createdAt)}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate">
+                      <p className="text-[11px] text-slate-300 truncate">
                         {item.actor.currentRole || "Alumni"}
                         {item.actor.currentCompany ? ` at ${item.actor.currentCompany}` : ""}
                       </p>
@@ -956,17 +958,17 @@ export default function FeedSection({
 
                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                     {item.isMutualInstitution && (item.type === "JOB_POSTED" || item.type === "MENTORSHIP_AVAILABLE") && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 shrink-0">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
                         Mutual School / College
                       </span>
                     )}
                     {item.isFriend && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80 shrink-0">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#FF9933]/15 text-[#FF9933] border border-[#FF9933]/30 shrink-0">
                         Friend
                       </span>
                     )}
                     {item.metadata.badge && (
-                      <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0">
+                      <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-white/5 text-slate-300 border border-white/10 shrink-0">
                         {item.metadata.badge}
                       </span>
                     )}
@@ -974,7 +976,7 @@ export default function FeedSection({
                       <button
                         type="button"
                         onClick={() => handleDeletePost(item.id)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0"
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0"
                         title="Delete this post"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -985,14 +987,14 @@ export default function FeedSection({
 
                 {/* Post Content */}
                 {item.metadata.text && (
-                  <p className="text-xs text-slate-800 leading-relaxed whitespace-pre-line">
+                  <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-line">
                     {item.metadata.text}
                   </p>
                 )}
 
                 {/* Uploaded Post Photo */}
                 {item.metadata.imageUrl && (
-                  <div className="rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-50 max-h-[460px] flex items-center justify-center">
+                  <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/40 max-h-[460px] flex items-center justify-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={item.metadata.imageUrl}
@@ -1005,21 +1007,21 @@ export default function FeedSection({
 
                 {/* Rich Metadata Cards */}
                 {item.type === "EVENT_CREATED" && (
-                  <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                  <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-3.5 flex items-center justify-between gap-3 backdrop-blur-md">
                     <div className="flex items-center gap-2.5">
-                      <div className="h-9 w-9 rounded-xl bg-amber-500 text-white flex items-center justify-center">
+                      <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-500 text-white flex items-center justify-center shadow-sm">
                         <Calendar className="w-5 h-5" />
                       </div>
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
                           Batch Reunion Gathering
                         </span>
-                        <p className="text-xs font-bold text-slate-900">Check dates, venue & RSVPs</p>
+                        <p className="text-xs font-bold text-white">Check dates, venue & RSVPs</p>
                       </div>
                     </div>
                     <Link
                       href="/reunions"
-                      className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition shrink-0"
+                      className="px-3.5 py-1.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:opacity-95 text-white text-xs font-bold rounded-xl transition shadow-sm shrink-0"
                     >
                       View Reunion
                     </Link>
@@ -1027,21 +1029,21 @@ export default function FeedSection({
                 )}
 
                 {item.type === "JOB_POSTED" && item.metadata.jobTitle && (
-                  <div className="bg-purple-50/70 border border-purple-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                  <div className="bg-purple-950/40 border border-purple-500/30 rounded-2xl p-3.5 flex items-center justify-between gap-3 backdrop-blur-md">
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">
                         Opportunity Details
                       </span>
-                      <h4 className="text-xs font-bold text-slate-900 mt-0.5">
+                      <h4 className="text-xs font-bold text-white mt-0.5">
                         {item.metadata.jobTitle}
                       </h4>
-                      <p className="text-[11px] text-slate-600">
+                      <p className="text-[11px] text-slate-300">
                         {item.metadata.company} • {item.metadata.location}
                       </p>
                     </div>
                     <Link
                       href="/jobs"
-                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition shrink-0"
+                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition shadow-sm shrink-0"
                     >
                       View Referral
                     </Link>
@@ -1049,16 +1051,16 @@ export default function FeedSection({
                 )}
 
                 {item.type === "MENTORSHIP_AVAILABLE" && item.metadata.topics && (
-                  <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                  <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-2xl p-3.5 flex items-center justify-between gap-3 backdrop-blur-md">
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
                         Available Guidance Topics
                       </span>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {item.metadata.topics.map((top) => (
                           <span
                             key={top}
-                            className="text-[10px] font-medium bg-white px-2 py-0.5 rounded-md text-indigo-800 border border-indigo-100"
+                            className="text-[10px] font-medium bg-emerald-900/50 px-2 py-0.5 rounded-md text-emerald-300 border border-emerald-500/30"
                           >
                             {top}
                           </span>
@@ -1067,7 +1069,7 @@ export default function FeedSection({
                     </div>
                     <Link
                       href="/mentorship"
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shrink-0"
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-sm shrink-0"
                     >
                       Book Slot
                     </Link>
@@ -1075,31 +1077,31 @@ export default function FeedSection({
                 )}
 
                 {/* Counts Bar */}
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-semibold text-slate-600">{item.likesCount}</span>
+                    <span className="font-semibold text-slate-300">{item.likesCount}</span>
                     <span>{item.likesCount === 1 ? "like" : "likes"}</span>
                     <span>•</span>
                     <button
                       onClick={() =>
                         setOpenCommentsPostId(isCommentsOpen ? null : item.id)
                       }
-                      className="hover:text-blue-600 transition underline-offset-2 hover:underline"
+                      className="hover:text-[#FF9933] transition underline-offset-2 hover:underline"
                     >
-                      <span className="font-semibold text-slate-600">{item.commentsCount}</span>{" "}
+                      <span className="font-semibold text-slate-300">{item.commentsCount}</span>{" "}
                       {item.commentsCount === 1 ? "comment" : "comments"}
                     </button>
                     {(item.savesCount ?? 0) > 0 && (
                       <>
                         <span>•</span>
-                        <span className="font-semibold text-slate-600">{item.savesCount}</span>
+                        <span className="font-semibold text-slate-300">{item.savesCount}</span>
                         <span>{item.savesCount === 1 ? "saved" : "saves"}</span>
                       </>
                     )}
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <span className="font-semibold text-slate-600">{item.sharesCount}</span>
+                    <span className="font-semibold text-slate-300">{item.sharesCount}</span>
                     <span>{item.sharesCount === 1 ? "share" : "shares"}</span>
                   </div>
                 </div>
@@ -1111,12 +1113,12 @@ export default function FeedSection({
                     onClick={() => toggleLike(item.id)}
                     className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl transition ${
                       item.hasLiked
-                        ? "bg-blue-50 text-blue-600 border border-blue-100"
-                        : "text-slate-600 hover:bg-slate-50 border border-transparent"
+                        ? "bg-[#FF9933]/15 text-[#FF9933] border border-[#FF9933]/30"
+                        : "text-slate-300 hover:bg-white/5 border border-transparent"
                     }`}
                   >
                     <ThumbsUp
-                      className={`w-4 h-4 ${item.hasLiked ? "fill-blue-600 text-blue-600" : ""}`}
+                      className={`w-4 h-4 ${item.hasLiked ? "fill-[#FF9933] text-[#FF9933]" : ""}`}
                     />
                     <span>{item.hasLiked ? "Liked" : "Like"}</span>
                   </motion.button>
@@ -1127,8 +1129,8 @@ export default function FeedSection({
                     }
                     className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl transition ${
                       isCommentsOpen
-                        ? "bg-slate-100 text-slate-900 font-extrabold"
-                        : "text-slate-600 hover:bg-slate-50"
+                        ? "bg-white/10 text-white font-extrabold"
+                        : "text-slate-300 hover:bg-white/5"
                     }`}
                   >
                     <MessageSquare className="w-4 h-4" />
@@ -1137,7 +1139,7 @@ export default function FeedSection({
 
                   <button
                     onClick={() => setShareModalPost(item)}
-                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl text-slate-600 hover:bg-slate-50 transition"
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl text-slate-300 hover:bg-white/5 transition"
                   >
                     <Share2 className="w-4 h-4" />
                     <span>Share</span>
@@ -1148,13 +1150,13 @@ export default function FeedSection({
                     onClick={() => toggleSave(item.id)}
                     className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-xl transition ${
                       item.hasSaved
-                        ? "bg-amber-50 text-amber-600 border border-amber-200"
-                        : "text-slate-600 hover:bg-slate-50 border border-transparent"
+                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                        : "text-slate-300 hover:bg-white/5 border border-transparent"
                     }`}
                     title={item.hasSaved ? "Saved to your bookmarks" : "Save post"}
                   >
                     <Bookmark
-                      className={`w-4 h-4 ${item.hasSaved ? "fill-amber-600 text-amber-600" : ""}`}
+                      className={`w-4 h-4 ${item.hasSaved ? "fill-emerald-400 text-emerald-400" : ""}`}
                     />
                     <span>{item.hasSaved ? "Saved" : "Save"}</span>
                   </motion.button>
@@ -1168,11 +1170,11 @@ export default function FeedSection({
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="overflow-hidden pt-3 border-t border-slate-100 space-y-3"
+                      className="overflow-hidden pt-3 border-t border-white/10 space-y-3"
                     >
                       {/* Comment Input */}
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
+                        <div className="h-8 w-8 rounded-xl bg-white/10 text-white flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden ring-1 ring-white/10">
                           {currentUserAvatar ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -1184,7 +1186,7 @@ export default function FeedSection({
                             currentUserName.charAt(0)
                           )}
                         </div>
-                        <div className="flex-1 flex items-center gap-1.5 bg-slate-100 rounded-2xl px-3 py-1.5 border border-slate-200/60 focus-within:border-blue-400 focus-within:bg-white transition">
+                        <div className="flex-1 flex items-center gap-1.5 bg-white/5 rounded-2xl px-3 py-1.5 border border-white/10 focus-within:border-[#FF9933]/50 focus-within:bg-[#0a0f1d] transition">
                           <input
                             type="text"
                             value={commentInputs[item.id] || ""}
@@ -1201,7 +1203,7 @@ export default function FeedSection({
                               }
                             }}
                             placeholder="Write a comment..."
-                            className="w-full text-xs bg-transparent focus:outline-none text-slate-800 placeholder:text-slate-400"
+                            className="w-full text-xs bg-transparent focus:outline-none text-white placeholder:text-slate-500"
                           />
                           <button
                             disabled={
@@ -1209,7 +1211,7 @@ export default function FeedSection({
                               !commentInputs[item.id]?.trim()
                             }
                             onClick={() => handleAddComment(item.id)}
-                            className="p-1 text-blue-600 hover:text-blue-700 disabled:opacity-40 transition shrink-0"
+                            className="p-1 text-[#FF9933] hover:text-orange-400 disabled:opacity-40 transition shrink-0"
                           >
                             <Send className="w-3.5 h-3.5" />
                           </button>
@@ -1226,9 +1228,9 @@ export default function FeedSection({
                           {commentsList.map((comm) => (
                             <div
                               key={comm.id}
-                              className="flex items-start gap-2.5 bg-slate-50 p-3 rounded-2xl border border-slate-100"
+                              className="flex items-start gap-2.5 bg-white/[0.03] p-3 rounded-2xl border border-white/5"
                             >
-                              <div className="h-7 w-7 rounded-xl bg-slate-800 text-white flex items-center justify-center text-[11px] font-bold shrink-0 overflow-hidden">
+                              <div className="h-7 w-7 rounded-xl bg-slate-800 text-white flex items-center justify-center text-[11px] font-bold shrink-0 overflow-hidden ring-1 ring-white/10">
                                 {comm.user.avatarUrl ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
@@ -1243,11 +1245,11 @@ export default function FeedSection({
                               <div className="flex-1 space-y-0.5">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-xs font-bold text-slate-900">
+                                    <span className="text-xs font-bold text-white">
                                       {comm.user.name}
                                     </span>
                                     {comm.user.verificationStatus === "VERIFIED" && (
-                                      <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
                                     )}
                                     <span className="text-[10px] text-slate-400">
                                       &apos;{comm.user.batchYear.toString().slice(-2)}
@@ -1257,7 +1259,7 @@ export default function FeedSection({
                                     {calculateTimeAgo(comm.createdAt)}
                                   </span>
                                 </div>
-                                <p className="text-xs text-slate-700 whitespace-pre-line leading-relaxed">
+                                <p className="text-xs text-slate-300 whitespace-pre-line leading-relaxed">
                                   {comm.content}
                                 </p>
                               </div>
@@ -1277,58 +1279,58 @@ export default function FeedSection({
       {/* Share Modal */}
       <AnimatePresence>
         {shareModalPost && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-sm rounded-3xl border border-slate-200 p-6 shadow-xl space-y-4"
+              className="bg-[#0a0f1d] w-full max-w-sm rounded-3xl border border-white/10 p-6 shadow-2xl space-y-4 text-white backdrop-blur-xl"
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-xl bg-[#FF9933]/15 text-[#FF9933] border border-[#FF9933]/30 flex items-center justify-center">
                     <Share2 className="w-4 h-4" />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-900">Share Alumni Update</h3>
+                  <h3 className="text-sm font-bold text-white">Share Alumni Update</h3>
                 </div>
                 <button
                   onClick={() => {
                     setShareModalPost(null);
                     setCopiedLink(false);
                   }}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                  className="text-xs font-bold text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
                 >
                   ✕
                 </button>
               </div>
 
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Share this post by <strong>{shareModalPost.actor.name}</strong> with your fellow alumni and study groups.
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Share this post by <strong className="text-white">{shareModalPost.actor.name}</strong> with your fellow alumni and study groups.
               </p>
 
               <div className="space-y-2 pt-1">
                 {/* 1-Tap Copy Link */}
                 <button
                   onClick={() => handleShareAction(shareModalPost, "LINK_COPY")}
-                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-xs font-bold text-slate-800 transition"
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white transition"
                 >
                   <div className="flex items-center gap-2.5">
-                    <Copy className="w-4 h-4 text-slate-600" />
+                    <Copy className="w-4 h-4 text-slate-400" />
                     <span>{copiedLink ? "Link Copied to Clipboard!" : "Copy Post Link"}</span>
                   </div>
-                  {copiedLink && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                  {copiedLink && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                 </button>
 
                 {/* WhatsApp Share */}
                 <button
                   onClick={() => handleShareAction(shareModalPost, "WHATSAPP")}
-                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-xs font-bold text-emerald-800 transition"
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/40 text-xs font-bold text-emerald-300 transition"
                 >
                   <div className="flex items-center gap-2.5">
-                    <MessageCircle className="w-4 h-4 text-emerald-600" />
+                    <MessageCircle className="w-4 h-4 text-emerald-400" />
                     <span>Share to WhatsApp Group</span>
                   </div>
-                  <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+                  <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
                 </button>
               </div>
 
@@ -1337,7 +1339,7 @@ export default function FeedSection({
                   setShareModalPost(null);
                   setCopiedLink(false);
                 }}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                className="w-full py-2.5 bg-white/10 hover:bg-white/15 text-white text-xs font-bold rounded-xl transition"
               >
                 Done
               </button>
