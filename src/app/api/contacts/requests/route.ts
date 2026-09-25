@@ -129,42 +129,6 @@ export async function GET(req: Request) {
       })
       .filter((item) => item.user && item.user.id !== user.id);
 
-    // Auto-heal any outgoing requests initiated by this user to ACCEPTED with ContactTrust so they stay permanently
-    const pendingOutgoing = await db.connectionRequest.findMany({
-      where: {
-        status: "PENDING",
-        OR: [
-          { senderId: user.id },
-          { initiatedBy: user.id },
-        ],
-      },
-    });
-
-    if (pendingOutgoing.length > 0) {
-      const now = new Date();
-      for (const po of pendingOutgoing) {
-        const peerId = po.senderId === user.id ? po.receiverId : po.senderId;
-        await db.connectionRequest.update({
-          where: { id: po.id },
-          data: { status: "ACCEPTED", acceptedAt: now },
-        }).catch(() => {});
-        if (peerId) {
-          await Promise.all([
-            db.contactTrust.upsert({
-              where: { userId_contactId: { userId: user.id, contactId: peerId } },
-              update: { trustLevel: "CONNECTED" },
-              create: { userId: user.id, contactId: peerId, trustLevel: "CONNECTED" },
-            }).catch(() => {}),
-            db.contactTrust.upsert({
-              where: { userId_contactId: { userId: peerId, contactId: user.id } },
-              update: { trustLevel: "CONNECTED" },
-              create: { userId: peerId, contactId: user.id, trustLevel: "CONNECTED" },
-            }).catch(() => {}),
-          ]);
-        }
-      }
-    }
-
     // 3. All connected friends (authoritative canonical connections)
     const connectedFriends = await getConnectedFriends(user.id);
     const connectedPeerIds = connectedFriends.map((f) => f.id);

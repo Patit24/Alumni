@@ -87,7 +87,7 @@ export default function MessageComposer({
   };
 
   const handleMicPressStart = () => {
-    if (inputText.trim()) return;
+    if (inputText.trim() || disabled) return;
     triggerHaptic("heavy");
     setRecordingSeconds(0);
     setIsRecording(true);
@@ -237,10 +237,12 @@ export default function MessageComposer({
           type="button"
           whileTap={{ scale: 0.9 }}
           onClick={() => {
+            if (disabled) return;
             triggerHaptic("light");
             setShowPrivacyPicker(!showPrivacyPicker);
           }}
-          className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition shrink-0 active:scale-95 ${
+          disabled={disabled}
+          className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition shrink-0 active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${
             privacyMode !== "NORMAL"
               ? "bg-amber-500/20 text-amber-400 font-bold border border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
               : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white border border-white/10"
@@ -257,10 +259,12 @@ export default function MessageComposer({
           animate={{ rotate: showAttachments ? 45 : 0 }}
           transition={MOTION_SPRINGS.snappy}
           onClick={() => {
+            if (disabled) return;
             triggerHaptic("light");
             setShowAttachments(!showAttachments);
           }}
-          className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white border border-white/10 flex items-center justify-center transition shrink-0 active:scale-95"
+          disabled={disabled}
+          className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white border border-white/10 flex items-center justify-center transition shrink-0 active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
         >
           <Plus className="w-4 h-4" />
         </motion.button>
@@ -309,9 +313,9 @@ export default function MessageComposer({
                   handleSubmit();
                 }
               }}
-              placeholder={disabled ? "Chat request pending..." : "Encrypted message..."}
+              placeholder={disabled ? "Connect as friend to send messages..." : "Encrypted message..."}
               disabled={disabled}
-              className="w-full bg-white/5 focus:bg-white/10 text-white placeholder:text-slate-500 text-xs sm:text-sm rounded-xl sm:rounded-2xl px-3.5 py-2 sm:py-2.5 border border-white/10 focus:outline-hidden focus:ring-2 focus:ring-[#FF9933]/30 focus:border-[#FF9933]/70 transition-all resize-none max-h-32 min-h-[38px] leading-relaxed"
+              className="w-full bg-white/5 focus:bg-white/10 text-white placeholder:text-slate-500 text-xs sm:text-sm rounded-xl sm:rounded-2xl px-3.5 py-2 sm:py-2.5 border border-white/10 focus:outline-hidden focus:ring-2 focus:ring-[#FF9933]/30 focus:border-[#FF9933]/70 transition-all resize-none max-h-32 min-h-[38px] leading-relaxed disabled:opacity-50"
             />
           </div>
         )}
@@ -323,13 +327,13 @@ export default function MessageComposer({
             transition={MOTION_SPRINGS.snappy}
             onClick={() => handleSubmit()}
             disabled={disabled}
-            className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl btn-saffron text-white flex items-center justify-center shadow-lg shadow-[#FF9933]/30 shrink-0 transition active:scale-95 cursor-pointer"
+            className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl btn-saffron text-white flex items-center justify-center shadow-lg shadow-[#FF9933]/30 shrink-0 transition active:scale-95 cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
           >
             <Send className="w-4 h-4 ml-0.5" />
           </motion.button>
         ) : (
           <motion.div
-            drag="x"
+            drag={disabled ? false : "x"}
             dragConstraints={{ left: -120, right: 0 }}
             dragElastic={0.2}
             onDragEnd={handleMicRelease}
@@ -341,9 +345,10 @@ export default function MessageComposer({
               onMouseDown={handleMicPressStart}
               onTouchEnd={handleMicSimpleRelease}
               onMouseUp={handleMicSimpleRelease}
-              whileTap={{ scale: 1.2 }}
+              whileTap={{ scale: disabled ? 1 : 1.2 }}
+              disabled={disabled}
               transition={MOTION_SPRINGS.bouncy}
-              className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition shadow-2xs active:scale-95 ${
+              className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl flex items-center justify-center transition shadow-2xs active:scale-95 disabled:opacity-30 disabled:pointer-events-none ${
                 isRecording
                   ? "bg-rose-600 text-white shadow-lg shadow-rose-500/30 ring-4 ring-rose-500/20"
                   : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white border border-white/10"

@@ -101,11 +101,10 @@ export default function InstitutionDiscoverySection({
     triggerHaptic("medium");
     setActionLoadingId(targetUserId);
 
-    // Optimistic UI: Immediately mark as CONNECTED
+    // Optimistic UI: Mark as PENDING_OUTGOING (do NOT add to vault until accepted)
     setUsers((prev) =>
-      prev.map((u) => (u.id === targetUserId ? { ...u, relationshipStatus: "CONNECTED" } : u))
+      prev.map((u) => (u.id === targetUserId ? { ...u, relationshipStatus: "PENDING_OUTGOING" } : u))
     );
-    addLocalConnectedPeer(targetUserId, currentUserId || undefined);
 
     try {
       const res = await fetch("/api/contacts/connect", {
@@ -114,17 +113,21 @@ export default function InstitutionDiscoverySection({
         body: JSON.stringify({ targetUserId, action: "REQUEST" }),
       });
       const data = await res.json().catch(() => ({}));
-      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || data.isFriend || res.ok) {
+      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || data.isFriend) {
         setUsers((prev) =>
           prev.map((u) => (u.id === targetUserId ? { ...u, relationshipStatus: "CONNECTED" } : u))
         );
         addLocalConnectedPeer(targetUserId, currentUserId || undefined);
         window.dispatchEvent(new CustomEvent("connection-requests-updated"));
         triggerHaptic("success");
+      } else {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === targetUserId ? { ...u, relationshipStatus: "PENDING_OUTGOING" } : u))
+        );
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
       }
     } catch (err) {
       console.error("Connect error:", err);
-      // Revert on error
       fetchDiscovery();
     } finally {
       setActionLoadingId(null);

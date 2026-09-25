@@ -11,12 +11,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { searchParams } = new URL(req.url);
-    const targetInstId = searchParams.get("institutionId") || currentUser.institutionId;
-
-    if (!targetInstId) {
-      return NextResponse.json({ error: "Institution ID is required" }, { status: 400 });
+    if (!currentUser.institutionId) {
+      return NextResponse.json({
+        success: true,
+        currentUserId: currentUser.id,
+        institution: null,
+        users: [],
+        totalCount: 0,
+      });
     }
+
+    // Friend suggestions are strictly limited to the current user's own school/university
+    const targetInstId = currentUser.institutionId;
 
     // 1. Fetch institution details
     const institution = await db.institution.findUnique({

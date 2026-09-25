@@ -191,11 +191,10 @@ export default function DirectMessageChatPage(props: {
         if (trustRes.ok) {
           const tData = await trustRes.json();
           if (tData.success) {
-            if (relStatus === "CONNECTED" || tData.trustLevel === "CONNECTED" || tData.trustLevel === "TRUSTED") {
+            if (relStatus === "CONNECTED") {
               setTrustLevel(tData.trustLevel === "TRUSTED" ? "TRUSTED" : "CONNECTED");
-              relStatus = "CONNECTED";
             } else {
-              setTrustLevel(tData.trustLevel);
+              setTrustLevel("REQUEST");
             }
             setIsSafetyVerified(tData.isVerified);
             if (tData.peerReveals) setPeerReveals(tData.peerReveals);
@@ -489,6 +488,11 @@ export default function DirectMessageChatPage(props: {
 
     if (!cleanText || !currentUser) return;
 
+    if (connectionStatus !== "CONNECTED") {
+      alert("You cannot send messages until your connection request is accepted.");
+      return;
+    }
+
     // Lazily fetch shared key if not yet derived (peer may have registered their key
     // after this chat was opened, or the initial fetch returned empty devices).
     let activeSharedKey = sharedKey;
@@ -689,10 +693,14 @@ export default function DirectMessageChatPage(props: {
     }
   };
 
-  // Start Voice Call (Enforces Trust Level)
+  // Start Voice Call (Enforces Connected + Trusted Contact)
   const handleStartVoiceCall = async () => {
-    if (trustLevel === "REQUEST" || trustLevel === "UNKNOWN") {
-      alert("Please accept and connect with this contact before starting voice calls.");
+    if (connectionStatus !== "CONNECTED") {
+      alert("You must be connected friends before you can start voice calls.");
+      return;
+    }
+    if (trustLevel !== "TRUSTED") {
+      alert("Please mark this contact as Trusted before starting voice calls.");
       return;
     }
     triggerHaptic("medium");
@@ -702,10 +710,14 @@ export default function DirectMessageChatPage(props: {
     await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VOICE", peerRole);
   };
 
-  // Start Video Call (Enforces Trust Level)
+  // Start Video Call (Enforces Connected + Trusted Contact)
   const handleStartVideoCall = async () => {
-    if (trustLevel === "REQUEST" || trustLevel === "UNKNOWN") {
-      alert("Please accept and connect with this contact before starting video calls.");
+    if (connectionStatus !== "CONNECTED") {
+      alert("You must be connected friends before you can start video calls.");
+      return;
+    }
+    if (trustLevel !== "TRUSTED") {
+      alert("Please mark this contact as Trusted before starting video calls.");
       return;
     }
     triggerHaptic("medium");
@@ -819,18 +831,30 @@ export default function DirectMessageChatPage(props: {
 
           <button
             onClick={handleStartVoiceCall}
-            disabled={connectionStatus !== "CONNECTED"}
+            disabled={connectionStatus !== "CONNECTED" || trustLevel !== "TRUSTED"}
             className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/30 border border-white/10 text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
-            title={connectionStatus !== "CONNECTED" ? "Connect to enable calls" : "Voice Call"}
+            title={
+              connectionStatus !== "CONNECTED"
+                ? "First become friends to enable calls"
+                : trustLevel !== "TRUSTED"
+                ? "Mark user as Trusted to enable voice call"
+                : "Voice Call"
+            }
           >
             <Phone className="w-4 h-4" />
           </button>
 
           <button
             onClick={handleStartVideoCall}
-            disabled={connectionStatus !== "CONNECTED"}
+            disabled={connectionStatus !== "CONNECTED" || trustLevel !== "TRUSTED"}
             className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-blue-500/20 hover:text-blue-400 hover:border-blue-500/30 border border-white/10 text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
-            title={connectionStatus !== "CONNECTED" ? "Connect to enable calls" : "Video Call"}
+            title={
+              connectionStatus !== "CONNECTED"
+                ? "First become friends to enable calls"
+                : trustLevel !== "TRUSTED"
+                ? "Mark user as Trusted to enable video call"
+                : "Video Call"
+            }
           >
             <Video className="w-4 h-4" />
           </button>
@@ -886,11 +910,11 @@ export default function DirectMessageChatPage(props: {
             </div>
             <p className="text-slate-300 text-[11px] leading-relaxed">
               {connectionStatus === "PENDING_INCOMING" ? (
-                <><strong>Connection Request:</strong> {peer?.name || "This user"} wants to connect with you. Accept to unlock voice & video calls.</>
+                <><strong>Connection Request:</strong> {peer?.name || "This user"} wants to connect with you. Accept to start chatting.</>
               ) : connectionStatus === "PENDING_OUTGOING" ? (
-                <><strong>Request Sent:</strong> Waiting for {peer?.name || "user"} to accept your connection.</>
+                <><strong>Request Sent:</strong> Waiting for {peer?.name || "user"} to accept your connection request before you can chat.</>
               ) : (
-                <>Connect with {peer?.name || "this alumnus"} to unlock voice & video calling.</>
+                <>You must be connected friends with {peer?.name || "this alumnus"} before you can send messages or start calls.</>
               )}
             </p>
           </div>
@@ -910,14 +934,29 @@ export default function DirectMessageChatPage(props: {
                   Decline
                 </button>
               </>
-            ) : connectionStatus === "NONE" ? (
-              <button
-                onClick={() => handleUpdateTrust("CONNECTED")}
-                className="btn-saffron flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer shadow-md shadow-[#FF9933]/20 active:scale-95 transition"
-              >
-                Connect
-              </button>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Trusted Contact Prompt Banner: Shown when connected as friends, but not yet marked as Trusted for calls */}
+      {connectionStatus === "CONNECTED" && trustLevel !== "TRUSTED" && (
+        <div className="bg-[#111726]/90 backdrop-blur-md border-b border-emerald-500/20 p-3 sm:px-4 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-8 w-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              <strong>Connected Friends:</strong> Mark {peer?.name || "this contact"} as Trusted to unlock voice & video calling.
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto w-full sm:w-auto">
+            <button
+              onClick={() => handleUpdateTrust("TRUSTED")}
+              className="btn-india-green flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer shadow-md active:scale-95 transition"
+            >
+              Mark as Trusted
+            </button>
           </div>
         </div>
       )}
@@ -1115,7 +1154,7 @@ export default function DirectMessageChatPage(props: {
         onCancelReply={() => setReplyingTo(null)}
         privacyMode={messagePrivacy}
         onPrivacyModeChange={setMessagePrivacy}
-        disabled={trustLevel === "BLOCKED"}
+        disabled={connectionStatus !== "CONNECTED" || trustLevel === "BLOCKED"}
       />
 
 

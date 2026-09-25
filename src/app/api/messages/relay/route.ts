@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sendRealtimeBroadcast } from "@/lib/realtime-broadcast";
+import { getRelationship } from "@/lib/connection-service";
 
 export const dynamic = "force-dynamic";
 
@@ -42,19 +43,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Cannot send message to this user" }, { status: 403 });
     }
 
-    // Ensure reciprocal contact trust exists
-    await Promise.all([
-      db.contactTrust.upsert({
-        where: { userId_contactId: { userId: user.id, contactId: recipientId } },
-        update: {},
-        create: { userId: user.id, contactId: recipientId, trustLevel: "CONNECTED" },
-      }),
-      db.contactTrust.upsert({
-        where: { userId_contactId: { userId: recipientId, contactId: user.id } },
-        update: {},
-        create: { userId: recipientId, contactId: user.id, trustLevel: "CONNECTED" },
-      }),
-    ]).catch(() => {});
+    // Users must be accepted friends before sending messages
+    const rel = await getRelationship(user.id, recipientId);
+    if (rel.status !== "CONNECTED") {
+      return NextResponse.json(
+        { error: "You must be connected friends before you can send messages" },
+        { status: 403 }
+      );
+    }
 
     // 2 days auto-expiration for undelivered encrypted payloads - automatically vanishes after 48 hours
     const expiresAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);

@@ -290,7 +290,7 @@ export default function MessagesHubPage() {
         body: JSON.stringify({ targetUserId, action: "REQUEST" }),
       });
       const data = await res.json();
-      if (data.isFriend || data.status === "CONNECTED" || res.ok) {
+      if (data.isFriend || data.status === "CONNECTED") {
         addLocalConnectedPeer(targetUserId, currentUserId || undefined);
         setConnectedPeerIds((prev) => new Set(prev).add(targetUserId));
       }

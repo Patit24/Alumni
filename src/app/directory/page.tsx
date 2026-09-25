@@ -138,7 +138,7 @@ export default function DirectoryPage() {
         body: JSON.stringify({ targetUserId, action: "REQUEST" }),
       });
       const data = await res.json().catch(() => ({}));
-      if (data.status === "CONNECTED" || data.status === "ACCEPTED" || data.isFriend || res.ok) {
+      if (data.status === "CONNECTED" || data.status === "ACCEPTED" || data.isFriend) {
         setStatusMap((prev) => ({ ...prev, [targetUserId]: "CONNECTED" }));
         addLocalConnectedPeer(targetUserId, currentUserId || undefined);
 
@@ -150,6 +150,9 @@ export default function DirectoryPage() {
             return [addedPerson, ...prev];
           });
         }
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+      } else {
+        setStatusMap((prev) => ({ ...prev, [targetUserId]: "PENDING_OUTGOING" }));
         window.dispatchEvent(new CustomEvent("connection-requests-updated"));
       }
     } catch (err) {
