@@ -23,6 +23,7 @@ import {
   Flame,
   UserCheck,
   UserX,
+  UserMinus,
   Share2,
   Eye,
   EyeOff,
@@ -42,6 +43,7 @@ import {
   verifyContactSafety,
   markMessageBurned,
   addLocalConnectedPeer,
+  removeLocalConnectedPeer,
   setActiveVaultUser,
   VaultMessage,
 } from "@/lib/e2ee/vault";
@@ -646,10 +648,45 @@ export default function DirectMessageChatPage(props: {
             body: JSON.stringify({ targetUserId: peerId, action: "ACCEPT" }),
           }).catch(() => {});
           window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+        } else if (newLevel === "BLOCKED") {
+          setConnectionStatus("NONE");
+          if (currentUser) {
+            removeLocalConnectedPeer(peerId, currentUser.id);
+          }
+          await fetch("/api/contacts/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ targetUserId: peerId, action: "BLOCK" }),
+          }).catch(() => {});
+          window.dispatchEvent(new CustomEvent("connection-requests-updated"));
         }
       }
     } catch (e) {
       console.error("Failed to update trust level:", e);
+    }
+  };
+
+  const handleUnfriend = async () => {
+    if (!confirm(`Are you sure you want to remove ${peer?.name || "this user"} from your friends?`)) {
+      return;
+    }
+    try {
+      await fetch("/api/contacts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: peerId, action: "UNFRIEND" }),
+      });
+      if (currentUser) {
+        removeLocalConnectedPeer(peerId, currentUser.id);
+      }
+      setConnectionStatus("NONE");
+      setTrustLevel("REQUEST");
+      setShowMenu(false);
+      window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+      setScreenNotice(`Removed ${peer?.name || "contact"} from friends.`);
+      setTimeout(() => setScreenNotice(null), 4000);
+    } catch (e) {
+      console.error("Failed to unfriend:", e);
     }
   };
 
@@ -1037,6 +1074,15 @@ export default function DirectMessageChatPage(props: {
               <Trash2 className="w-4 h-4" />
               <span>Clear Local History</span>
             </button>
+            {connectionStatus === "CONNECTED" && (
+              <button
+                onClick={handleUnfriend}
+                className="w-full text-left px-4 py-2.5 hover:bg-amber-500/10 text-amber-400 flex items-center gap-2.5 font-medium transition"
+              >
+                <UserMinus className="w-4 h-4" />
+                <span>Unfriend Contact</span>
+              </button>
+            )}
             <button
               onClick={() => {
                 handleUpdateTrust("BLOCKED");

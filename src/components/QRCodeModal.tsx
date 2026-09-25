@@ -16,7 +16,6 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { addLocalConnectedPeer } from "@/lib/e2ee/vault";
 
 interface QRCodeModalProps {
   isOpen: boolean;
@@ -166,11 +165,10 @@ export default function QRCodeModal({
       }
 
       if (peer) {
-        addLocalConnectedPeer(peer.id);
-        setSuccessMessage(`Found ${peer.name} (@${peer.username || "alumni"})! Opening chat...`);
+        setSuccessMessage(`Found ${peer.name} (@${peer.username || "alumni"})! Opening profile...`);
         setTimeout(() => {
           onClose();
-          router.push(`/messages/${peer.id}`);
+          router.push(`/profile/${peer.id}`);
         }, 400);
       } else {
         setErrorMessage(`No alumni found with username or name "@${target}". Check the spelling or ask them to share their QR code.`);

@@ -292,13 +292,7 @@ export default function ProfileHeaderCard({
     e.target.value = "";
   };
 
-  const [relStatus, setRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">(() => {
-    if (typeof window !== "undefined" && user?.id) {
-      const local = getLocalConnectedPeerIds(currentUser?.id);
-      if (local.includes(user.id)) return "CONNECTED";
-    }
-    return "NONE";
-  });
+  const [relStatus, setRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">("NONE");
   const [mutualCount, setMutualCount] = useState<number>(0);
 
   // Fetch true relationship status and mutual connections from server
@@ -434,9 +428,9 @@ export default function ProfileHeaderCard({
   const handleGoToChat = () => {
     if (currentUser?.id) {
       setActiveVaultUser(currentUser.id);
-      addLocalConnectedPeer(user.id, currentUser.id);
-    } else {
-      addLocalConnectedPeer(user.id);
+      if (relStatus === "CONNECTED") {
+        addLocalConnectedPeer(user.id, currentUser.id);
+      }
     }
     router.push(`/messages/${user.id}`);
   };

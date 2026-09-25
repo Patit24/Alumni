@@ -582,6 +582,20 @@ export function removeLocalConnectedPeer(peerId: string, userId?: string): void 
   } catch {}
 }
 
+export function syncLocalConnectedPeers(serverPeerIds: string[], userId?: string): void {
+  if (typeof window === "undefined") return;
+  const uid = userId || getActiveVaultUserId();
+  if (!uid) return;
+  try {
+    const scopedKey = `alumni_connected_peer_ids_${uid}`;
+    const valid = Array.from(new Set(serverPeerIds.filter((id) => id && id !== uid)));
+    localStorage.setItem(scopedKey, JSON.stringify(valid));
+    if (localStorage.getItem("alumni_connected_peer_ids_global")) {
+      localStorage.removeItem("alumni_connected_peer_ids_global");
+    }
+  } catch {}
+}
+
 export function clearUserLocalVault(userId?: string): void {
   if (typeof window === "undefined") return;
   const uid = userId || getActiveVaultUserId();

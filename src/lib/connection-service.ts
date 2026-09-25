@@ -96,16 +96,55 @@ export async function getRelationship(
 
   const { userAId, userBId } = canonicalUserPair(currentUserId, targetUserId);
 
-  // 2. Fetch canonical connection record
-  const connection = await db.connectionRequest.findFirst({
+  // 2. Fetch canonical connection record (prioritize active ACCEPTED / CONNECTED)
+  let connection = await db.connectionRequest.findFirst({
     where: {
+      status: { in: ["ACCEPTED", "CONNECTED"] },
       OR: [
         { userAId, userBId },
         { senderId: currentUserId, receiverId: targetUserId },
         { senderId: targetUserId, receiverId: currentUserId },
       ],
     },
+    orderBy: { updatedAt: "desc" },
   });
+
+  if (!connection) {
+    connection = await db.connectionRequest.findFirst({
+      where: {
+        OR: [
+          { userAId, userBId },
+          { senderId: currentUserId, receiverId: targetUserId },
+          { senderId: targetUserId, receiverId: currentUserId },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+  }
+
+  // 3. Also check ContactTrust fallback if no connection request record
+  if (!connection) {
+    const trust = await db.contactTrust.findFirst({
+      where: {
+        userId: currentUserId,
+        contactId: targetUserId,
+        trustLevel: { in: ["CONNECTED", "TRUSTED"] },
+      },
+    });
+    if (trust) {
+      return {
+        status: "CONNECTED",
+        isFriend: true,
+        canConnect: false,
+        canAccept: false,
+        canReject: false,
+        canCancel: false,
+        canMessage: true,
+        createdAt: trust.createdAt.toISOString(),
+        acceptedAt: trust.updatedAt.toISOString(),
+      };
+    }
+  }
 
   if (connection) {
     const createdAt = connection.createdAt.toISOString();
@@ -735,9 +774,11 @@ export async function cancelConnectionRequest(
 
 /**
  * Get all connected friends with complete profiles.
+ * Authoritative: returns all users who have an ACCEPTED/CONNECTED connection
+ * or mutual contact trust, unless explicitly blocked. Never drops friends!
  */
 export async function getConnectedFriends(userId: string): Promise<FriendProfile[]> {
-  const [connections, trustedContacts] = await Promise.all([
+  const [connections, trustedContacts, blocks] = await Promise.all([
     db.connectionRequest.findMany({
       where: {
         status: { in: ["ACCEPTED", "CONNECTED"] },
@@ -756,45 +797,41 @@ export async function getConnectedFriends(userId: string): Promise<FriendProfile
         trustLevel: { in: ["CONNECTED", "TRUSTED"] },
       },
     }),
+    db.userBlock.findMany({
+      where: {
+        OR: [
+          { blockerId: userId },
+          { blockedId: userId },
+        ],
+      },
+      select: { blockerId: true, blockedId: true },
+    }),
   ]);
+
+  const blockedIds = new Set<string>();
+  blocks.forEach((b) => {
+    if (b.blockerId === userId) blockedIds.add(b.blockedId);
+    if (b.blockedId === userId) blockedIds.add(b.blockerId);
+  });
 
   const friendIds = new Set<string>();
   connections.forEach((c) => {
-    if (c.userAId === userId && c.userBId && c.userBId !== userId) friendIds.add(c.userBId);
-    if (c.userBId === userId && c.userAId && c.userAId !== userId) friendIds.add(c.userAId);
-    if (c.senderId === userId && c.receiverId && c.receiverId !== userId) friendIds.add(c.receiverId);
-    if (c.receiverId === userId && c.senderId && c.senderId !== userId) friendIds.add(c.senderId);
-  });
+    const otherId =
+      c.userAId === userId ? c.userBId :
+      c.userBId === userId ? c.userAId :
+      c.senderId === userId ? c.receiverId :
+      c.receiverId === userId ? c.senderId : null;
 
-  // Exclude anyone with an active PENDING or REJECTED connection request
-  const pendingOrRejected = await db.connectionRequest.findMany({
-    where: {
-      status: { in: ["PENDING", "REJECTED", "CANCELLED"] },
-      OR: [
-        { senderId: userId },
-        { receiverId: userId },
-        { userAId: userId },
-        { userBId: userId },
-      ],
-    },
-    select: { senderId: true, receiverId: true, userAId: true, userBId: true },
-  });
-
-  const excludedIds = new Set<string>();
-  pendingOrRejected.forEach((r) => {
-    if (r.senderId && r.senderId !== userId) excludedIds.add(r.senderId);
-    if (r.receiverId && r.receiverId !== userId) excludedIds.add(r.receiverId);
-    if (r.userAId && r.userAId !== userId) excludedIds.add(r.userAId);
-    if (r.userBId && r.userBId !== userId) excludedIds.add(r.userBId);
-  });
-
-  trustedContacts.forEach((t) => {
-    if (t.contactId && t.contactId !== userId && !excludedIds.has(t.contactId)) {
-      friendIds.add(t.contactId);
+    if (otherId && otherId !== userId && !blockedIds.has(otherId)) {
+      friendIds.add(otherId);
     }
   });
 
-  excludedIds.forEach((id) => friendIds.delete(id));
+  trustedContacts.forEach((t) => {
+    if (t.contactId && t.contactId !== userId && !blockedIds.has(t.contactId)) {
+      friendIds.add(t.contactId);
+    }
+  });
 
   if (friendIds.size === 0) return [];
 
@@ -817,4 +854,55 @@ export async function getConnectedFriends(userId: string): Promise<FriendProfile
   });
 
   return users;
+}
+
+/**
+ * Unfriend a user: Removes connection request and contact trust records.
+ * Only explicit unfriend or block can disconnect friends.
+ */
+export async function unfriendUser(
+  currentUserId: string,
+  targetUserId: string
+): Promise<CanonicalRelationship> {
+  const { userAId, userBId } = canonicalUserPair(currentUserId, targetUserId);
+
+  await db.$transaction([
+    db.connectionRequest.deleteMany({
+      where: {
+        OR: [
+          { userAId, userBId },
+          { senderId: currentUserId, receiverId: targetUserId },
+          { senderId: targetUserId, receiverId: currentUserId },
+        ],
+      },
+    }),
+    db.contactTrust.deleteMany({
+      where: {
+        OR: [
+          { userId: currentUserId, contactId: targetUserId },
+          { userId: targetUserId, contactId: currentUserId },
+        ],
+      },
+    }),
+  ]);
+
+  sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-updated", {
+    peerId: currentUserId,
+    status: "NONE",
+  }).catch(() => {});
+
+  sendRealtimeBroadcast(`p2p-signal:${currentUserId}`, "connection-updated", {
+    peerId: targetUserId,
+    status: "NONE",
+  }).catch(() => {});
+
+  return {
+    status: "NONE",
+    isFriend: false,
+    canConnect: true,
+    canAccept: false,
+    canReject: false,
+    canCancel: false,
+    canMessage: false,
+  };
 }

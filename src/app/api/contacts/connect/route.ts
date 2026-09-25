@@ -6,6 +6,7 @@ import {
   acceptConnectionRequest,
   rejectConnectionRequest,
   cancelConnectionRequest,
+  unfriendUser,
   getRelationship,
 } from "@/lib/connection-service";
 
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { targetUserId, action } = body as {
       targetUserId?: string;
-      action?: "REQUEST" | "ACCEPT" | "REJECT" | "CANCEL" | "BLOCK";
+      action?: "REQUEST" | "ACCEPT" | "REJECT" | "CANCEL" | "BLOCK" | "UNFRIEND";
     };
 
     if (!targetUserId || typeof targetUserId !== "string") {
@@ -99,10 +100,25 @@ export async function POST(req: Request) {
         create: { blockerId: user.id, blockedId: targetUserId },
       });
 
+      // Also clean up any active connection when blocking
+      await unfriendUser(user.id, targetUserId).catch(() => {});
+
       return NextResponse.json({
         success: true,
         status: "BLOCKED",
         isFriend: false,
+      });
+    }
+
+    // 6. ACTION: UNFRIEND
+    if (action === "UNFRIEND") {
+      const rel = await unfriendUser(user.id, targetUserId);
+      return NextResponse.json({
+        success: true,
+        status: rel.status,
+        isFriend: false,
+        relationship: rel,
+        message: `Removed from friends`,
       });
     }
 

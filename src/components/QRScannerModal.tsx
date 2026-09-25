@@ -122,16 +122,14 @@ export default function QRScannerModal({
       if (peer) {
         setActionNotice(null);
 
-        // Pre-check local storage vault to see if already connected
-        const localConnected = getLocalConnectedPeerIds(currentUser?.id);
-        let resolvedStatus: "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED" | "SELF" =
-          localConnected.includes(peer.id) ? "CONNECTED" : "NONE";
+        // Authoritative relationship lookup from server DB
+        let resolvedStatus: "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED" | "SELF" = "NONE";
 
         try {
           const reqRes = await fetch(`/api/contacts/requests?targetUserId=${encodeURIComponent(peer.id)}`);
           if (reqRes.ok) {
             const data = await reqRes.json();
-            const myId = data.myUserId || currentUser?.id;
+            const myId = data.myUserId || data.currentUserId || currentUser?.id;
 
             if (myId && myId === peer.id) {
               resolvedStatus = "SELF";
@@ -141,16 +139,17 @@ export default function QRScannerModal({
                 data.targetRelationship?.isFriend === true ||
                 data.statusMap?.[peer.id] === "CONNECTED" ||
                 (Array.isArray(data.connectedPeerIds) && data.connectedPeerIds.includes(peer.id)) ||
-                (Array.isArray(data.connectedFriends) && data.connectedFriends.some((f: any) => f.id === peer.id)) ||
-                resolvedStatus === "CONNECTED";
+                (Array.isArray(data.connectedFriends) && data.connectedFriends.some((f: any) => f.id === peer.id));
 
               if (isConn) {
                 resolvedStatus = "CONNECTED";
-                addLocalConnectedPeer(peer.id, myId);
+                if (myId) addLocalConnectedPeer(peer.id, myId);
               } else if (data.targetRelationship?.status) {
                 resolvedStatus = data.targetRelationship.status;
               } else if (data.statusMap?.[peer.id]) {
                 resolvedStatus = data.statusMap[peer.id];
+              } else {
+                resolvedStatus = "NONE";
               }
             }
           }
@@ -339,13 +338,13 @@ export default function QRScannerModal({
         body: JSON.stringify({ targetUserId: peerId, action: "REQUEST" }),
       });
       const data = await res.json().catch(() => ({}));
-      if (data.status === "CONNECTED" || data.status === "ACCEPTED" || data.isFriend || res.ok) {
-        addLocalConnectedPeer(peerId, currentUser?.id);
+      if (data.status === "CONNECTED" || data.status === "ACCEPTED" || data.isFriend === true) {
+        if (currentUser?.id) addLocalConnectedPeer(peerId, currentUser.id);
         setScannedRelStatus("CONNECTED");
-        setActionNotice("Connected! You can now send messages.");
+        setActionNotice("Connected! You are now friends.");
       } else {
         setScannedRelStatus("PENDING_OUTGOING");
-        setActionNotice("Connection request sent! Once accepted, messaging will be unlocked.");
+        setActionNotice("Friend request sent! Once accepted, messaging will be unlocked.");
       }
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (e) {
@@ -364,9 +363,11 @@ export default function QRScannerModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: peerId, action: "ACCEPT" }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        if (currentUser?.id) addLocalConnectedPeer(peerId, currentUser.id);
         setScannedRelStatus("CONNECTED");
-        setActionNotice("Connection accepted! You can now send messages.");
+        setActionNotice("Connection accepted! You are now friends.");
         window.dispatchEvent(new CustomEvent("connection-requests-updated"));
       }
     } catch (e) {
@@ -377,7 +378,9 @@ export default function QRScannerModal({
   };
 
   const handleOpenMessages = (peerId: string) => {
-    addLocalConnectedPeer(peerId, currentUser?.id);
+    if (scannedRelStatus === "CONNECTED" && currentUser?.id) {
+      addLocalConnectedPeer(peerId, currentUser.id);
+    }
     onClose();
     router.push(`/messages/${peerId}`);
   };
@@ -457,7 +460,7 @@ export default function QRScannerModal({
                 <div className="space-y-2.5">
                   <div className="badge-connected p-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 font-bold shadow-xs">
                     <CheckCircle2 className="w-4 h-4 text-[#138808]" />
-                    <span>Already Connected</span>
+                    <span>Connected Friends</span>
                   </div>
                   <button
                     type="button"
@@ -465,7 +468,7 @@ export default function QRScannerModal({
                     className="btn-saffron w-full py-3 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 shadow-sm"
                   >
                     <MessageSquare className="w-4 h-4" />
-                    <span>Tap to Message (SMS)</span>
+                    <span>Send Message (SMS)</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                   <button
@@ -496,7 +499,7 @@ export default function QRScannerModal({
                 <div className="space-y-2.5">
                   <div className="badge-saffron p-3 rounded-2xl text-xs flex items-center justify-center gap-2 font-medium">
                     <Clock className="w-4 h-4 text-[#c2410c] shrink-0" />
-                    <span>Request Sent</span>
+                    <span>Friend Request Sent (Pending)</span>
                   </div>
                   <p className="text-[11px] text-slate-400 leading-tight text-center">
                     Waiting for {scannedPeer.name} to accept your request.
@@ -523,10 +526,10 @@ export default function QRScannerModal({
                     ) : (
                       <CheckCircle2 className="w-4 h-4" />
                     )}
-                    <span>Accept Connection</span>
+                    <span>Accept Friend Request</span>
                   </button>
                   <p className="text-[11px] text-slate-400 leading-tight text-center">
-                    {scannedPeer.name} sent you a request! Accept to connect.
+                    {scannedPeer.name} sent you a friend request! Accept to become friends.
                   </p>
                   <button
                     type="button"
@@ -550,10 +553,10 @@ export default function QRScannerModal({
                     ) : (
                       <UserPlus className="w-4 h-4" />
                     )}
-                    <span>Connect</span>
+                    <span>Send Friend Request</span>
                   </button>
                   <p className="text-[11px] text-slate-400 leading-tight text-center">
-                    Send a connection request to connect and chat with {scannedPeer.name}.
+                    Send a friend request to connect and chat with {scannedPeer.name}.
                   </p>
                   <button
                     type="button"

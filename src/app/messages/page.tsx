@@ -12,7 +12,7 @@ import {
 import {
   getCallLogs, clearCallLogs, VaultCallLog,
   getVaultConnectedPeerIds, getLocalConnectedPeerIds,
-  addLocalConnectedPeer, getLatestMessagesPerPeer,
+  addLocalConnectedPeer, syncLocalConnectedPeers, getLatestMessagesPerPeer,
   setActiveVaultUser, VaultMessage,
 } from "@/lib/e2ee/vault";
 import QRCodeModal from "@/components/QRCodeModal";
@@ -119,7 +119,7 @@ export default function MessagesHubPage() {
       setCallLogs(calls);
       setLatestMessages(latestMap);
 
-      // Build connected peer set from server (authoritative)
+      // Build connected peer set from server DB (authoritative)
       const serverConnectedPeers = new Set<string>();
       if (reqsRes?.ok) {
         const reqsData = await reqsRes.json();
@@ -128,7 +128,6 @@ export default function MessagesHubPage() {
           for (const pid of reqsData.connectedPeerIds) {
             if (pid && pid !== currentUserId) {
               serverConnectedPeers.add(pid);
-              addLocalConnectedPeer(pid, currentUserId || undefined);
             }
           }
         }
@@ -137,24 +136,27 @@ export default function MessagesHubPage() {
             const map = new Map<string, AlumniContact>();
             prev.forEach((c) => map.set(c.id, c));
             reqsData.connections.forEach((c: any) => {
-              if (c && c.id) map.set(c.id, { ...map.get(c.id), ...c });
+              if (c && c.id) {
+                if (c.id !== currentUserId) serverConnectedPeers.add(c.id);
+                map.set(c.id, { ...map.get(c.id), ...c });
+              }
             });
             return Array.from(map.values());
           });
         }
       }
 
-      const localPeers = currentUserId ? getLocalConnectedPeerIds(currentUserId) : [];
-      const merged = new Set<string>([
-        ...serverConnectedPeers,
-        ...vaultPeers.filter(p => p !== currentUserId),
-        ...localPeers.filter(p => p !== currentUserId),
-      ]);
-      setConnectedPeerIds(merged);
+      // Sync local storage vault with authoritative server-confirmed friends
+      if (currentUserId) {
+        syncLocalConnectedPeers(Array.from(serverConnectedPeers), currentUserId);
+      }
+
+      // Authoritative friends list
+      setConnectedPeerIds(serverConnectedPeers);
 
       // Ensure any connected peer not in directory is dynamically resolved
       const loadedIds = new Set(loadedContacts.map((c) => c.id));
-      const missingPeerIds = Array.from(merged).filter((id) => id && !loadedIds.has(id));
+      const missingPeerIds = Array.from(serverConnectedPeers).filter((id): id is string => Boolean(id) && !loadedIds.has(id));
       if (missingPeerIds.length > 0) {
         try {
           const fetchedMissing = await Promise.all(
@@ -216,21 +218,25 @@ export default function MessagesHubPage() {
       const uid = currentUserProfile?.id;
       fetch("/api/contacts/requests").then(r => r.json()).then(data => {
         if (data.incoming) setIncomingRequests(data.incoming);
+        const ids = new Set<string>();
         if (Array.isArray(data.connectedPeerIds)) {
-          const ids = new Set<string>(data.connectedPeerIds.filter((id: string) => id !== uid));
-          if (uid) getLocalConnectedPeerIds(uid).forEach(id => { if (id !== uid) ids.add(id); });
-          setConnectedPeerIds(ids);
+          data.connectedPeerIds.forEach((id: string) => { if (id && id !== uid) ids.add(id); });
         }
         if (Array.isArray(data.connections)) {
           setContacts((prev) => {
             const map = new Map<string, AlumniContact>();
             prev.forEach((c) => map.set(c.id, c));
             data.connections.forEach((c: any) => {
-              if (c && c.id) map.set(c.id, { ...map.get(c.id), ...c });
+              if (c && c.id) {
+                if (c.id !== uid) ids.add(c.id);
+                map.set(c.id, { ...map.get(c.id), ...c });
+              }
             });
             return Array.from(map.values());
           });
         }
+        if (uid) syncLocalConnectedPeers(Array.from(ids), uid);
+        setConnectedPeerIds(ids);
       }).catch(() => {});
       getLatestMessagesPerPeer(uid).then(map => setLatestMessages(map)).catch(() => {});
     };

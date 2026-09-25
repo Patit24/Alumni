@@ -23,7 +23,7 @@ import {
   X,
   Briefcase,
 } from "lucide-react";
-import { addLocalConnectedPeer, setActiveVaultUser } from "@/lib/e2ee/vault";
+import { addLocalConnectedPeer, syncLocalConnectedPeers, setActiveVaultUser } from "@/lib/e2ee/vault";
 
 interface AlumniUser {
   id: string;
@@ -87,9 +87,10 @@ export default function DirectoryPage() {
     fetch("/api/contacts/requests")
       .then((r) => r.json())
       .then((data) => {
-        if (data.currentUserId) {
-          setCurrentUserId(data.currentUserId);
-          setActiveVaultUser(data.currentUserId);
+        const myId = data.myUserId || data.currentUserId;
+        if (myId) {
+          setCurrentUserId(myId);
+          setActiveVaultUser(myId);
         }
         if (Array.isArray(data.incoming)) {
           setIncomingRequests(data.incoming);
@@ -105,10 +106,10 @@ export default function DirectoryPage() {
           for (const pid of data.connectedPeerIds) {
             if (pid) {
               merged[pid] = "CONNECTED";
-              if (data.currentUserId) {
-                addLocalConnectedPeer(pid, data.currentUserId);
-              }
             }
+          }
+          if (myId) {
+            syncLocalConnectedPeers(data.connectedPeerIds, myId);
           }
         }
         setStatusMap(merged);

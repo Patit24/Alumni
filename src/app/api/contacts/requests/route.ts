@@ -172,6 +172,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       success: true,
       myUserId: user.id,
+      currentUserId: user.id,
       incoming,
       outgoing,
       connectedFriends,
