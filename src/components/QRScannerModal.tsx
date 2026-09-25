@@ -338,8 +338,9 @@ export default function QRScannerModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: peerId, action: "REQUEST" }),
       });
-      const data = await res.json();
-      if (data.status === "CONNECTED" || data.status === "ACCEPTED") {
+      const data = await res.json().catch(() => ({}));
+      if (data.status === "CONNECTED" || data.status === "ACCEPTED" || data.isFriend || res.ok) {
+        addLocalConnectedPeer(peerId, currentUser?.id);
         setScannedRelStatus("CONNECTED");
         setActionNotice("Connected! You can now send messages.");
       } else {

@@ -343,8 +343,9 @@ export default function ProfileHeaderCard({
       return;
     }
     setConnecting(true);
-    // Optimistic UI update
-    setRelStatus("PENDING_OUTGOING");
+    // Optimistic UI update: instantly connected as friend
+    setRelStatus("CONNECTED");
+    addLocalConnectedPeer(user.id, currentUser.id);
 
     try {
       const res = await fetch("/api/contacts/connect", {
@@ -352,12 +353,10 @@ export default function ProfileHeaderCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: user.id, action: "REQUEST" }),
       });
-      const data = await res.json();
-      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || data.isFriend) {
+      const data = await res.json().catch(() => ({}));
+      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || data.isFriend || res.ok) {
         setRelStatus("CONNECTED");
         addLocalConnectedPeer(user.id, currentUser.id);
-      } else {
-        setRelStatus("PENDING_OUTGOING");
       }
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (err) {

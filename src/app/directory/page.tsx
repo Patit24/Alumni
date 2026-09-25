@@ -137,8 +137,8 @@ export default function DirectoryPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId, action: "REQUEST" }),
       });
-      const data = await res.json();
-      if (data.status === "CONNECTED" || data.status === "ACCEPTED") {
+      const data = await res.json().catch(() => ({}));
+      if (data.status === "CONNECTED" || data.status === "ACCEPTED" || data.isFriend || res.ok) {
         setStatusMap((prev) => ({ ...prev, [targetUserId]: "CONNECTED" }));
         addLocalConnectedPeer(targetUserId, currentUserId || undefined);
 
@@ -151,8 +151,6 @@ export default function DirectoryPage() {
           });
         }
         window.dispatchEvent(new CustomEvent("connection-requests-updated"));
-      } else if (data.status === "PENDING") {
-        setStatusMap((prev) => ({ ...prev, [targetUserId]: "PENDING_OUTGOING" }));
       }
     } catch (err) {
       console.error("Connect request error:", err);

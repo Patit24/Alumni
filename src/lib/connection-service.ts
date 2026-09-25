@@ -96,16 +96,44 @@ export async function getRelationship(
 
   const { userAId, userBId } = canonicalUserPair(currentUserId, targetUserId);
 
-  // 2. Fetch canonical connection record
-  const connection = await db.connectionRequest.findFirst({
-    where: {
-      OR: [
-        { userAId, userBId },
-        { senderId: currentUserId, receiverId: targetUserId },
-        { senderId: targetUserId, receiverId: currentUserId },
-      ],
-    },
-  });
+  // 2. Fetch canonical connection record & contact trust
+  const [connection, trust] = await Promise.all([
+    db.connectionRequest.findFirst({
+      where: {
+        OR: [
+          { userAId, userBId },
+          { senderId: currentUserId, receiverId: targetUserId },
+          { senderId: targetUserId, receiverId: currentUserId },
+        ],
+      },
+    }),
+    db.contactTrust.findFirst({
+      where: {
+        OR: [
+          { userId: currentUserId, contactId: targetUserId, trustLevel: { in: ["CONNECTED", "TRUSTED"] } },
+          { userId: targetUserId, contactId: currentUserId, trustLevel: { in: ["CONNECTED", "TRUSTED"] } },
+        ],
+      },
+    }),
+  ]);
+
+  if ((connection && (connection.status === "ACCEPTED" || connection.status === "CONNECTED")) || trust) {
+    const createdAt = (connection?.createdAt || new Date()).toISOString();
+    const acceptedAt = (connection?.acceptedAt || new Date()).toISOString();
+    return {
+      status: "CONNECTED",
+      isFriend: true,
+      connectionId: connection?.id,
+      initiatedBy: connection?.initiatedBy || connection?.senderId || currentUserId,
+      canConnect: false,
+      canAccept: false,
+      canReject: false,
+      canCancel: false,
+      canMessage: true,
+      createdAt,
+      acceptedAt,
+    };
+  }
 
   if (!connection) {
     return {
@@ -122,22 +150,6 @@ export async function getRelationship(
   const createdAt = connection.createdAt.toISOString();
   const acceptedAt = connection.acceptedAt?.toISOString();
   const initiatedBy = connection.initiatedBy || connection.senderId;
-
-  if (connection.status === "ACCEPTED" || connection.status === "CONNECTED") {
-    return {
-      status: "CONNECTED",
-      isFriend: true,
-      connectionId: connection.id,
-      initiatedBy,
-      canConnect: false,
-      canAccept: false,
-      canReject: false,
-      canCancel: false,
-      canMessage: true,
-      createdAt,
-      acceptedAt,
-    };
-  }
 
   if (connection.status === "PENDING") {
     const isOutgoing = initiatedBy === currentUserId;
@@ -220,8 +232,8 @@ export async function getRelationshipsBatch(
     });
   });
 
-  // Query all connections involving currentUserId and any targetId
-  const [connections, blocks] = await Promise.all([
+  // Query all connections, blocks, and trusts involving currentUserId and any targetId
+  const [connections, blocks, trusts] = await Promise.all([
     db.connectionRequest.findMany({
       where: {
         OR: [
@@ -238,6 +250,13 @@ export async function getRelationshipsBatch(
           { blockerId: currentUserId, blockedId: { in: validTargetIds } },
           { blockerId: { in: validTargetIds }, blockedId: currentUserId },
         ],
+      },
+    }),
+    db.contactTrust.findMany({
+      where: {
+        userId: currentUserId,
+        contactId: { in: validTargetIds },
+        trustLevel: { in: ["CONNECTED", "TRUSTED"] },
       },
     }),
   ]);
@@ -311,12 +330,27 @@ export async function getRelationshipsBatch(
     }
   });
 
+  // Map any trusted / connected peers from ContactTrust
+  trusts.forEach((t) => {
+    if (result.get(t.contactId)?.status !== "BLOCKED") {
+      result.set(t.contactId, {
+        status: "CONNECTED",
+        isFriend: true,
+        canConnect: false,
+        canAccept: false,
+        canReject: false,
+        canCancel: false,
+        canMessage: true,
+      });
+    }
+  });
+
   return result;
 }
 
 /**
  * Send a connection request.
- * If target user has already sent a pending request, immediately auto-accepts!
+ * Automatically accepts and creates bidirectional ContactTrust so added contacts stay forever as friends.
  */
 export async function sendConnectionRequest(
   senderId: string,
@@ -352,37 +386,15 @@ export async function sendConnectionRequest(
     },
   });
 
-  // 1. If already connected, return immediately
-  if (existing && (existing.status === "ACCEPTED" || existing.status === "CONNECTED")) {
-    return {
-      status: "CONNECTED",
-      isFriend: true,
-      connectionId: existing.id,
-      canConnect: false,
-      canAccept: false,
-      canReject: false,
-      canCancel: false,
-      canMessage: true,
-    };
-  }
-
-  // 2. If targetUser already sent sender a PENDING request -> Reciprocal auto-accept!
-  const targetSentPending =
-    existing &&
-    existing.status === "PENDING" &&
-    (existing.initiatedBy === targetUserId || existing.senderId === targetUserId);
-
-  if (targetSentPending) {
-    return await acceptConnectionRequest(senderId, targetUserId);
-  }
-
-  // 3. Sender user details for notification
+  // Sender user details for notification
   const senderUser = await db.user.findUnique({
     where: { id: senderId },
     select: { id: true, name: true, username: true, avatarUrl: true },
   });
 
-  // 4. Create or re-open request
+  const now = new Date();
+
+  // Create or update request as ACCEPTED so contacts stay forever as friends
   let connection;
   if (existing) {
     connection = await db.connectionRequest.update({
@@ -393,8 +405,9 @@ export async function sendConnectionRequest(
         initiatedBy: senderId,
         senderId,
         receiverId: targetUserId,
-        status: "PENDING",
-        updatedAt: new Date(),
+        status: "ACCEPTED",
+        acceptedAt: now,
+        updatedAt: now,
       },
     });
   } else {
@@ -405,19 +418,34 @@ export async function sendConnectionRequest(
         initiatedBy: senderId,
         senderId,
         receiverId: targetUserId,
-        status: "PENDING",
+        status: "ACCEPTED",
+        acceptedAt: now,
       },
     });
   }
 
-  // 5. In-App notification for target user
+  // Ensure bidirectional ContactTrust
+  await Promise.all([
+    db.contactTrust.upsert({
+      where: { userId_contactId: { userId: senderId, contactId: targetUserId } },
+      update: { trustLevel: "CONNECTED" },
+      create: { userId: senderId, contactId: targetUserId, trustLevel: "CONNECTED" },
+    }),
+    db.contactTrust.upsert({
+      where: { userId_contactId: { userId: targetUserId, contactId: senderId } },
+      update: { trustLevel: "CONNECTED" },
+      create: { userId: targetUserId, contactId: senderId, trustLevel: "CONNECTED" },
+    }),
+  ]);
+
+  // In-App notification for target user
   await db.appNotification.create({
     data: {
       userId: targetUserId,
       actorId: senderId,
-      type: "CONNECTION_REQUEST",
-      title: "New Connection Request",
-      body: `${senderUser?.name || "An alumnus"} sent you a connection request.`,
+      type: "CONNECTION_ACCEPTED",
+      title: "New Connection",
+      body: `${senderUser?.name || "An alumnus"} connected with you. You are now friends!`,
       data: JSON.stringify({
         connectionId: connection.id,
         peerId: senderId,
@@ -428,8 +456,8 @@ export async function sendConnectionRequest(
     },
   }).catch(() => {});
 
-  // 6. Realtime broadcast to target user
-  sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-request-received", {
+  // Realtime broadcast to target user and sender
+  sendRealtimeBroadcast(`p2p-signal:${targetUserId}`, "connection-accepted", {
     connectionId: connection.id,
     peerId: senderId,
     peerName: senderUser?.name,
@@ -437,17 +465,23 @@ export async function sendConnectionRequest(
     createdAt: connection.createdAt.toISOString(),
   }).catch(() => {});
 
+  sendRealtimeBroadcast(`p2p-signal:${senderId}`, "connection-updated", {
+    peerId: targetUserId,
+    status: "CONNECTED",
+  }).catch(() => {});
+
   return {
-    status: "PENDING_OUTGOING",
-    isFriend: false,
+    status: "CONNECTED",
+    isFriend: true,
     connectionId: connection.id,
     initiatedBy: senderId,
     canConnect: false,
     canAccept: false,
     canReject: false,
-    canCancel: true,
-    canMessage: false,
+    canCancel: false,
+    canMessage: true,
     createdAt: connection.createdAt.toISOString(),
+    acceptedAt: now.toISOString(),
   };
 }
 
@@ -675,25 +709,39 @@ export async function cancelConnectionRequest(
  * Get all connected friends with complete profiles.
  */
 export async function getConnectedFriends(userId: string): Promise<FriendProfile[]> {
-  const connections = await db.connectionRequest.findMany({
-    where: {
-      status: "ACCEPTED",
-      OR: [
-        { userAId: userId },
-        { userBId: userId },
-        { senderId: userId },
-        { receiverId: userId },
-      ],
-    },
-    orderBy: { updatedAt: "desc" },
-  });
+  const [connections, trustedContacts] = await Promise.all([
+    db.connectionRequest.findMany({
+      where: {
+        status: { in: ["ACCEPTED", "CONNECTED"] },
+        OR: [
+          { userAId: userId },
+          { userBId: userId },
+          { senderId: userId },
+          { receiverId: userId },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+    }),
+    db.contactTrust.findMany({
+      where: {
+        userId,
+        trustLevel: { in: ["CONNECTED", "TRUSTED"] },
+      },
+    }),
+  ]);
 
   const friendIds = new Set<string>();
   connections.forEach((c) => {
-    const friendId = c.senderId === userId ? c.receiverId : c.senderId;
-    if (friendId && friendId !== userId) friendIds.add(friendId);
-    if (c.userAId && c.userAId !== userId) friendIds.add(c.userAId);
-    if (c.userBId && c.userBId !== userId) friendIds.add(c.userBId);
+    if (c.userAId === userId && c.userBId && c.userBId !== userId) friendIds.add(c.userBId);
+    if (c.userBId === userId && c.userAId && c.userAId !== userId) friendIds.add(c.userAId);
+    if (c.senderId === userId && c.receiverId && c.receiverId !== userId) friendIds.add(c.receiverId);
+    if (c.receiverId === userId && c.senderId && c.senderId !== userId) friendIds.add(c.senderId);
+  });
+
+  trustedContacts.forEach((t) => {
+    if (t.contactId && t.contactId !== userId) {
+      friendIds.add(t.contactId);
+    }
   });
 
   if (friendIds.size === 0) return [];

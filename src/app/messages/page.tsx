@@ -221,6 +221,16 @@ export default function MessagesHubPage() {
           if (uid) getLocalConnectedPeerIds(uid).forEach(id => { if (id !== uid) ids.add(id); });
           setConnectedPeerIds(ids);
         }
+        if (Array.isArray(data.connections)) {
+          setContacts((prev) => {
+            const map = new Map<string, AlumniContact>();
+            prev.forEach((c) => map.set(c.id, c));
+            data.connections.forEach((c: any) => {
+              if (c && c.id) map.set(c.id, { ...map.get(c.id), ...c });
+            });
+            return Array.from(map.values());
+          });
+        }
       }).catch(() => {});
       getLatestMessagesPerPeer(uid).then(map => setLatestMessages(map)).catch(() => {});
     };
@@ -280,7 +290,7 @@ export default function MessagesHubPage() {
         body: JSON.stringify({ targetUserId, action: "REQUEST" }),
       });
       const data = await res.json();
-      if (data.isFriend || data.status === "CONNECTED") {
+      if (data.isFriend || data.status === "CONNECTED" || res.ok) {
         addLocalConnectedPeer(targetUserId, currentUserId || undefined);
         setConnectedPeerIds((prev) => new Set(prev).add(targetUserId));
       }
@@ -289,9 +299,13 @@ export default function MessagesHubPage() {
     router.push(`/messages/${targetUserId}`);
   };
 
-  // ONLY show mutual connections in CHATS tab
-  const connectedContacts = contacts
-    .filter(c => c.id !== currentUserId && connectedPeerIds.has(c.id))
+  // All authoritative connected alumni
+  const allConnectedContacts = contacts.filter(
+    (c) => c.id !== currentUserId && connectedPeerIds.has(c.id)
+  );
+
+  // Filtered and sorted for CHATS tab
+  const connectedContacts = allConnectedContacts
     .filter(c => {
       if (!cleanFilter) return true;
       return (
@@ -394,7 +408,7 @@ export default function MessagesHubPage() {
               [
                 { id: "CHATS" as const, label: "Chats", icon: MessageSquare, badge: incomingRequests.length || undefined },
                 { id: "CALLS" as const, label: "Calls", icon: Phone, badge: callLogs.filter(c => c.status === "MISSED").length || undefined },
-                { id: "CONTACTS" as const, label: "Contacts", icon: Users, badge: connectedContacts.length || undefined },
+                { id: "CONTACTS" as const, label: "Contacts", icon: Users, badge: allConnectedContacts.length || undefined },
                 { id: "PRIVACY" as const, label: "Privacy", icon: ShieldCheck, badge: undefined },
               ] as { id: NavTab; label: string; icon: typeof MessageSquare; badge?: number }[]
             ).map((t) => {
@@ -725,7 +739,7 @@ export default function MessagesHubPage() {
               All Connected Alumni
             </p>
             <div className="bg-[#111726]/80 rounded-2xl border border-white/10 shadow-lg shadow-black/40 overflow-hidden divide-y divide-white/8 backdrop-blur-xl">
-              {connectedContacts.length === 0 ? (
+              {allConnectedContacts.length === 0 ? (
                 <div className="py-14 flex flex-col items-center gap-3 text-center px-8">
                   <Users className="w-10 h-10 text-slate-500" />
                   <div>
@@ -737,8 +751,7 @@ export default function MessagesHubPage() {
                   </Link>
                 </div>
               ) : (
-                contacts
-                  .filter(c => c.id !== currentUserId && connectedPeerIds.has(c.id))
+                allConnectedContacts
                   .filter(c => {
                     if (!cleanFilter) return true;
                     return c.name?.toLowerCase().includes(cleanFilter) ||
