@@ -185,7 +185,8 @@ class RealtimeSignalingService {
             msg.callId,
             msg.senderId,
             msg.senderName || "Alumni Contact",
-            msg.callType || "VOICE"
+            msg.callType || "VOICE",
+            msg.senderRole
           );
           break;
         case "ACCEPT":
@@ -241,21 +242,13 @@ class RealtimeSignalingService {
       this.onConnectionAcceptedCbs.forEach((cb) => cb(payload));
     });
 
-    // Setup WebRTC manager outbound signaling callback
-    webrtcManager.setCallbacks({
-      onStateChange: (_state, _session) => {
-        // Can be hooked by UI components
-      },
-      onRemoteStream: () => {
-        // Handled by Video/Audio Call UI
-      },
-      onSendSignal: (msg) => {
-        const session = webrtcManager.getCurrentSession();
-        if (!session) return;
-        msg.senderId = this.currentUserId || "";
-        msg.senderName = this.currentUserName || "Alumni Contact";
-        this.sendSignalToPeer(session.peerId, msg);
-      },
+    // Setup WebRTC manager outbound signaling sender
+    webrtcManager.registerSignalSender((msg) => {
+      const session = webrtcManager.getCurrentSession();
+      if (!session) return;
+      msg.senderId = this.currentUserId || "";
+      msg.senderName = this.currentUserName || "Alumni Contact";
+      this.sendSignalToPeer(session.peerId, msg);
     });
 
     this.channel.subscribe();

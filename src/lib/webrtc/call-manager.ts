@@ -17,6 +17,7 @@ export interface CallSession {
   callId: string;
   peerId: string;
   peerName: string;
+  peerRole?: string | null;
   callType: CallType;
   isIncoming: boolean;
   startTime?: number;
@@ -27,6 +28,7 @@ export interface WebRTCSignalingMessage {
   callId: string;
   senderId: string;
   senderName?: string;
+  senderRole?: string;
   type: "REQUEST" | "ACCEPT" | "REJECT" | "OFFER" | "ANSWER" | "ICE" | "END";
   callType?: CallType;
   sdp?: RTCSessionDescriptionInit;
@@ -127,31 +129,105 @@ export class WebRTCManager {
   private currentFacingMode: "user" | "environment" = "user";
   private iceCandidatesQueue: RTCIceCandidateInit[] = [];
 
-  // Listeners
-  private onStateChangeCb: ((state: CallState, session: CallSession | null) => void) | null = null;
-  private onRemoteStreamCb: ((stream: MediaStream) => void) | null = null;
-  private onSendSignalCb: ((msg: WebRTCSignalingMessage) => void) | null = null;
+  // Listeners (multi-subscriber sets to prevent callback collisions)
+  private stateChangeListeners = new Set<(state: CallState, session: CallSession | null) => void>();
+  private remoteStreamListeners = new Set<(stream: MediaStream) => void>();
+  private sendSignalListeners = new Set<(msg: WebRTCSignalingMessage) => void>();
   private durationTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     // Default constructor
   }
 
+  // Subscribe to call state transitions
+  onStateChange(cb: (state: CallState, session: CallSession | null) => void): () => void {
+    this.stateChangeListeners.add(cb);
+    try {
+      cb(this.callState, this.currentCall);
+    } catch (err) {
+      console.error("Initial onStateChange error:", err);
+    }
+    return () => {
+      this.stateChangeListeners.delete(cb);
+    };
+  }
+
+  // Subscribe to remote audio & video media streams
+  onRemoteStream(cb: (stream: MediaStream) => void): () => void {
+    this.remoteStreamListeners.add(cb);
+    if (this.remoteStream) {
+      try {
+        cb(this.remoteStream);
+      } catch (err) {
+        console.error("Initial onRemoteStream error:", err);
+      }
+    }
+    return () => {
+      this.remoteStreamListeners.delete(cb);
+    };
+  }
+
+  // Register outbound signaling sender (e.g. Supabase realtime)
+  registerSignalSender(sender: (msg: WebRTCSignalingMessage) => void): () => void {
+    this.sendSignalListeners.add(sender);
+    return () => {
+      this.sendSignalListeners.delete(sender);
+    };
+  }
+
+  setSignalSender(sender: (msg: WebRTCSignalingMessage) => void) {
+    this.sendSignalListeners.add(sender);
+  }
+
+  // Backwards-compatible registration helper that doesn't wipe existing listeners
   setCallbacks(cbs: {
-    onStateChange: (state: CallState, session: CallSession | null) => void;
-    onRemoteStream: (stream: MediaStream) => void;
-    onSendSignal: (msg: WebRTCSignalingMessage) => void;
+    onStateChange?: (state: CallState, session: CallSession | null) => void;
+    onRemoteStream?: (stream: MediaStream) => void;
+    onSendSignal?: (msg: WebRTCSignalingMessage) => void;
   }) {
-    this.onStateChangeCb = cbs.onStateChange;
-    this.onRemoteStreamCb = cbs.onRemoteStream;
-    this.onSendSignalCb = cbs.onSendSignal;
+    if (cbs.onStateChange) this.stateChangeListeners.add(cbs.onStateChange);
+    if (cbs.onRemoteStream) {
+      this.remoteStreamListeners.add(cbs.onRemoteStream);
+      if (this.remoteStream) {
+        try {
+          cbs.onRemoteStream(this.remoteStream);
+        } catch (e) {
+          console.error("Initial remote stream delivery error:", e);
+        }
+      }
+    }
+    if (cbs.onSendSignal) this.sendSignalListeners.add(cbs.onSendSignal);
   }
 
   private setState(state: CallState) {
     this.callState = state;
-    if (this.onStateChangeCb) {
-      this.onStateChangeCb(state, this.currentCall);
-    }
+    this.stateChangeListeners.forEach((cb) => {
+      try {
+        cb(state, this.currentCall);
+      } catch (err) {
+        console.error("State change listener error:", err);
+      }
+    });
+  }
+
+  private notifyRemoteStream(stream: MediaStream) {
+    this.remoteStreamListeners.forEach((cb) => {
+      try {
+        cb(stream);
+      } catch (err) {
+        console.error("Remote stream listener error:", err);
+      }
+    });
+  }
+
+  private sendSignal(msg: WebRTCSignalingMessage) {
+    this.sendSignalListeners.forEach((cb) => {
+      try {
+        cb(msg);
+      } catch (err) {
+        console.error("Send signal listener error:", err);
+      }
+    });
   }
 
   getCallState(): CallState {
@@ -201,10 +277,10 @@ export class WebRTCManager {
     });
 
     pc.onicecandidate = (event) => {
-      if (event.candidate && this.currentCall && this.onSendSignalCb) {
-        this.onSendSignalCb({
+      if (event.candidate && this.currentCall) {
+        this.sendSignal({
           callId: this.currentCall.callId,
-          senderId: "", // Filled by caller
+          senderId: "", // Filled by signaling sender
           type: "ICE",
           candidate: event.candidate.toJSON(),
         });
@@ -212,16 +288,22 @@ export class WebRTCManager {
     };
 
     pc.ontrack = (event) => {
+      event.track.enabled = true;
+      let stream: MediaStream;
       if (event.streams && event.streams[0]) {
-        this.remoteStream = event.streams[0];
+        stream = event.streams[0];
+        this.remoteStream = stream;
       } else {
         if (!this.remoteStream) this.remoteStream = new MediaStream();
         this.remoteStream.addTrack(event.track);
+        stream = this.remoteStream;
       }
 
-      if (this.onRemoteStreamCb && this.remoteStream) {
-        this.onRemoteStreamCb(this.remoteStream);
-      }
+      stream.getTracks().forEach((track) => {
+        track.enabled = true;
+      });
+
+      this.notifyRemoteStream(stream);
     };
 
     pc.onconnectionstatechange = () => {
@@ -271,17 +353,21 @@ export class WebRTCManager {
     };
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    stream.getAudioTracks().forEach((t) => {
+      t.enabled = true;
+    });
     this.localStream = stream;
     return stream;
   }
 
   // Caller starts outgoing call
-  async startCall(peerId: string, peerName: string, callType: CallType): Promise<void> {
+  async startCall(peerId: string, peerName: string, callType: CallType, peerRole?: string | null): Promise<void> {
     const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     this.currentCall = {
       callId,
       peerId,
       peerName,
+      peerRole,
       callType,
       isIncoming: false,
       duration: 0,
@@ -291,14 +377,13 @@ export class WebRTCManager {
     tones.startOutgoingRing();
 
     // Signal callee about incoming call request
-    if (this.onSendSignalCb) {
-      this.onSendSignalCb({
-        callId,
-        senderId: "",
-        type: "REQUEST",
-        callType,
-      });
-    }
+    this.sendSignal({
+      callId,
+      senderId: "",
+      type: "REQUEST",
+      callType,
+      senderRole: peerRole || undefined,
+    });
   }
 
   private isPrivacyLockActive: boolean = false;
@@ -308,30 +393,26 @@ export class WebRTCManager {
   }
 
   // Handle incoming call alert
-  handleIncomingCall(callId: string, callerId: string, callerName: string, callType: CallType) {
+  handleIncomingCall(callId: string, callerId: string, callerName: string, callType: CallType, callerRole?: string | null) {
     if (this.isPrivacyLockActive) {
       // Privacy Lock active: silently auto-reject call without ringing or exposing presence
-      if (this.onSendSignalCb) {
-        this.onSendSignalCb({
-          callId,
-          senderId: "",
-          type: "REJECT",
-          reason: "PRIVACY_LOCK",
-        });
-      }
+      this.sendSignal({
+        callId,
+        senderId: "",
+        type: "REJECT",
+        reason: "PRIVACY_LOCK",
+      });
       return;
     }
 
     if (this.callState !== "IDLE") {
       // Busy: reject incoming request
-      if (this.onSendSignalCb) {
-        this.onSendSignalCb({
-          callId,
-          senderId: "",
-          type: "REJECT",
-          reason: "BUSY",
-        });
-      }
+      this.sendSignal({
+        callId,
+        senderId: "",
+        type: "REJECT",
+        reason: "BUSY",
+      });
       return;
     }
 
@@ -339,6 +420,7 @@ export class WebRTCManager {
       callId,
       peerId: callerId,
       peerName: callerName,
+      peerRole: callerRole,
       callType,
       isIncoming: true,
       duration: 0,
@@ -358,16 +440,24 @@ export class WebRTCManager {
       const stream = await this.acquireMedia(this.currentCall.callType);
       const pc = this.createPeerConnection();
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      stream.getTracks().forEach((track) => {
+        track.enabled = true;
+        pc.addTrack(track, stream);
+      });
+
+      // Ensure audio transceivers are bidirectional
+      pc.getTransceivers().forEach((transceiver) => {
+        if (transceiver.sender.track?.kind === "audio" || transceiver.receiver.track?.kind === "audio") {
+          transceiver.direction = "sendrecv";
+        }
+      });
 
       // Signal caller that call has been accepted
-      if (this.onSendSignalCb) {
-        this.onSendSignalCb({
-          callId: this.currentCall.callId,
-          senderId: "",
-          type: "ACCEPT",
-        });
-      }
+      this.sendSignal({
+        callId: this.currentCall.callId,
+        senderId: "",
+        type: "ACCEPT",
+      });
     } catch (err) {
       console.error("Failed to accept call / acquire media:", err);
       this.endCall(true);
@@ -377,8 +467,8 @@ export class WebRTCManager {
   // Callee or Caller rejects/declines call
   rejectCall(reason = "DECLINED"): void {
     tones.stop();
-    if (this.currentCall && this.onSendSignalCb) {
-      this.onSendSignalCb({
+    if (this.currentCall) {
+      this.sendSignal({
         callId: this.currentCall.callId,
         senderId: "",
         type: "REJECT",
@@ -398,19 +488,30 @@ export class WebRTCManager {
       const stream = await this.acquireMedia(this.currentCall.callType);
       const pc = this.createPeerConnection();
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      stream.getTracks().forEach((track) => {
+        track.enabled = true;
+        pc.addTrack(track, stream);
+      });
 
-      const offer = await pc.createOffer();
+      // Ensure audio transceivers are bidirectional
+      pc.getTransceivers().forEach((transceiver) => {
+        if (transceiver.sender.track?.kind === "audio" || transceiver.receiver.track?.kind === "audio") {
+          transceiver.direction = "sendrecv";
+        }
+      });
+
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: this.currentCall.callType === "VIDEO",
+      });
       await pc.setLocalDescription(offer);
 
-      if (this.onSendSignalCb) {
-        this.onSendSignalCb({
-          callId: this.currentCall.callId,
-          senderId: "",
-          type: "OFFER",
-          sdp: offer,
-        });
-      }
+      this.sendSignal({
+        callId: this.currentCall.callId,
+        senderId: "",
+        type: "OFFER",
+        sdp: offer,
+      });
     } catch (err) {
       console.error("Error creating WebRTC offer:", err);
       this.endCall(true);
@@ -430,17 +531,18 @@ export class WebRTCManager {
         if (cand) await this.pc.addIceCandidate(new RTCIceCandidate(cand));
       }
 
-      const answer = await this.pc.createAnswer();
+      const answer = await this.pc.createAnswer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: this.currentCall.callType === "VIDEO",
+      });
       await this.pc.setLocalDescription(answer);
 
-      if (this.onSendSignalCb) {
-        this.onSendSignalCb({
-          callId: this.currentCall.callId,
-          senderId: "",
-          type: "ANSWER",
-          sdp: answer,
-        });
-      }
+      this.sendSignal({
+        callId: this.currentCall.callId,
+        senderId: "",
+        type: "ANSWER",
+        sdp: answer,
+      });
     } catch (err) {
       console.error("Error handling WebRTC offer:", err);
     }
@@ -546,8 +648,8 @@ export class WebRTCManager {
       this.durationTimer = null;
     }
 
-    if (notifyPeer && this.currentCall && this.onSendSignalCb) {
-      this.onSendSignalCb({
+    if (notifyPeer && this.currentCall) {
+      this.sendSignal({
         callId: this.currentCall.callId,
         senderId: "",
         type: "END",

@@ -57,7 +57,6 @@ import { webrtcManager } from "@/lib/webrtc/call-manager";
 import { motion, AnimatePresence } from "framer-motion";
 import MessageBubble from "@/components/motion/MessageBubble";
 import MessageComposer from "@/components/motion/MessageComposer";
-import CallOverlay from "@/components/motion/CallOverlay";
 import TypingIndicator from "@/components/motion/TypingIndicator";
 import AnimatedIconButton from "@/components/motion/AnimatedIconButton";
 import { triggerHaptic, MOTION_SPRINGS } from "@/lib/motion/tokens";
@@ -139,20 +138,7 @@ export default function DirectMessageChatPage(props: {
     });
   };
 
-  // WebRTC Call Overlay States
-  const [activeCall, setActiveCall] = useState<{
-    isOpen: boolean;
-    isVideo: boolean;
-    isCaller: boolean;
-    callStatus: "CONNECTING" | "RINGING" | "CONNECTED" | "ENDED";
-  }>({
-    isOpen: false,
-    isVideo: false,
-    isCaller: false,
-    callStatus: "CONNECTING",
-  });
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -703,38 +689,6 @@ export default function DirectMessageChatPage(props: {
     }
   };
 
-  // Set up WebRTC signaling & media stream listeners
-  useEffect(() => {
-    webrtcManager.setCallbacks({
-      onStateChange: (state, session) => {
-        if (state === "IDLE" || state === "ENDED") {
-          setActiveCall((prev) => ({ ...prev, isOpen: false, callStatus: "ENDED" }));
-          setLocalStream(null);
-          setRemoteStream(null);
-        } else {
-          setActiveCall({
-            isOpen: true,
-            isVideo: session?.callType === "VIDEO",
-            isCaller: !session?.isIncoming,
-            callStatus:
-              state === "CALLING" || state === "RINGING"
-                ? "RINGING"
-                : state === "CONNECTED"
-                ? "CONNECTED"
-                : "CONNECTING",
-          });
-          setLocalStream(webrtcManager.getLocalStream());
-        }
-      },
-      onRemoteStream: (stream) => {
-        setRemoteStream(stream);
-      },
-      onSendSignal: (msg) => {
-        realtimeSignaling.sendSignalToPeer(peerId, msg);
-      },
-    });
-  }, []);
-
   // Start Voice Call (Enforces Trust Level)
   const handleStartVoiceCall = async () => {
     if (trustLevel === "REQUEST" || trustLevel === "UNKNOWN") {
@@ -742,14 +696,10 @@ export default function DirectMessageChatPage(props: {
       return;
     }
     triggerHaptic("medium");
-    setActiveCall({
-      isOpen: true,
-      isVideo: false,
-      isCaller: true,
-      callStatus: "CONNECTING",
-    });
-    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VOICE");
-    setLocalStream(webrtcManager.getLocalStream());
+    const peerRole = peer?.currentRole
+      ? `${peer.currentRole}${peer.currentCompany ? ` at ${peer.currentCompany}` : ""}`
+      : undefined;
+    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VOICE", peerRole);
   };
 
   // Start Video Call (Enforces Trust Level)
@@ -759,14 +709,10 @@ export default function DirectMessageChatPage(props: {
       return;
     }
     triggerHaptic("medium");
-    setActiveCall({
-      isOpen: true,
-      isVideo: true,
-      isCaller: true,
-      callStatus: "CONNECTING",
-    });
-    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VIDEO");
-    setLocalStream(webrtcManager.getLocalStream());
+    const peerRole = peer?.currentRole
+      ? `${peer.currentRole}${peer.currentCompany ? ` at ${peer.currentCompany}` : ""}`
+      : undefined;
+    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VIDEO", peerRole);
   };
 
   // Clear Chat History
@@ -1172,32 +1118,6 @@ export default function DirectMessageChatPage(props: {
         disabled={trustLevel === "BLOCKED"}
       />
 
-      {/* 2026 Immersive Call HUD Overlay */}
-      <CallOverlay
-        isOpen={activeCall.isOpen}
-        peerName={peer?.name || "Alumni Contact"}
-        peerRole={peer?.currentRole ? `${peer.currentRole}${peer.currentCompany ? ` at ${peer.currentCompany}` : ""}` : undefined}
-        isVideo={activeCall.isVideo}
-        isCaller={activeCall.isCaller}
-        callStatus={activeCall.callStatus}
-        localStream={localStream}
-        remoteStream={remoteStream}
-        onEndCall={() => {
-          webrtcManager.endCall(true);
-          setActiveCall((prev) => ({ ...prev, isOpen: false }));
-        }}
-        onAcceptCall={async () => {
-          try {
-            await webrtcManager.acceptCall();
-            setLocalStream(webrtcManager.getLocalStream());
-            setActiveCall((prev) => ({ ...prev, callStatus: "CONNECTED" }));
-          } catch (err) {
-            console.error("Accept call error:", err);
-          }
-        }}
-        onToggleMute={() => webrtcManager.toggleMute()}
-        onToggleVideo={() => webrtcManager.toggleVideo()}
-      />
 
       {/* Safety Number Verification Modal */}
       {showSafetyModal && (

@@ -13,6 +13,7 @@ import {
   VolumeX,
   Lock,
   ShieldCheck,
+  RefreshCw,
 } from "lucide-react";
 import { MOTION_SPRINGS, triggerHaptic } from "@/lib/motion/tokens";
 
@@ -29,6 +30,7 @@ interface CallOverlayProps {
   onAcceptCall?: () => void;
   onToggleMute: (isMuted: boolean) => void;
   onToggleVideo: (isVideoOff: boolean) => void;
+  onFlipCamera?: () => void;
 }
 
 export default function CallOverlay({
@@ -44,6 +46,7 @@ export default function CallOverlay({
   onAcceptCall,
   onToggleMute,
   onToggleVideo,
+  onFlipCamera,
 }: CallOverlayProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
@@ -52,6 +55,7 @@ export default function CallOverlay({
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Call duration counter
   useEffect(() => {
@@ -67,18 +71,58 @@ export default function CallOverlay({
     };
   }, [callStatus]);
 
-  // Attach video streams
+  // Attach local video stream
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
   }, [localStream, isOpen]);
 
+  // Dedicated Remote Audio handling for Voice Calls & WebRTC Audio
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+    if (!isVideo && remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.muted = !isSpeakerOn;
+      const playPromise = remoteAudioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn("CallOverlay remote audio autoplay prevented by browser:", err);
+        });
+      }
+    } else if (remoteAudioRef.current && isVideo) {
+      remoteAudioRef.current.srcObject = null;
     }
-  }, [remoteStream, isOpen]);
+  }, [remoteStream, isOpen, isVideo, isSpeakerOn]);
+
+  // Dedicated Remote Video & Audio handling for Video Calls
+  useEffect(() => {
+    if (isVideo && remoteVideoRef.current && remoteStream) {
+      remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.muted = !isSpeakerOn;
+      const playPromise = remoteVideoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn("CallOverlay remote video autoplay prevented by browser:", err);
+        });
+      }
+    }
+  }, [remoteStream, isOpen, isVideo, isSpeakerOn]);
+
+  // Sync speaker toggle across media elements
+  useEffect(() => {
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = !isSpeakerOn;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = !isSpeakerOn;
+    }
+  }, [isSpeakerOn]);
+
+  const ensureAudioPlaying = () => {
+    if (!isVideo && remoteAudioRef.current && remoteStream && remoteAudioRef.current.paused) {
+      remoteAudioRef.current.play().catch(() => {});
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -109,6 +153,17 @@ export default function CallOverlay({
             <div className="absolute inset-0 bg-gradient-to-b from-slate-950/60 via-transparent to-slate-950/80 pointer-events-none" />
           </div>
         ) : null}
+
+        {/* Dedicated Remote Audio Element for Voice Calls */}
+        {!isVideo && (
+          <audio
+            ref={remoteAudioRef}
+            autoPlay
+            playsInline
+            controls={false}
+            style={{ display: "none" }}
+          />
+        )}
 
         {/* Top Bar: Security Badge & Call State */}
         <div className="relative z-10 flex items-center justify-between p-6">
@@ -254,6 +309,7 @@ export default function CallOverlay({
                   transition={MOTION_SPRINGS.snappy}
                   onClick={() => {
                     triggerHaptic("success");
+                    ensureAudioPlaying();
                     onAcceptCall?.();
                   }}
                   className="h-16 w-16 sm:h-18 sm:w-18 rounded-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white flex items-center justify-center shadow-2xl shadow-emerald-500/50 ring-4 ring-emerald-400/40 border-2 border-emerald-300 transition cursor-pointer animate-pulse"
@@ -274,6 +330,7 @@ export default function CallOverlay({
                   transition={MOTION_SPRINGS.snappy}
                   onClick={() => {
                     triggerHaptic("medium");
+                    ensureAudioPlaying();
                     const nextState = !isMuted;
                     setIsMuted(nextState);
                     onToggleMute(nextState);
@@ -298,6 +355,7 @@ export default function CallOverlay({
                     transition={MOTION_SPRINGS.snappy}
                     onClick={() => {
                       triggerHaptic("medium");
+                      ensureAudioPlaying();
                       const nextState = !isVideoOff;
                       setIsVideoOff(nextState);
                       onToggleVideo(nextState);
@@ -315,6 +373,26 @@ export default function CallOverlay({
                 </div>
               )}
 
+              {/* Flip Camera Button (if video call) */}
+              {isVideo && onFlipCamera && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    transition={MOTION_SPRINGS.snappy}
+                    onClick={() => {
+                      triggerHaptic("light");
+                      ensureAudioPlaying();
+                      onFlipCamera();
+                    }}
+                    className="h-14 w-14 rounded-full flex items-center justify-center transition border cursor-pointer bg-white/15 text-white hover:bg-white/25 border-white/20 backdrop-blur-md"
+                    title="Flip Camera"
+                  >
+                    <RefreshCw className="w-6 h-6" />
+                  </motion.button>
+                  <span className="text-[11px] font-medium text-slate-400">Flip</span>
+                </div>
+              )}
+
               {/* Speaker Button */}
               <div className="flex flex-col items-center gap-1.5">
                 <motion.button
@@ -322,7 +400,11 @@ export default function CallOverlay({
                   transition={MOTION_SPRINGS.snappy}
                   onClick={() => {
                     triggerHaptic("light");
-                    setIsSpeakerOn(!isSpeakerOn);
+                    const nextSpeaker = !isSpeakerOn;
+                    setIsSpeakerOn(nextSpeaker);
+                    if (nextSpeaker) {
+                      ensureAudioPlaying();
+                    }
                   }}
                   className={`h-14 w-14 rounded-full flex items-center justify-center transition border cursor-pointer ${
                     !isSpeakerOn
