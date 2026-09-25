@@ -229,10 +229,12 @@ export default async function HomePage(props: {
           {/* App Identity: Samparka */}
           <Link href="/" prefetch={true} className="flex items-center gap-2.5 group min-w-0 select-none">
             <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#FF9933] via-white to-[#138808] p-[1.5px] shadow-lg shadow-orange-500/20 shrink-0 group-hover:scale-105 transition-transform duration-200">
-              <div className="h-full w-full bg-[#0a0f1d] rounded-[14px] flex items-center justify-center relative overflow-hidden">
-                <div className="w-4 h-4 rounded-full border-2 border-[#000080] bg-blue-500/20 flex items-center justify-center shadow-xs">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#000080]" />
-                </div>
+              <div className="h-full w-full bg-white rounded-[14px] flex items-center justify-center relative overflow-hidden p-0.5">
+                <img
+                  src="/images/samparka_logo.jpg"
+                  alt="Samparka Logo"
+                  className="w-full h-full object-contain rounded-[12px]"
+                />
               </div>
             </div>
             <div className="min-w-0">

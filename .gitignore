@@ -46,3 +46,4 @@ next-env.d.ts
 !dev.db
 *.db-journal
 *.db-wal
+*.apk

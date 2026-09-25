@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Alumni</string>
-    <string name="title_activity_main">Alumni</string>
+    <string name="app_name">Samparka</string>
+    <string name="title_activity_main">Samparka</string>
     <string name="package_name">com.alumni.app</string>
     <string name="custom_url_scheme">com.alumni.app</string>
 </resources>
