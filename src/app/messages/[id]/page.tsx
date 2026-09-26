@@ -143,45 +143,47 @@ export default function DirectMessageChatPage(props: {
   const { id: peerId } = use(props.params);
 
   // States: synchronously read cached identity to prevent layout/alignment flash
-  const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("alumni_user");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed?.id) return { id: parsed.id, name: parsed.name || "" };
-        }
-        const activeId = getActiveVaultUserId();
-        if (activeId) return { id: activeId, name: "" };
-      } catch {}
-    }
-    return null;
-  });
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
 
-  const [peer, setPeer] = useState<PeerProfile | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const activeId = getActiveVaultUserId();
-        const cached = getCachedConnectionProfiles(activeId || undefined);
-        const found = cached.find((p: any) => p?.id === peerId);
-        if (found && found.name && found.name.trim() !== "Alumni Member") {
-          return {
-            id: found.id,
-            name: found.name,
-            username: found.username,
-            avatarUrl: found.avatarUrl,
-            batchYear: found.batchYear,
-            currentRole: found.currentRole,
-            currentCompany: found.currentCompany,
-            city: found.city,
-            verificationStatus: found.verificationStatus || "VERIFIED",
-            institution: found.institution,
-          };
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("alumni_user");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.id) {
+          setCurrentUser({ id: parsed.id, name: parsed.name || "" });
+          return;
         }
-      } catch {}
-    }
-    return null;
-  });
+      }
+      const activeId = getActiveVaultUserId();
+      if (activeId) {
+        setCurrentUser({ id: activeId, name: "" });
+      }
+    } catch {}
+  }, []);
+
+  const [peer, setPeer] = useState<PeerProfile | null>(null);
+
+  useEffect(() => {
+    try {
+      const activeId = getActiveVaultUserId();
+      const cached = getCachedConnectionProfiles(activeId || undefined);
+      const found = cached.find((p: any) => p?.id === peerId);
+      if (found && found.name && found.name.trim() !== "Alumni Member") {
+        setPeer({
+          id: found.id,
+          name: found.name,
+          username: found.username,
+          avatarUrl: found.avatarUrl,
+          batchYear: found.batchYear,
+          currentRole: found.currentRole,
+          currentCompany: found.currentCompany,
+          verificationStatus: found.verificationStatus || "VERIFIED",
+          institution: found.institution,
+        });
+      }
+    } catch {}
+  }, [peerId]);
   const [messages, setMessages] = useState<VaultMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1041,7 +1043,7 @@ export default function DirectMessageChatPage(props: {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 min-w-0">
               <h2 className="text-xs sm:text-sm font-bold text-white truncate tracking-tight">
-                {peer?.name || "Alumni Contact"}
+                {peer?.name || "Loading..."}
               </h2>
               {connectionStatus === "CONNECTED" && (
                 <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded-full inline-flex items-center gap-0.5 shrink-0">

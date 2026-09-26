@@ -67,19 +67,14 @@ export default function MessagesHubPage() {
   const router = useRouter();
   const [tab, setTab] = useState<NavTab>("CHATS");
   const [searchQuery, setSearchQuery] = useState("");
-  const [contacts, setContacts] = useState<AlumniContact[]>(() => {
-    if (typeof window !== "undefined") {
-      return getCachedConnectionProfiles<AlumniContact>();
-    }
-    return [];
-  });
+  const [contacts, setContacts] = useState<AlumniContact[]>([]);
   const [callLogs, setCallLogs] = useState<VaultCallLog[]>([]);
-  const [connectedPeerIds, setConnectedPeerIds] = useState<Set<string>>(() => {
-    if (typeof window !== "undefined") {
-      return new Set(getLocalConnectedPeerIds());
-    }
-    return new Set();
-  });
+  const [connectedPeerIds, setConnectedPeerIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setContacts(getCachedConnectionProfiles<AlumniContact>());
+    setConnectedPeerIds(new Set(getLocalConnectedPeerIds()));
+  }, []);
   const [latestMessages, setLatestMessages] = useState<Map<string, VaultMessage>>(new Map());
   const [loading, setLoading] = useState(true);
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
