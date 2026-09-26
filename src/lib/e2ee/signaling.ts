@@ -9,6 +9,7 @@ import {
   saveLocalMessage,
   updateMessageStatus,
   saveCallLog,
+  cacheConnectionProfiles,
   VaultMessage,
 } from "./vault";
 import {
@@ -165,6 +166,17 @@ class RealtimeSignalingService {
         // Save to local vault
         await saveLocalMessage(vaultMsg);
 
+        // Auto-heal cached profile from verified sender identity
+        if (vaultMsg.senderName && vaultMsg.senderName.trim() !== "Alumni Member") {
+          cacheConnectionProfiles([
+            {
+              id: senderId,
+              name: vaultMsg.senderName.trim(),
+              avatarUrl: (parsedData as any)?.senderAvatar,
+            },
+          ], this.currentUserId || undefined);
+        }
+
         // ACK server: purge by the ACTUAL DB queue row ID (queueId), not the message ID
         // This correctly removes the persisted encrypted payload from the server queue
         fetch("/api/messages/ack", {
@@ -211,6 +223,15 @@ class RealtimeSignalingService {
 
       try {
         await saveLocalMessage(vaultMsg);
+        if (message.senderName && message.senderName.trim() !== "Alumni Member") {
+          cacheConnectionProfiles([
+            {
+              id: message.senderId,
+              name: message.senderName.trim(),
+              avatarUrl: message.senderAvatar,
+            },
+          ], this.currentUserId || undefined);
+        }
       } catch {}
 
       // Notify all active listeners

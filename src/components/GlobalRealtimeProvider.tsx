@@ -6,6 +6,7 @@ import { realtimeSignaling } from "@/lib/e2ee/signaling";
 import {
   getOrCreateDeviceIdentity,
   addLocalConnectedPeer,
+  cacheConnectionProfiles,
   setActiveVaultUser,
   VaultMessage,
 } from "@/lib/e2ee/vault";
@@ -46,13 +47,19 @@ export default function GlobalRealtimeProvider() {
     if (actionLoading) return;
     setActionLoading(true);
     try {
-      const res = await fetch("/api/contacts/connect", {
+      const peerProfile = { id: senderId, name: senderName };
+      const res = await fetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: senderId, action: "ACCEPT" }),
+        body: JSON.stringify({
+          targetUserId: senderId,
+          action: "ACCEPT",
+          targetProfile: peerProfile,
+        }),
       });
       if (res.ok) {
-        addLocalConnectedPeer(senderId);
+        addLocalConnectedPeer(senderId, peerProfile, currentUser?.id);
+        cacheConnectionProfiles([peerProfile], currentUser?.id);
         triggerHaptic("success");
         window.dispatchEvent(new CustomEvent("connection-requests-updated"));
         window.dispatchEvent(new CustomEvent("vault-messages-updated", { detail: { peerId: senderId } }));
@@ -179,7 +186,13 @@ export default function GlobalRealtimeProvider() {
         // 5. Global Message Received Listener
         // Read window.location.pathname live so we never need to re-subscribe on navigation.
         const unsubMsg = realtimeSignaling.onMessageReceived((msg: VaultMessage) => {
-          addLocalConnectedPeer(msg.senderId);
+          const peerProfile = (msg.senderName && msg.senderName.trim() !== "Alumni Member")
+            ? { id: msg.senderId, name: msg.senderName.trim() }
+            : undefined;
+          addLocalConnectedPeer(msg.senderId, peerProfile, user.id);
+          if (peerProfile) {
+            cacheConnectionProfiles([peerProfile], user.id);
+          }
 
           // Dispatch event so messages hub / conversations list refreshes
           window.dispatchEvent(new CustomEvent("vault-messages-updated", { detail: { peerId: msg.senderId } }));
@@ -247,6 +260,13 @@ export default function GlobalRealtimeProvider() {
 
         // 6. Global Connection Request Listener
         const unsubReq = realtimeSignaling.onConnectionRequest((req) => {
+          if (req.senderName && req.senderName.trim() !== "Alumni Member") {
+            cacheConnectionProfiles([{
+              id: req.senderId,
+              name: req.senderName.trim(),
+              username: req.senderUsername,
+            }], user.id);
+          }
           window.dispatchEvent(new CustomEvent("connection-requests-updated"));
           showNotificationToast({
             id: `req_${Date.now()}`,
@@ -262,9 +282,15 @@ export default function GlobalRealtimeProvider() {
         });
         unsubs.push(unsubReq);
 
-        // 7. Global Connection Accepted Listener (unsubs.push was missing before — fixed!)
+        // 7. Global Connection Accepted Listener
         const unsubAcc = realtimeSignaling.onConnectionAccepted((acc) => {
-          addLocalConnectedPeer(acc.peerId);
+          const peerProfile = (acc.peerName && acc.peerName.trim() !== "Alumni Member")
+            ? { id: acc.peerId, name: acc.peerName.trim() }
+            : undefined;
+          addLocalConnectedPeer(acc.peerId, peerProfile, user.id);
+          if (peerProfile) {
+            cacheConnectionProfiles([peerProfile], user.id);
+          }
           window.dispatchEvent(new CustomEvent("connection-requests-updated"));
           window.dispatchEvent(new CustomEvent("vault-messages-updated", { detail: { peerId: acc.peerId } }));
 
@@ -277,7 +303,7 @@ export default function GlobalRealtimeProvider() {
             actionLabel: "Chat",
           });
         });
-        unsubs.push(unsubAcc); // ← was missing, causing listener leak
+        unsubs.push(unsubAcc);
 
         // 8. Auto-drain queue on focus and network reconnect
         const handleFocusOrOnline = () => {

@@ -564,9 +564,19 @@ export function getLocalConnectedPeerIds(userId?: string): string[] {
   return Array.from(set);
 }
 
-export function addLocalConnectedPeer(peerId: string, userId?: string, profile?: any): void {
+export function addLocalConnectedPeer(peerId: string, arg2?: string | any, arg3?: any): void {
   if (typeof window === "undefined" || !peerId) return;
-  const uid = userId || getActiveVaultUserId();
+  let uid: string | null = null;
+  let profile: any = null;
+
+  if (typeof arg2 === "string") {
+    uid = arg2;
+    profile = arg3;
+  } else if (arg2 && typeof arg2 === "object") {
+    profile = arg2;
+    uid = typeof arg3 === "string" ? arg3 : null;
+  }
+  uid = uid || getActiveVaultUserId();
   if (!uid || peerId === uid) return; // Never add self as connected peer!
   try {
     const scopedKey = `alumni_connected_peer_ids_${uid}`;
@@ -576,7 +586,7 @@ export function addLocalConnectedPeer(peerId: string, userId?: string, profile?:
       scopedList.unshift(peerId);
       localStorage.setItem(scopedKey, JSON.stringify(scopedList));
     }
-    if (profile && (profile.id || profile.userId)) {
+    if (profile && (profile.id || profile.userId || profile.name)) {
       cacheConnectionProfiles([profile], uid);
     }
     window.dispatchEvent(new CustomEvent("connection-requests-updated"));

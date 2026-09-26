@@ -363,14 +363,20 @@ export default function DirectMessageChatPage(props: {
 
             // Only mark as locally connected peer in encrypted vault if CONNECTED
             if (relStatus === "CONNECTED") {
-              addLocalConnectedPeer(peerId, user.id);
+              addLocalConnectedPeer(peerId, fullPeer, user.id);
               window.dispatchEvent(new CustomEvent("connection-requests-updated"));
             }
           } else if (cachedPeer) {
             setPeer(cachedPeer);
+            if (relStatus === "CONNECTED") {
+              addLocalConnectedPeer(peerId, cachedPeer, user.id);
+            }
           }
         } else if (cachedPeer) {
           setPeer(cachedPeer);
+          if (relStatus === "CONNECTED") {
+            addLocalConnectedPeer(peerId, cachedPeer, user.id);
+          }
         }
 
         // Get or generate local device E2EE keys
@@ -464,7 +470,34 @@ export default function DirectMessageChatPage(props: {
                 saveLocalMessage(sm).catch(() => {});
               }
 
-              setMessages((prev) => reconcileMessages(prev, serverMsgs));
+              setMessages((prev) => {
+                const reconciled = reconcileMessages(prev, serverMsgs);
+                // Self-heal peer name if peer is currently "Alumni Member" or missing
+                const signedMsg = reconciled.find((m) => m.senderId === peerId && m.senderName && m.senderName.trim() !== "Alumni Member");
+                if (signedMsg?.senderName) {
+                  const safeSenderName = signedMsg.senderName.trim();
+                  setPeer((current) => {
+                    if (!current || !current.name || current.name.trim() === "Alumni Member") {
+                      const updated: PeerProfile = {
+                        id: peerId,
+                        name: safeSenderName,
+                        username: current?.username || null,
+                        avatarUrl: current?.avatarUrl || null,
+                        currentRole: current?.currentRole || null,
+                        currentCompany: current?.currentCompany || null,
+                        batchYear: current?.batchYear || 2026,
+                        verificationStatus: current?.verificationStatus || "VERIFIED",
+                        institution: current?.institution || null,
+                      };
+                      cacheConnectionProfiles([updated], user.id);
+                      addLocalConnectedPeer(peerId, updated, user.id);
+                      return updated;
+                    }
+                    return current;
+                  });
+                }
+                return reconciled;
+              });
               if (data.oldestTimestamp) {
                 oldestTimestampRef.current = new Date(data.oldestTimestamp).getTime();
               }

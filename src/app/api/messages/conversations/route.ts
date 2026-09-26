@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensurePeerUserExists } from "@/lib/connection-service";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,7 @@ export async function GET() {
     }
 
     // 3. Fetch peer profiles in a single query
-    const peerProfiles = await db.user.findMany({
+    const peerProfiles: any[] = await db.user.findMany({
       where: { id: { in: Array.from(peerIdsSet) } },
       select: {
         id: true,
@@ -81,14 +82,69 @@ export async function GET() {
       },
     });
 
+    // Self-heal any peer rows whose name was defaulted to "Alumni Member"
+    for (const p of peerProfiles) {
+      if (p.name === "Alumni Member") {
+        try {
+          const notif = await db.appNotification.findFirst({
+            where: { actorId: p.id },
+            orderBy: { createdAt: "desc" },
+          });
+          if (notif?.data) {
+            const parsed = JSON.parse(notif.data);
+            const candName = parsed.peerName || parsed.senderName;
+            if (candName && candName.trim() !== "Alumni Member") {
+              p.name = candName.trim();
+              if (parsed.peerUsername) p.username = parsed.peerUsername;
+              if (parsed.peerAvatarUrl) p.avatarUrl = parsed.peerAvatarUrl;
+              db.user.update({
+                where: { id: p.id },
+                data: { name: p.name, username: p.username, avatarUrl: p.avatarUrl },
+              }).catch(() => {});
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // Ensure missing peers in this serverless container are reconstituted
+    const foundPeerIds = new Set(peerProfiles.map((p) => p.id));
+    for (const pid of peerIdsSet) {
+      if (!foundPeerIds.has(pid)) {
+        try {
+          const healed = await ensurePeerUserExists(pid, user);
+          if (healed) {
+            peerProfiles.push({
+              id: healed.id,
+              name: healed.name,
+              username: healed.username,
+              avatarUrl: healed.avatarUrl,
+              currentRole: healed.currentRole,
+              currentCompany: healed.currentCompany,
+              batchYear: healed.batchYear,
+              verificationStatus: healed.verificationStatus,
+              institution: healed.institution ? { name: healed.institution.name } : null,
+            });
+          }
+        } catch {}
+      }
+    }
+
     const peerMap = new Map(peerProfiles.map((p) => [p.id, p]));
 
     // 4. Construct sorted conversations list (ordered by latest message date)
     const conversations = Array.from(conversationsMap.values())
-      .map((conv) => ({
-        ...conv,
-        peer: peerMap.get(conv.peerId) || null,
-      }))
+      .map((conv) => {
+        const peer = peerMap.get(conv.peerId) || null;
+        return {
+          ...conv,
+          latestMessage: {
+            ...conv.latestMessage,
+            senderName: conv.latestMessage.senderId === user.id ? user.name : (peer?.name || undefined),
+          },
+          peer,
+        };
+      })
       .filter((conv) => conv.peer !== null)
       .sort(
         (a, b) =>

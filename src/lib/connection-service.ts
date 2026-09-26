@@ -90,24 +90,41 @@ export async function ensurePeerUserExists(
     });
 
     if (peer) {
+      let resolvedName = (profileData?.name && profileData.name.trim() !== "Alumni Member") ? profileData.name.trim() : null;
+      if (!resolvedName && peer.name === "Alumni Member") {
+        const notif = await db.appNotification.findFirst({
+          where: { actorId: peerId },
+          orderBy: { createdAt: "desc" },
+        });
+        if (notif?.data) {
+          try {
+            const parsed = JSON.parse(notif.data);
+            const candName = parsed.peerName || parsed.senderName;
+            if (candName && candName.trim() !== "Alumni Member") {
+              resolvedName = candName.trim();
+            }
+          } catch {}
+        }
+      }
+
       if (
-        profileData &&
-        ((profileData.name && peer.name !== profileData.name) ||
-          (profileData.avatarUrl && peer.avatarUrl !== profileData.avatarUrl) ||
-          (profileData.currentRole && peer.currentRole !== profileData.currentRole) ||
-          (profileData.currentCompany && peer.currentCompany !== profileData.currentCompany) ||
-          (profileData.city && peer.city !== profileData.city))
+        (resolvedName && peer.name !== resolvedName) ||
+        (profileData &&
+          ((profileData.avatarUrl && peer.avatarUrl !== profileData.avatarUrl) ||
+            (profileData.currentRole && peer.currentRole !== profileData.currentRole) ||
+            (profileData.currentCompany && peer.currentCompany !== profileData.currentCompany) ||
+            (profileData.city && peer.city !== profileData.city)))
       ) {
         try {
           peer = await db.user.update({
             where: { id: peerId },
             data: {
-              name: profileData.name || peer.name,
-              username: profileData.username || peer.username,
-              avatarUrl: profileData.avatarUrl || peer.avatarUrl,
-              currentRole: profileData.currentRole || peer.currentRole,
-              currentCompany: profileData.currentCompany || peer.currentCompany,
-              city: profileData.city || peer.city,
+              name: (resolvedName && resolvedName !== "Alumni Member") ? resolvedName : peer.name,
+              username: profileData?.username || peer.username,
+              avatarUrl: profileData?.avatarUrl || peer.avatarUrl,
+              currentRole: profileData?.currentRole || peer.currentRole,
+              currentCompany: profileData?.currentCompany || peer.currentCompany,
+              city: profileData?.city || peer.city,
             },
             include: { institution: true, department: true, batch: true },
           });
@@ -153,13 +170,35 @@ export async function ensurePeerUserExists(
       });
     }
 
+    // Recover peer name from AppNotification if not supplied in profileData
+    let initialName = (profileData?.name && profileData.name.trim() !== "Alumni Member") ? profileData.name.trim() : null;
+    let initialAvatar = profileData?.avatarUrl || null;
+    let initialUsername = profileData?.username || null;
+    if (!initialName) {
+      const notif = await db.appNotification.findFirst({
+        where: { actorId: peerId },
+        orderBy: { createdAt: "desc" },
+      });
+      if (notif?.data) {
+        try {
+          const parsed = JSON.parse(notif.data);
+          const candName = parsed.peerName || parsed.senderName;
+          if (candName && candName.trim() !== "Alumni Member") {
+            initialName = candName.trim();
+          }
+          if (parsed.peerAvatarUrl) initialAvatar = parsed.peerAvatarUrl;
+          if (parsed.peerUsername) initialUsername = parsed.peerUsername;
+        } catch {}
+      }
+    }
+
     // Create user in this SQLite container
     peer = await db.user.create({
       data: {
         id: peerId,
-        name: profileData?.name || "Alumni Member",
-        username: profileData?.username || null,
-        avatarUrl: profileData?.avatarUrl || null,
+        name: initialName || "Alumni Member",
+        username: initialUsername,
+        avatarUrl: initialAvatar,
         batchYear,
         currentRole: profileData?.currentRole || null,
         currentCompany: profileData?.currentCompany || null,
@@ -375,7 +414,8 @@ export async function getConnectionRelationship(
 export async function sendConnectionInvitation(
   senderId: string,
   targetUserId: string,
-  message?: string
+  message?: string,
+  targetProfile?: Partial<ConnectionProfile> | null
 ): Promise<LinkedInConnectionRelationship> {
   if (senderId === targetUserId) {
     throw new Error("Cannot connect with yourself");
@@ -387,7 +427,7 @@ export async function sendConnectionInvitation(
     where: { id: senderId },
     select: { id: true, name: true, username: true, avatarUrl: true, institutionId: true, batchId: true, batchYear: true },
   });
-  await ensurePeerUserExists(targetUserId, senderUser);
+  await ensurePeerUserExists(targetUserId, senderUser, targetProfile);
 
   // Check if blocked
   const isBlocked = await db.userBlock.findFirst({
@@ -498,7 +538,8 @@ export async function sendConnectionInvitation(
  */
 export async function acceptConnectionInvitation(
   userId: string,
-  senderId: string
+  senderId: string,
+  senderProfile?: Partial<ConnectionProfile> | null
 ): Promise<LinkedInConnectionRelationship> {
   const { userAId, userBId } = canonicalUserPair(userId, senderId);
 
@@ -518,7 +559,7 @@ export async function acceptConnectionInvitation(
     where: { id: userId },
     select: { id: true, name: true, username: true, avatarUrl: true, institutionId: true, batchId: true, batchYear: true },
   });
-  await ensurePeerUserExists(senderId, currentUser);
+  await ensurePeerUserExists(senderId, currentUser, senderProfile);
 
   if (existing) {
     await db.connectionRequest.update({
@@ -743,6 +784,31 @@ export async function getMyConnections(
     },
     orderBy: { name: "asc" },
   });
+
+  // Self-heal any peer rows whose name was defaulted to "Alumni Member"
+  for (const u of users) {
+    if (u.name === "Alumni Member") {
+      try {
+        const notif = await db.appNotification.findFirst({
+          where: { actorId: u.id },
+          orderBy: { createdAt: "desc" },
+        });
+        if (notif?.data) {
+          const parsed = JSON.parse(notif.data);
+          const candName = parsed.peerName || parsed.senderName;
+          if (candName && candName.trim() !== "Alumni Member") {
+            u.name = candName.trim();
+            if (parsed.peerUsername) u.username = parsed.peerUsername;
+            if (parsed.peerAvatarUrl) u.avatarUrl = parsed.peerAvatarUrl;
+            db.user.update({
+              where: { id: u.id },
+              data: { name: u.name, username: u.username, avatarUrl: u.avatarUrl },
+            }).catch(() => {});
+          }
+        }
+      } catch {}
+    }
+  }
 
   // Find acceptedAt timestamps from connection requests
   const records = await db.connectionRequest.findMany({
@@ -1044,16 +1110,24 @@ export async function getRelationship(currentUserId: string, targetUserId: strin
   };
 }
 
-export async function sendConnectionRequest(senderId: string, targetUserId: string): Promise<any> {
-  const rel = await sendConnectionInvitation(senderId, targetUserId);
+export async function sendConnectionRequest(
+  senderId: string,
+  targetUserId: string,
+  targetProfile?: any
+): Promise<any> {
+  const rel = await sendConnectionInvitation(senderId, targetUserId, undefined, targetProfile);
   return {
     ...rel,
     isFriend: rel.isConnection,
   };
 }
 
-export async function acceptConnectionRequest(userId: string, senderId: string): Promise<any> {
-  const rel = await acceptConnectionInvitation(userId, senderId);
+export async function acceptConnectionRequest(
+  userId: string,
+  senderId: string,
+  senderProfile?: any
+): Promise<any> {
+  const rel = await acceptConnectionInvitation(userId, senderId, senderProfile);
   return {
     ...rel,
     isFriend: rel.isConnection,

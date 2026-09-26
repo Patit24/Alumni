@@ -159,7 +159,8 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { action, targetUserId, message } = body;
+    const { action, targetUserId, message, targetProfile, peerProfile } = body;
+    const resolvedPeerProfile = targetProfile || peerProfile;
 
     // SYNC action: restores accepted connections from client's knownPeerIds
     if (action === "SYNC") {
@@ -223,12 +224,12 @@ export async function POST(req: Request) {
     switch (action) {
       case "CONNECT":
       case "SEND_REQUEST":
-        relationship = await sendConnectionInvitation(user.id, targetUserId, message);
+        relationship = await sendConnectionInvitation(user.id, targetUserId, message, resolvedPeerProfile);
         break;
 
       case "ACCEPT":
       case "ACCEPT_REQUEST":
-        relationship = await acceptConnectionInvitation(user.id, targetUserId);
+        relationship = await acceptConnectionInvitation(user.id, targetUserId, resolvedPeerProfile);
         break;
 
       case "IGNORE":

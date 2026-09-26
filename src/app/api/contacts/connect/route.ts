@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
+  ensurePeerUserExists,
   sendConnectionRequest,
   acceptConnectionRequest,
   rejectConnectionRequest,
@@ -20,10 +21,13 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { targetUserId, action } = body as {
+    const { targetUserId, action, targetProfile, peerProfile } = body as {
       targetUserId?: string;
       action?: "REQUEST" | "ACCEPT" | "REJECT" | "CANCEL" | "BLOCK" | "UNFRIEND";
+      targetProfile?: any;
+      peerProfile?: any;
     };
+    const resolvedProfile = targetProfile || peerProfile;
 
     if (!targetUserId || typeof targetUserId !== "string") {
       return NextResponse.json({ error: "targetUserId is required" }, { status: 400 });
@@ -33,10 +37,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Cannot connect with yourself" }, { status: 400 });
     }
 
-    const targetUser = await db.user.findUnique({
+    let targetUser = await db.user.findUnique({
       where: { id: targetUserId },
       select: { id: true, name: true, username: true },
     });
+
+    if (!targetUser) {
+      targetUser = await ensurePeerUserExists(targetUserId, user, resolvedProfile);
+    }
 
     if (!targetUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -44,7 +52,7 @@ export async function POST(req: Request) {
 
     // 1. ACTION: REQUEST
     if (action === "REQUEST") {
-      const rel = await sendConnectionRequest(user.id, targetUserId);
+      const rel = await sendConnectionRequest(user.id, targetUserId, resolvedProfile);
       return NextResponse.json({
         success: true,
         status: rel.status,
@@ -58,7 +66,7 @@ export async function POST(req: Request) {
 
     // 2. ACTION: ACCEPT
     if (action === "ACCEPT") {
-      const rel = await acceptConnectionRequest(user.id, targetUserId);
+      const rel = await acceptConnectionRequest(user.id, targetUserId, resolvedProfile);
       return NextResponse.json({
         success: true,
         status: rel.status,

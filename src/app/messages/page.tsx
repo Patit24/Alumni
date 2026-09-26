@@ -180,6 +180,7 @@ export default function MessagesHubPage() {
                     id: conv.latestMessage.id,
                     peerId: conv.peerId,
                     senderId: conv.latestMessage.senderId,
+                    senderName: conv.latestMessage.senderName || conv.peer?.name,
                     text: conv.latestMessage.content,
                     type: conv.latestMessage.messageType === "EMOJI" ? "EMOJI" : "TEXT",
                     status: conv.latestMessage.status || "SENT",
@@ -268,11 +269,28 @@ export default function MessagesHubPage() {
 
         // 6. Ensure all active connected peers have an entry in map
         activeConnectedPeers.forEach((pid) => {
-          if (!map.has(pid) || map.get(pid)?.name === "Alumni Member") {
+          const current = map.get(pid);
+          if (!current || current.name === "Alumni Member") {
             const cachedMatch = cached.find((cp) => cp.id === pid);
-            if (cachedMatch && cachedMatch.name && cachedMatch.name !== "Alumni Member") {
-              map.set(pid, { ...map.get(pid), ...cachedMatch });
-            }
+            const msg = mergedLatest.get(pid);
+            const msgSenderName = (msg?.senderId === pid && msg?.senderName && msg.senderName.trim() !== "Alumni Member")
+              ? msg.senderName.trim()
+              : undefined;
+            const resolvedName = (cachedMatch?.name && cachedMatch.name.trim() !== "Alumni Member")
+              ? cachedMatch.name.trim()
+              : (msgSenderName || current?.name || "Alumni Member");
+
+            map.set(pid, {
+              id: pid,
+              name: resolvedName,
+              avatarUrl: cachedMatch?.avatarUrl || current?.avatarUrl || null,
+              username: cachedMatch?.username || current?.username || null,
+              currentRole: cachedMatch?.currentRole ?? current?.currentRole ?? null,
+              currentCompany: cachedMatch?.currentCompany ?? current?.currentCompany ?? null,
+              batchYear: cachedMatch?.batchYear ?? current?.batchYear ?? 2026,
+              verificationStatus: cachedMatch?.verificationStatus || current?.verificationStatus || "VERIFIED",
+              department: cachedMatch?.department || current?.department || null,
+            });
           }
         });
 
@@ -306,7 +324,7 @@ export default function MessagesHubPage() {
               const data = await r.json();
               const peer = data.alumni?.[0];
               if (peer) {
-                addLocalConnectedPeer(peer.id, currentUserId || undefined);
+                addLocalConnectedPeer(peer.id, peer, currentUserId || undefined);
                 setConnectedPeerIds(prev => new Set(prev).add(peer.id));
                 router.push(`/messages/${peer.id}`);
                 return;
@@ -330,7 +348,9 @@ export default function MessagesHubPage() {
       const uid = currentUserProfile?.id || getActiveVaultUserId();
       const localPeers = getLocalConnectedPeerIds(uid || undefined);
       const clientPeersQuery = Array.from(localPeers).join(",");
-      authFetch(`/api/connections?type=connections&clientPeers=${encodeURIComponent(clientPeersQuery)}`)
+      const cachedProfiles = getCachedConnectionProfiles<AlumniContact>(uid || undefined);
+      const clientProfilesQuery = cachedProfiles.length > 0 ? encodeURIComponent(JSON.stringify(cachedProfiles.slice(0, 50))) : "";
+      authFetch(`/api/connections?type=connections&clientPeers=${encodeURIComponent(clientPeersQuery)}${clientProfilesQuery ? `&clientProfiles=${clientProfilesQuery}` : ""}`)
         .then((r) => r.json())
         .then((data) => {
           if (Array.isArray(data.connections) && data.connections.length > 0) {
@@ -338,7 +358,13 @@ export default function MessagesHubPage() {
               const map = new Map<string, AlumniContact>();
               prev.forEach((c) => map.set(c.id, c));
               data.connections.forEach((c: any) => {
-                if (c && c.id) map.set(c.id, { ...map.get(c.id), ...c });
+                if (c && c.id) {
+                  const existing = map.get(c.id);
+                  const safeName = (c.name && c.name.trim() !== "Alumni Member")
+                    ? c.name
+                    : (existing?.name || c.name || "Alumni Member");
+                  map.set(c.id, { ...existing, ...c, name: safeName });
+                }
               });
               const all = Array.from(map.values());
               const connectedOnly = all.filter((c) =>
@@ -381,6 +407,7 @@ export default function MessagesHubPage() {
                         id: conv.latestMessage.id,
                         peerId: conv.peerId,
                         senderId: conv.latestMessage.senderId,
+                        senderName: conv.latestMessage.senderName || conv.peer?.name,
                         text: conv.latestMessage.content,
                         type: conv.latestMessage.messageType === "EMOJI" ? "EMOJI" : "TEXT",
                         status: conv.latestMessage.status || "SENT",
@@ -407,13 +434,36 @@ export default function MessagesHubPage() {
   const handleAcceptRequest = async (userId: string) => {
     try {
       setRequestsLoading(true);
+      const reqItem = incomingRequests.find((r) => r.user?.id === userId);
+      const targetProfile = reqItem?.user;
+
       const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: userId, action: "ACCEPT" }),
+        body: JSON.stringify({
+          targetUserId: userId,
+          action: "ACCEPT",
+          targetProfile: targetProfile
+            ? {
+                id: targetProfile.id,
+                name: targetProfile.name,
+                username: targetProfile.username,
+                avatarUrl: targetProfile.avatarUrl,
+                batchYear: targetProfile.batchYear,
+                currentRole: targetProfile.currentRole,
+                currentCompany: targetProfile.currentCompany,
+              }
+            : undefined,
+        }),
       });
       if (res.ok) {
-        addLocalConnectedPeer(userId, currentUserId || undefined);
+        if (targetProfile && targetProfile.name && targetProfile.name.trim() !== "Alumni Member") {
+          cacheConnectionProfiles([targetProfile], currentUserId || undefined);
+          addLocalConnectedPeer(userId, targetProfile, currentUserId || undefined);
+          setContacts((prev) => [targetProfile, ...prev.filter((c) => c.id !== userId)]);
+        } else {
+          addLocalConnectedPeer(userId, undefined, currentUserId || undefined);
+        }
         setConnectedPeerIds(prev => new Set(prev).add(userId));
         setIncomingRequests(prev => prev.filter(r => r.user.id !== userId));
         triggerHaptic("success");
@@ -720,6 +770,16 @@ export default function MessagesHubPage() {
                     const isOutgoing = lastMsg && lastMsg.senderId !== contact.id;
                     const isPinned = pinnedIds.has(contact.id);
 
+                    const resolvedName = (contact.name && contact.name.trim() !== "Alumni Member")
+                      ? contact.name.trim()
+                      : ((lastMsg && lastMsg.senderId === contact.id && lastMsg.senderName && lastMsg.senderName.trim() !== "Alumni Member")
+                          ? lastMsg.senderName.trim()
+                          : (getCachedConnectionProfiles<AlumniContact>(currentUserId || undefined).find((p) => p.id === contact.id)?.name || contact.name || "Alumni Member"));
+
+                    const resolvedAvatar = contact.avatarUrl ||
+                      (lastMsg && lastMsg.senderId === contact.id ? (lastMsg as any).senderAvatar : undefined) ||
+                      getCachedConnectionProfiles<AlumniContact>(currentUserId || undefined).find((p) => p.id === contact.id)?.avatarUrl;
+
                     return (
                       <motion.div
                         key={contact.id}
@@ -732,13 +792,13 @@ export default function MessagesHubPage() {
                         className="relative flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition-colors select-none"
                         onClick={() => {
                           triggerHaptic("light");
-                          addLocalConnectedPeer(contact.id, currentUserId || undefined);
+                          addLocalConnectedPeer(contact.id, { ...contact, name: resolvedName, avatarUrl: resolvedAvatar }, currentUserId || undefined);
                           router.push(`/messages/${contact.id}`);
                         }}
                       >
                         {/* Avatar + online dot */}
                         <div className="relative shrink-0">
-                          <Avatar name={contact.name} src={contact.avatarUrl} size={50} />
+                          <Avatar name={resolvedName} src={resolvedAvatar} size={50} />
                           <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-[#111726]" />
                         </div>
 
@@ -747,7 +807,7 @@ export default function MessagesHubPage() {
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 min-w-0">
                               <p className="text-sm font-bold text-white truncate">
-                                {contact.name}
+                                {resolvedName}
                               </p>
                               {isPinned && (
                                 <span className="text-orange-400 shrink-0 text-[10px]">📌</span>
@@ -885,26 +945,39 @@ export default function MessagesHubPage() {
                       c.username?.toLowerCase().includes(cleanFilter);
                   })
                   .sort((a, b) => a.name.localeCompare(b.name))
-                  .map(contact => (
-                    <motion.div
-                      key={contact.id}
-                      whileTap={{ scale: 0.985 }}
-                      className="flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition"
-                      onClick={() => {
-                        triggerHaptic("light");
-                        router.push(`/messages/${contact.id}`);
-                      }}
-                    >
-                      <Avatar name={contact.name} src={contact.avatarUrl} size={44} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-white truncate">{contact.name}</p>
-                        <p className="text-[11px] text-slate-400 truncate">
-                          {contact.currentRole || `Class of ${contact.batchYear}`}
-                        </p>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
-                    </motion.div>
-                  ))
+                  .map(contact => {
+                    const lastMsg = latestMessages.get(contact.id);
+                    const resolvedName = (contact.name && contact.name.trim() !== "Alumni Member")
+                      ? contact.name.trim()
+                      : ((lastMsg && lastMsg.senderId === contact.id && lastMsg.senderName && lastMsg.senderName.trim() !== "Alumni Member")
+                          ? lastMsg.senderName.trim()
+                          : (getCachedConnectionProfiles<AlumniContact>(currentUserId || undefined).find((p) => p.id === contact.id)?.name || contact.name || "Alumni Member"));
+                    const resolvedAvatar = contact.avatarUrl ||
+                      (lastMsg && lastMsg.senderId === contact.id ? (lastMsg as any).senderAvatar : undefined) ||
+                      getCachedConnectionProfiles<AlumniContact>(currentUserId || undefined).find((p) => p.id === contact.id)?.avatarUrl;
+
+                    return (
+                      <motion.div
+                        key={contact.id}
+                        whileTap={{ scale: 0.985 }}
+                        className="flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition"
+                        onClick={() => {
+                          triggerHaptic("light");
+                          addLocalConnectedPeer(contact.id, { ...contact, name: resolvedName, avatarUrl: resolvedAvatar }, currentUserId || undefined);
+                          router.push(`/messages/${contact.id}`);
+                        }}
+                      >
+                        <Avatar name={resolvedName} src={resolvedAvatar} size={44} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-white truncate">{resolvedName}</p>
+                          <p className="text-[11px] text-slate-400 truncate">
+                            {contact.currentRole || `Class of ${contact.batchYear}`}
+                          </p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+                      </motion.div>
+                    );
+                  })
               )}
             </div>
           </section>
