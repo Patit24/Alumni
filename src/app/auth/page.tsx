@@ -446,9 +446,9 @@ export default function AuthPage() {
       <div className="w-full max-w-sm">
         {/* Logo + Brand */}
         <div className="text-center mb-6">
-          <div className="inline-flex h-16 w-16 rounded-2xl overflow-hidden shadow-2xl shadow-blue-500/30 mb-3 border-2 border-white/20 bg-white">
+          <div className="inline-flex h-16 w-16 rounded-2xl overflow-hidden shadow-2xl shadow-orange-500/20 mb-3 border-2 border-white/20 bg-white/10 backdrop-blur-md p-1.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/samparka_logo.jpg" alt="Samparka" className="w-full h-full object-cover" />
+            <img src="/images/samparka_logo.png" alt="Samparka" className="w-full h-full object-contain filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]" />
           </div>
           <div className="flex items-center justify-center gap-1.5 mb-1">
             <h1 className="text-2xl font-black text-white tracking-tight">Samparka</h1>

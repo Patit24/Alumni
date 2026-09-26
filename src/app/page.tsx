@@ -69,6 +69,16 @@ export default async function HomePage(props: {
         {/* ── Main content ── */}
         <div className="relative z-10 w-full max-w-sm mx-auto px-5 py-12 sm:py-16 flex flex-col items-center text-center gap-7">
 
+          {/* Logo */}
+          <div className="relative h-20 w-20 rounded-3xl overflow-hidden shadow-2xl shadow-orange-500/25 border border-white/20 bg-white/10 backdrop-blur-xl flex items-center justify-center p-2.5 transition-transform duration-300 hover:scale-105">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/samparka_logo.png"
+              alt="Samparka Logo"
+              className="w-full h-full object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
+            />
+          </div>
+
           {/* App identity pills */}
           <div className="flex items-center gap-2 flex-wrap justify-center">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/7 border border-white/10 text-white/85 text-[11px] font-bold tracking-[0.16em] uppercase">
@@ -231,7 +241,7 @@ export default async function HomePage(props: {
             <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#FF9933] via-white to-[#138808] p-[1.5px] shadow-lg shadow-orange-500/20 shrink-0 group-hover:scale-105 transition-transform duration-200">
               <div className="h-full w-full bg-white rounded-[14px] flex items-center justify-center relative overflow-hidden p-0.5">
                 <img
-                  src="/images/samparka_logo.jpg"
+                  src="/images/samparka_logo.png"
                   alt="Samparka Logo"
                   className="w-full h-full object-contain rounded-[12px]"
                 />

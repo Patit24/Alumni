@@ -374,7 +374,7 @@ function renderAppRedirectHtml({
 </head>
 <body>
   <div class="card">
-    <img src="/images/samparka_logo.jpg" alt="Samparka" class="logo" />
+    <img src="/images/samparka_logo.png" alt="Samparka" class="logo" />
     <h1>${title}</h1>
     <p>${subtitle}</p>
     <div class="spinner"></div>
