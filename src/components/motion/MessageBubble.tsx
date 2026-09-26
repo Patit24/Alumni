@@ -30,7 +30,7 @@ interface MessageBubbleProps {
 
 const EMOJI_REACTIONS = ["❤️", "👍", "🔥", "😂", "😮", "🙏"];
 
-export default function MessageBubble({
+function MessageBubbleComponent({
   message,
   isMe,
   isViewOnce = false,
@@ -329,3 +329,17 @@ export default function MessageBubble({
     </div>
   );
 }
+
+export const MessageBubble = React.memo(MessageBubbleComponent, (prev, next) => {
+  return (
+    prev.message.id === next.message.id &&
+    prev.message.status === next.message.status &&
+    prev.message.text === next.message.text &&
+    prev.isMe === next.isMe &&
+    prev.isViewOnce === next.isViewOnce &&
+    prev.isBurned === next.isBurned &&
+    prev.isConfidential === next.isConfidential
+  );
+});
+
+export default MessageBubble;

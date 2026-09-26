@@ -24,6 +24,8 @@ export interface VaultMessage {
   type: "TEXT" | "EMOJI" | "SIGNALING";
   replyToId?: string;
   replySnippet?: string;
+  clientMsgId?: string;
+  readAt?: string | null;
   status: "SENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
   createdAt: number;
   expiresAt?: number; // For disappearing messages (timestamp ms)

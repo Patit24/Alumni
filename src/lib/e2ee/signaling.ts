@@ -157,6 +157,78 @@ class RealtimeSignalingService {
       }
     });
 
+    // 1b. Incoming Direct Message via Realtime Broadcast
+    this.channel.on("broadcast", { event: "direct-message" }, async (event) => {
+      const { message } = event.payload as { message: any };
+      if (!message || !message.id) return;
+      console.log(`[REALTIME RECEIVE] Direct message received from ${message.senderId}:`, message.id);
+
+      const vaultMsg: VaultMessage = {
+        id: message.id,
+        clientMsgId: message.clientMsgId,
+        peerId: message.senderId,
+        senderId: message.senderId,
+        senderName: message.senderName,
+        text: message.content,
+        type: message.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+        replyToId: message.replyToId,
+        replySnippet: message.replySnippet,
+        status: message.status || "DELIVERED",
+        createdAt: new Date(message.createdAt).getTime() || Date.now(),
+        disappearingSeconds: message.disappearingSeconds,
+      };
+
+      try {
+        await saveLocalMessage(vaultMsg);
+      } catch {}
+
+      // Notify all active listeners
+      this.onMessageReceivedCbs.forEach((cb) => cb(vaultMsg));
+
+      // Direct peer delivery receipt
+      this.sendMessageStatus(message.senderId, [message.id], "DELIVERED");
+
+      // Update delivery status on server
+      fetch("/api/messages/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageIds: [message.id],
+          senderId: message.senderId,
+          status: "DELIVERED",
+        }),
+      }).catch(() => {});
+    });
+
+    // 1c. Multi-Session Outbound Sync: Direct Message sent from another session/device of current user
+    this.channel.on("broadcast", { event: "direct-message-sent" }, async (event) => {
+      const { message } = event.payload as { message: any };
+      if (!message || !message.id) return;
+      console.log(`[REALTIME RECEIVE] Multi-session outbound message synced:`, message.id);
+
+      const vaultMsg: VaultMessage = {
+        id: message.id,
+        clientMsgId: message.clientMsgId,
+        peerId: message.recipientId,
+        senderId: message.senderId,
+        senderName: message.senderName || "You",
+        text: message.content,
+        type: message.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+        replyToId: message.replyToId,
+        replySnippet: message.replySnippet,
+        status: message.status || "SENT",
+        createdAt: new Date(message.createdAt).getTime() || Date.now(),
+        disappearingSeconds: message.disappearingSeconds,
+      };
+
+      try {
+        await saveLocalMessage(vaultMsg);
+      } catch {}
+
+      // Notify all active listeners so Browser B renders immediately
+      this.onMessageReceivedCbs.forEach((cb) => cb(vaultMsg));
+    });
+
     // 2. Delivery & Read Receipts
     this.channel.on("broadcast", { event: "message-status" }, async (event) => {
       const { messageIds, status } = event.payload as {

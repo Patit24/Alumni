@@ -87,6 +87,50 @@ type MessagePrivacyMode =
   | "DISAPPEAR_1H"
   | "DISAPPEAR_24H";
 
+function reconcileMessages(
+  existing: VaultMessage[],
+  incoming: VaultMessage[]
+): VaultMessage[] {
+  const map = new Map<string, VaultMessage>();
+
+  // 1. Populate map with existing messages
+  for (const m of existing) {
+    map.set(m.id, m);
+  }
+
+  // 2. Process incoming messages
+  for (const inc of incoming) {
+    // Exact ID match
+    if (map.has(inc.id)) {
+      const current = map.get(inc.id)!;
+      map.set(inc.id, { ...current, ...inc });
+      continue;
+    }
+
+    // Match optimistic in-flight message by clientMsgId
+    let matchedId: string | null = null;
+    if (inc.clientMsgId) {
+      for (const [id, m] of map.entries()) {
+        if (m.clientMsgId === inc.clientMsgId || id === inc.clientMsgId) {
+          matchedId = id;
+          break;
+        }
+      }
+    }
+
+    if (matchedId) {
+      console.log(`[RECONCILE] Optimistic ${matchedId} reconciled with server ${inc.id}`);
+      map.delete(matchedId);
+      map.set(inc.id, inc);
+    } else {
+      map.set(inc.id, inc);
+    }
+  }
+
+  // 3. Return strictly sorted by chronological timestamp
+  return Array.from(map.values()).sort((a, b) => a.createdAt - b.createdAt);
+}
+
 export default function DirectMessageChatPage(props: {
   params: Promise<{ id: string }>;
 }) {
@@ -97,6 +141,9 @@ export default function DirectMessageChatPage(props: {
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
   const [peer, setPeer] = useState<PeerProfile | null>(null);
   const [messages, setMessages] = useState<VaultMessage[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const oldestTimestampRef = useRef<number | null>(null);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -146,6 +193,44 @@ export default function DirectMessageChatPage(props: {
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const loadOlderMessages = async () => {
+    if (loadingMore || !hasMore || !oldestTimestampRef.current) return;
+    setLoadingMore(true);
+    try {
+      const res = await authFetch(
+        `/api/messages?peerId=${peerId}&limit=40&before=${new Date(oldestTimestampRef.current).toISOString()}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          const olderMsgs: VaultMessage[] = data.messages.map((m: any) => ({
+            id: m.id,
+            clientMsgId: m.clientMsgId,
+            peerId,
+            senderId: m.senderId,
+            senderName: m.senderName,
+            text: m.content,
+            type: m.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+            replyToId: m.replyToId,
+            replySnippet: m.replySnippet,
+            status: m.status || "SENT",
+            createdAt: new Date(m.createdAt).getTime() || Date.now(),
+            disappearingSeconds: m.disappearingSeconds,
+          }));
+          oldestTimestampRef.current = olderMsgs[0]?.createdAt || null;
+          setHasMore(Boolean(data.hasMore));
+          setMessages((prev) => reconcileMessages(prev, olderMsgs));
+        } else {
+          setHasMore(false);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to load older messages:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -286,49 +371,70 @@ export default function DirectMessageChatPage(props: {
         // Initialize Realtime Signaling
         realtimeSignaling.init(user.id, user.name, localIdentity.privateKey);
 
-        // Load local decrypted chat history from IndexedDB
+        // 1. Fast cache load from local vault
         const localMsgs = await getLocalMessages(peerId);
-        setMessages(localMsgs);
-
-        // Send read receipts for any unread incoming messages from peer
-        const unreadFromPeer = localMsgs.filter((m) => m.senderId === peerId && m.status !== "READ");
-        if (unreadFromPeer.length > 0) {
-          const ids = unreadFromPeer.map((m) => m.id);
-          realtimeSignaling.sendMessageStatus(peerId, ids, "READ");
-          fetch("/api/messages/ack", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messageIds: ids, senderId: peerId, status: "READ" }),
-          }).catch(() => {});
+        if (localMsgs.length > 0) {
+          setMessages(localMsgs);
         }
 
-        // Listen for new incoming messages — register BEFORE draining queue
-        // so that messages arriving during drain are caught by this listener.
+        // 2. Fetch authoritative messages from server
+        try {
+          const res = await authFetch(`/api/messages?peerId=${peerId}&limit=50`);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data.messages)) {
+              const serverMsgs: VaultMessage[] = data.messages.map((m: any) => ({
+                id: m.id,
+                clientMsgId: m.clientMsgId,
+                peerId,
+                senderId: m.senderId,
+                senderName: m.senderName,
+                text: m.content,
+                type: m.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+                replyToId: m.replyToId,
+                replySnippet: m.replySnippet,
+                status: m.status || "SENT",
+                createdAt: new Date(m.createdAt).getTime() || Date.now(),
+                disappearingSeconds: m.disappearingSeconds,
+              }));
+
+              // Sync to local cache
+              for (const sm of serverMsgs) {
+                saveLocalMessage(sm).catch(() => {});
+              }
+
+              setMessages((prev) => reconcileMessages(prev, serverMsgs));
+              if (data.oldestTimestamp) {
+                oldestTimestampRef.current = new Date(data.oldestTimestamp).getTime();
+              }
+              setHasMore(Boolean(data.hasMore));
+            }
+          }
+        } catch (fetchErr) {
+          console.warn("Failed to fetch authoritative messages:", fetchErr);
+        }
+
+        // Listen for new incoming messages & multi-session outbound messages
         unsubscribeMsg = realtimeSignaling.onMessageReceived((msg) => {
           if (msg.peerId === peerId) {
-            setMessages((prev) => {
-              // De-duplicate: don't add if already present
-              if (prev.some((m) => m.id === msg.id)) return prev;
-              return [...prev, msg];
-            });
+            console.log(`[REALTIME RECEIVE] Chat received message:`, msg.id);
+            setMessages((prev) => reconcileMessages(prev, [msg]));
             scrollToBottom();
-            // Acknowledge read receipt immediately as user is actively viewing the chat
-            realtimeSignaling.sendMessageStatus(peerId, [msg.id], "READ");
-            fetch("/api/messages/ack", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ messageIds: [msg.id], senderId: peerId, status: "READ" }),
-            }).catch(() => {});
+
+            // Acknowledge read receipt immediately if from peer
+            if (msg.senderId === peerId && msg.status !== "READ") {
+              realtimeSignaling.sendMessageStatus(peerId, [msg.id], "READ");
+              fetch("/api/messages/status", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messageIds: [msg.id], senderId: peerId, status: "READ" }),
+              }).catch(() => {});
+            }
           }
         });
 
-        // Drain any offline queued encrypted messages from server
-        // (now that listener is registered above, drained messages will show in UI)
-        await realtimeSignaling.drainPendingQueue();
-
-        // Reload local messages after drain to pick up anything freshly decrypted
-        const freshMsgs = await getLocalMessages(peerId);
-        setMessages(freshMsgs);
+        // Background drain of legacy offline encrypted messages
+        realtimeSignaling.drainPendingQueue().catch(() => {});
 
         // Listen for delivery/read receipts
         unsubscribeStatus = realtimeSignaling.onStatusUpdated((msgId, status) => {
@@ -424,13 +530,31 @@ export default function DirectMessageChatPage(props: {
     };
 
     const handleVisibilityChange = async () => {
-      if (document.hidden) {
-        // App backgrounded / window minimized
-      } else {
-        // Tab became visible again — reload local messages
-        const freshMsgs = await getLocalMessages(peerId);
-        setMessages(freshMsgs);
-        scrollToBottom();
+      if (!document.hidden) {
+        // Tab became visible again — sync incremental messages from server
+        try {
+          const res = await authFetch(`/api/messages?peerId=${peerId}&limit=40`);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data.messages)) {
+              const freshServerMsgs: VaultMessage[] = data.messages.map((m: any) => ({
+                id: m.id,
+                clientMsgId: m.clientMsgId,
+                peerId,
+                senderId: m.senderId,
+                senderName: m.senderName,
+                text: m.content,
+                type: m.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+                replyToId: m.replyToId,
+                replySnippet: m.replySnippet,
+                status: m.status || "SENT",
+                createdAt: new Date(m.createdAt).getTime() || Date.now(),
+                disappearingSeconds: m.disappearingSeconds,
+              }));
+              setMessages((prev) => reconcileMessages(prev, freshServerMsgs));
+            }
+          }
+        } catch {}
       }
     };
 
@@ -539,31 +663,17 @@ export default function DirectMessageChatPage(props: {
     setInputText("");
 
     try {
-      const msgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const clientMsgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const expireSec = getDisappearingSeconds(messagePrivacy);
       const expiresAt = expireSec ? Date.now() + expireSec * 1000 : undefined;
 
-      const structuredPayload = JSON.stringify({
-        id: msgId,
-        text: cleanText,
-        senderName: currentUser.name,
-        privacyMode: messagePrivacy,
-        disappearingSeconds: expireSec,
-      });
-
-      if (!activeSharedKey) {
-        activeSharedKey = await derivePairwiseFallbackKey(currentUser.id, peerId);
-        setSharedKey(activeSharedKey);
-      }
-
-      // 1. Encrypt locally using AES-256-GCM
-      const encrypted = await encryptE2EEMessage(activeSharedKey, structuredPayload);
-
-      // 2. Save locally in client vault
-      const localMsg: VaultMessage = {
-        id: msgId,
+      // 1. Instant optimistic UI render (0ms latency)
+      const optimisticMsg: VaultMessage = {
+        id: clientMsgId,
+        clientMsgId,
         peerId,
         senderId: currentUser.id,
+        senderName: currentUser.name,
         text: cleanText,
         type: "TEXT",
         status: "SENDING",
@@ -571,51 +681,83 @@ export default function DirectMessageChatPage(props: {
         expiresAt,
         disappearingSeconds: expireSec,
         privacyMode: messagePrivacy,
+        replyToId: replyingTo?.id,
+        replySnippet: replyingTo?.text ? replyingTo.text.slice(0, 40) : undefined,
       };
 
-      // 2. Render instantly in UI (0ms latency) & persist in vault in parallel
-      setMessages((prev) => [...prev, localMsg]);
+      console.log(`[MESSAGE SEND] Sending optimistic message:`, clientMsgId);
+      setMessages((prev) => [...prev, optimisticMsg]);
       scrollToBottom();
-      saveLocalMessage(localMsg).catch(console.error);
+      saveLocalMessage(optimisticMsg).catch(() => {});
 
-      // 3. Direct real-time WebSocket broadcast to recipient (Instant delivery under 10ms, identical to typing indicator)
-      realtimeSignaling.sendEncryptedMessage(peerId, {
-        queueId: msgId,
-        encryptedPayload: encrypted,
-        messageType: "TEXT",
-        createdAt: new Date().toISOString(),
-      });
-
-      // 4. Relay encrypted payload to server queue (Persisted for 2 days) & push notification
-      const activeDeviceId = myDeviceId || "device_web_identity";
-      const res = await authFetch("/api/messages/relay", {
+      // 2. Authoritative server POST (Persisted in SQLite database & broadcast to both recipient & sender)
+      const res = await authFetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipientId: peerId,
-          senderDeviceId: activeDeviceId,
-          encryptedPayload: encrypted,
+          content: cleanText,
+          clientMsgId,
+          replyToId: replyingTo?.id,
+          replySnippet: replyingTo?.text ? replyingTo.text.slice(0, 40) : undefined,
+          disappearingSeconds: expireSec,
           messageType: "TEXT",
         }),
       });
 
-      // 4. Update status: If relayed successfully to server, status is Single Tick (SENT).
-      // Genuine DELIVERED and READ ticks arrive via peer WebSocket acknowledgment.
       if (res.ok) {
-        localMsg.status = "SENT";
-        await saveLocalMessage(localMsg);
-        setMessages((prev) =>
-          prev.map((m) => (m.id === msgId ? { ...m, status: "SENT" } : m))
-        );
+        const data = await res.json();
+        const serverMsg = data.message;
+        const confirmedMsg: VaultMessage = {
+          id: serverMsg.id,
+          clientMsgId: serverMsg.clientMsgId || clientMsgId,
+          peerId,
+          senderId: currentUser.id,
+          senderName: currentUser.name,
+          text: serverMsg.content,
+          type: "TEXT",
+          status: "SENT",
+          createdAt: new Date(serverMsg.createdAt).getTime(),
+          expiresAt,
+          disappearingSeconds: expireSec,
+          privacyMode: messagePrivacy,
+          replyToId: serverMsg.replyToId,
+          replySnippet: serverMsg.replySnippet,
+        };
+
+        console.log(`[MESSAGE SERVER CONFIRMED] Server confirmed message ${serverMsg.id} (clientMsgId: ${clientMsgId})`);
+        await saveLocalMessage(confirmedMsg);
+        setMessages((prev) => reconcileMessages(prev, [confirmedMsg]));
       } else {
-        localMsg.status = "FAILED";
-        await saveLocalMessage(localMsg);
+        console.warn(`[MESSAGE SEND] Server POST failed with status ${res.status}`);
         setMessages((prev) =>
-          prev.map((m) => (m.id === msgId ? { ...m, status: "FAILED" } : m))
+          prev.map((m) => (m.id === clientMsgId ? { ...m, status: "FAILED" } : m))
         );
       }
+
+      // Parallel background E2EE signaling broadcast (if shared key available)
+      if (activeSharedKey) {
+        try {
+          const structuredPayload = JSON.stringify({
+            id: clientMsgId,
+            text: cleanText,
+            senderName: currentUser.name,
+            privacyMode: messagePrivacy,
+            disappearingSeconds: expireSec,
+          });
+          const encrypted = await encryptE2EEMessage(activeSharedKey, structuredPayload);
+          realtimeSignaling.sendEncryptedMessage(peerId, {
+            queueId: clientMsgId,
+            encryptedPayload: encrypted,
+            messageType: "TEXT",
+            createdAt: new Date().toISOString(),
+          });
+        } catch (encErr) {
+          console.warn("Background E2EE broadcast error:", encErr);
+        }
+      }
     } catch (err) {
-      console.error("Error sending encrypted message:", err);
+      console.error("Error sending direct message:", err);
     } finally {
       setSending(false);
     }
@@ -1142,31 +1284,51 @@ export default function DirectMessageChatPage(props: {
             </div>
           </div>
         ) : (
-          messages.map((m) => {
-            const isMe = m.senderId === currentUser?.id;
-            const isViewOnce = m.privacyMode === "VIEW_ONCE";
-            const isBurned = isViewOnce && viewedOnceSet.has(m.id);
+          <>
+            {hasMore && (
+              <div className="flex justify-center my-3 w-full">
+                <button
+                  onClick={loadOlderMessages}
+                  disabled={loadingMore}
+                  className="px-4 py-1.5 rounded-full bg-slate-800/80 hover:bg-slate-700/80 text-xs font-medium text-slate-300 transition flex items-center gap-1.5 border border-white/10 shadow-xs cursor-pointer active:scale-95"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                      <span>Loading earlier messages...</span>
+                    </>
+                  ) : (
+                    <span>Load earlier messages</span>
+                  )}
+                </button>
+              </div>
+            )}
+            {messages.map((m) => {
+              const isMe = m.senderId === currentUser?.id;
+              const isViewOnce = m.privacyMode === "VIEW_ONCE";
+              const isBurned = isViewOnce && viewedOnceSet.has(m.id);
 
-            return (
-              <MessageBubble
-                key={m.id}
-                message={m}
-                isMe={isMe}
-                isViewOnce={isViewOnce}
-                isBurned={isBurned}
-                isConfidential={isConfidentialMode}
-                onRevealViewOnce={handleRevealViewOnce}
-                onReply={(msg) => {
-                  setReplyingTo(msg);
-                  triggerHaptic("light");
-                }}
-                onDelete={(id) => {
-                  deleteLocalMessage(id);
-                  setMessages((prev) => prev.filter((msg) => msg.id !== id));
-                }}
-              />
-            );
-          })
+              return (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  isMe={isMe}
+                  isViewOnce={isViewOnce}
+                  isBurned={isBurned}
+                  isConfidential={isConfidentialMode}
+                  onRevealViewOnce={handleRevealViewOnce}
+                  onReply={(msg) => {
+                    setReplyingTo(msg);
+                    triggerHaptic("light");
+                  }}
+                  onDelete={(id) => {
+                    deleteLocalMessage(id);
+                    setMessages((prev) => prev.filter((msg) => msg.id !== id));
+                  }}
+                />
+              );
+            })}
+          </>
         )}
 
         {isPeerTyping && (

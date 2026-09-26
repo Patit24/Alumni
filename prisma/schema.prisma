@@ -137,6 +137,10 @@ model User {
   sentConnectionRequests     ConnectionRequest[]   @relation("SentConnectionRequests")
   receivedConnectionRequests ConnectionRequest[]   @relation("ReceivedConnectionRequests")
 
+  // Direct Messages
+  sentDirectMessages         DirectMessage[]       @relation("SentDirectMessages")
+  receivedDirectMessages     DirectMessage[]       @relation("ReceivedDirectMessages")
+
   // In-App Notifications
   notifications              AppNotification[]     @relation("UserNotifications")
   actedNotifications         AppNotification[]     @relation("NotificationActor")
@@ -395,6 +399,33 @@ model EncryptedMessageQueue {
 
   @@index([recipientId, expiresAt])
 }
+
+// Authoritative Persistent Direct Messages for multi-session sync & cross-device consistency
+model DirectMessage {
+  id                  String    @id @default(cuid())
+  conversationId      String    // Canonical: [userId1, userId2].sort().join(":")
+  senderId            String
+  sender              User      @relation("SentDirectMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  recipientId         String
+  recipient           User      @relation("ReceivedDirectMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  content             String    // Message text or ciphertext / media payload
+  messageType         String    @default("TEXT") // "TEXT", "EMOJI", "MEDIA", "SYSTEM"
+  status              String    @default("SENT") // "SENT", "DELIVERED", "READ"
+  replyToId           String?
+  replySnippet        String?
+  disappearingSeconds Int?
+  expiresAt           DateTime?
+  clientMsgId         String?   // Optimistic client ID for deduplication and server reconciliation
+  readAt              DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([conversationId, createdAt])
+  @@index([recipientId, status])
+  @@index([senderId])
+  @@index([clientMsgId])
+}
+
 
 // User communication privacy settings
 model UserPrivacySettings {

@@ -119,12 +119,12 @@ export default function MessagesHubPage() {
 
       const clientPeersQuery = Array.from(localPeers).join(",");
 
-      const [connRes, dirRes, calls, lockRes, vaultPeers, latestMap, reqsRes] = await Promise.all([
+      const [connRes, dirRes, calls, lockRes, convsRes, latestMap, reqsRes] = await Promise.all([
         authFetch(`/api/connections?type=connections&clientPeers=${encodeURIComponent(clientPeersQuery)}`).catch(() => null),
         authFetch("/api/directory?limit=200&batchScope=all&institutionScope=all").catch(() => null),
         getCallLogs(currentUserId || undefined).catch(() => []),
         authFetch("/api/privacy/lock").catch(() => null),
-        getVaultConnectedPeerIds(currentUserId || undefined).catch(() => []),
+        authFetch("/api/messages/conversations").catch(() => null),
         getLatestMessagesPerPeer(currentUserId || undefined).catch(() => new Map()),
         authFetch("/api/contacts/requests").catch(() => null),
       ]);
@@ -136,10 +136,36 @@ export default function MessagesHubPage() {
       }
 
       setCallLogs(calls);
-      setLatestMessages(latestMap);
 
       // Start with all local cached peers
       const activeConnectedPeers = new Set<string>(localPeers);
+      const mergedLatest = new Map<string, VaultMessage>(latestMap);
+
+      if (convsRes?.ok) {
+        const convsData = await convsRes.json();
+        if (Array.isArray(convsData.conversations)) {
+          for (const conv of convsData.conversations) {
+            if (conv.peerId && conv.latestMessage) {
+              activeConnectedPeers.add(conv.peerId);
+              const serverTs = new Date(conv.latestMessage.createdAt).getTime();
+              const existing = mergedLatest.get(conv.peerId);
+              if (!existing || existing.createdAt < serverTs) {
+                mergedLatest.set(conv.peerId, {
+                  id: conv.latestMessage.id,
+                  peerId: conv.peerId,
+                  senderId: conv.latestMessage.senderId,
+                  text: conv.latestMessage.content,
+                  type: conv.latestMessage.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+                  status: conv.latestMessage.status || "SENT",
+                  createdAt: serverTs,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      setLatestMessages(mergedLatest);
 
       // 1. Process /api/connections (canonical 1st-degree connections)
       let canonicalConnections: AlumniContact[] = [];
@@ -261,6 +287,34 @@ export default function MessagesHubPage() {
           if (peerIds.length > 0) setConnectedPeerIds(prev => new Set([...prev, ...peerIds]));
         }).catch(() => {});
         getLatestMessagesPerPeer(uid).then(map => setLatestMessages(map)).catch(() => {});
+        authFetch("/api/messages/conversations")
+          .then((r) => r.json())
+          .then((data) => {
+            if (Array.isArray(data.conversations)) {
+              setLatestMessages((prev) => {
+                const next = new Map(prev);
+                for (const conv of data.conversations) {
+                  if (conv.peerId && conv.latestMessage) {
+                    const serverTs = new Date(conv.latestMessage.createdAt).getTime();
+                    const existing = next.get(conv.peerId);
+                    if (!existing || existing.createdAt < serverTs) {
+                      next.set(conv.peerId, {
+                        id: conv.latestMessage.id,
+                        peerId: conv.peerId,
+                        senderId: conv.latestMessage.senderId,
+                        text: conv.latestMessage.content,
+                        type: conv.latestMessage.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+                        status: conv.latestMessage.status || "SENT",
+                        createdAt: serverTs,
+                      });
+                    }
+                  }
+                }
+                return next;
+              });
+            }
+          })
+          .catch(() => {});
       }
     };
     window.addEventListener("connection-requests-updated", refresh);
