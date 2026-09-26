@@ -64,8 +64,38 @@ class RealtimeSignalingService {
     return this.peerChannels.get(peerId)!;
   }
 
+  cleanup() {
+    if (this.channel) {
+      try {
+        const supabase = createClient();
+        supabase.removeChannel(this.channel);
+      } catch {}
+      this.channel = null;
+    }
+    for (const [, ch] of this.peerChannels) {
+      try {
+        const supabase = createClient();
+        supabase.removeChannel(ch);
+      } catch {}
+    }
+    this.peerChannels.clear();
+    this.sharedKeys.clear();
+    this.onMessageReceivedCbs.clear();
+    this.onStatusUpdatedCbs.clear();
+    this.onTypingCbs.clear();
+    this.onConnectionRequestCbs.clear();
+    this.onConnectionAcceptedCbs.clear();
+    this.currentUserId = null;
+    this.currentUserName = null;
+    this.localPrivateKey = null;
+  }
+
   init(userId: string, userName: string, localPrivateKey: CryptoKey) {
     if (this.currentUserId === userId && this.channel) return;
+
+    if (this.channel || (this.currentUserId && this.currentUserId !== userId)) {
+      this.cleanup();
+    }
 
     this.currentUserId = userId;
     this.currentUserName = userName;
@@ -118,6 +148,7 @@ class RealtimeSignalingService {
         const msgId = parsedData.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const vaultMsg: VaultMessage = {
           id: msgId,
+          clientMsgId: parsedData.id || queueId,
           peerId: senderId,
           senderId,
           senderName: senderName || parsedData.senderName,
@@ -492,6 +523,7 @@ class RealtimeSignalingService {
           if (!alreadyStored) {
             const vaultMsg: VaultMessage = {
               id: msgId,
+              clientMsgId: parsedData.id || item.id,
               peerId: item.senderId,
               senderId: item.senderId,
               senderName: item.senderName || parsedData.senderName,

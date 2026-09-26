@@ -647,11 +647,27 @@ export function cacheConnectionProfiles(profiles: any[], userId?: string): void 
       const pid = p?.id || p?.userId;
       if (pid && pid !== uid) map.set(pid, p);
     }
-    // 2. Overlay new profiles
+    // 2. Overlay new profiles safely (never allow "Alumni Member" or empty strings to overwrite a known real name)
     for (const p of profiles) {
       const pid = p?.id || p?.userId;
       if (pid && pid !== uid) {
-        map.set(pid, { ...(map.get(pid) || {}), ...p });
+        const prev = map.get(pid) || {};
+        const safeName = (p.name && p.name.trim() !== "Alumni Member") ? p.name : (prev.name || p.name || "Alumni Member");
+        const safeAvatar = p.avatarUrl || prev.avatarUrl;
+        const safeRole = p.currentRole || prev.currentRole;
+        const safeCompany = p.currentCompany || prev.currentCompany;
+        const safeBatchYear = p.batchYear || prev.batchYear;
+        const safeUsername = p.username || prev.username;
+        map.set(pid, {
+          ...prev,
+          ...p,
+          name: safeName,
+          avatarUrl: safeAvatar,
+          currentRole: safeRole,
+          currentCompany: safeCompany,
+          batchYear: safeBatchYear,
+          username: safeUsername,
+        });
       }
     }
     const merged = Array.from(map.values());

@@ -46,6 +46,9 @@ import {
   removeLocalConnectedPeer,
   getLocalConnectedPeerIds,
   setActiveVaultUser,
+  getActiveVaultUserId,
+  getCachedConnectionProfiles,
+  cacheConnectionProfiles,
   VaultMessage,
 } from "@/lib/e2ee/vault";
 import { authFetch } from "@/lib/auth-fetch";
@@ -107,21 +110,23 @@ function reconcileMessages(
       continue;
     }
 
-    // Match optimistic in-flight message by clientMsgId
+    // Match optimistic in-flight message by clientMsgId or matching IDs
     let matchedId: string | null = null;
-    if (inc.clientMsgId) {
-      for (const [id, m] of map.entries()) {
-        if (m.clientMsgId === inc.clientMsgId || id === inc.clientMsgId) {
-          matchedId = id;
-          break;
-        }
+    for (const [id, m] of map.entries()) {
+      if (
+        (inc.clientMsgId && (m.clientMsgId === inc.clientMsgId || id === inc.clientMsgId)) ||
+        (m.clientMsgId && (m.clientMsgId === inc.id || id === inc.id))
+      ) {
+        matchedId = id;
+        break;
       }
     }
 
     if (matchedId) {
       console.log(`[RECONCILE] Optimistic ${matchedId} reconciled with server ${inc.id}`);
+      const prev = map.get(matchedId)!;
       map.delete(matchedId);
-      map.set(inc.id, inc);
+      map.set(inc.id, { ...prev, ...inc });
     } else {
       map.set(inc.id, inc);
     }
@@ -137,9 +142,46 @@ export default function DirectMessageChatPage(props: {
   const router = useRouter();
   const { id: peerId } = use(props.params);
 
-  // States
-  const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
-  const [peer, setPeer] = useState<PeerProfile | null>(null);
+  // States: synchronously read cached identity to prevent layout/alignment flash
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("alumni_user");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.id) return { id: parsed.id, name: parsed.name || "" };
+        }
+        const activeId = getActiveVaultUserId();
+        if (activeId) return { id: activeId, name: "" };
+      } catch {}
+    }
+    return null;
+  });
+
+  const [peer, setPeer] = useState<PeerProfile | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const activeId = getActiveVaultUserId();
+        const cached = getCachedConnectionProfiles(activeId || undefined);
+        const found = cached.find((p: any) => p?.id === peerId);
+        if (found && found.name && found.name.trim() !== "Alumni Member") {
+          return {
+            id: found.id,
+            name: found.name,
+            username: found.username,
+            avatarUrl: found.avatarUrl,
+            batchYear: found.batchYear,
+            currentRole: found.currentRole,
+            currentCompany: found.currentCompany,
+            city: found.city,
+            verificationStatus: found.verificationStatus || "VERIFIED",
+            institution: found.institution,
+          };
+        }
+      } catch {}
+    }
+    return null;
+  });
   const [messages, setMessages] = useState<VaultMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -299,17 +341,36 @@ export default function DirectMessageChatPage(props: {
 
         setConnectionStatus(relStatus);
 
+        const cachedProfiles = getCachedConnectionProfiles(user.id);
+        const cachedPeer = cachedProfiles.find((p: any) => p?.id === peerId);
+
         if (peerRes.ok) {
           const pData = await peerRes.json();
-          const target = pData.alumni?.find((u: PeerProfile) => u.id === peerId) || pData.alumni?.[0];
+          // Never fall back to pData.alumni[0] which could belong to another user!
+          const target = pData.alumni?.find((u: PeerProfile) => u.id === peerId);
           if (target) {
-            setPeer(target);
+            const safeName = (target.name && target.name.trim() !== "Alumni Member")
+              ? target.name
+              : (cachedPeer?.name || target.name || "Alumni Member");
+            const safeAvatar = target.avatarUrl || cachedPeer?.avatarUrl;
+            const fullPeer: PeerProfile = {
+              ...target,
+              name: safeName,
+              avatarUrl: safeAvatar,
+            };
+            setPeer(fullPeer);
+            cacheConnectionProfiles([fullPeer], user.id);
+
             // Only mark as locally connected peer in encrypted vault if CONNECTED
             if (relStatus === "CONNECTED") {
               addLocalConnectedPeer(peerId, user.id);
               window.dispatchEvent(new CustomEvent("connection-requests-updated"));
             }
+          } else if (cachedPeer) {
+            setPeer(cachedPeer);
           }
+        } else if (cachedPeer) {
+          setPeer(cachedPeer);
         }
 
         // Get or generate local device E2EE keys
@@ -733,28 +794,6 @@ export default function DirectMessageChatPage(props: {
         setMessages((prev) =>
           prev.map((m) => (m.id === clientMsgId ? { ...m, status: "FAILED" } : m))
         );
-      }
-
-      // Parallel background E2EE signaling broadcast (if shared key available)
-      if (activeSharedKey) {
-        try {
-          const structuredPayload = JSON.stringify({
-            id: clientMsgId,
-            text: cleanText,
-            senderName: currentUser.name,
-            privacyMode: messagePrivacy,
-            disappearingSeconds: expireSec,
-          });
-          const encrypted = await encryptE2EEMessage(activeSharedKey, structuredPayload);
-          realtimeSignaling.sendEncryptedMessage(peerId, {
-            queueId: clientMsgId,
-            encryptedPayload: encrypted,
-            messageType: "TEXT",
-            createdAt: new Date().toISOString(),
-          });
-        } catch (encErr) {
-          console.warn("Background E2EE broadcast error:", encErr);
-        }
       }
     } catch (err) {
       console.error("Error sending direct message:", err);
@@ -1304,7 +1343,8 @@ export default function DirectMessageChatPage(props: {
               </div>
             )}
             {messages.map((m) => {
-              const isMe = m.senderId === currentUser?.id;
+              const myId = currentUser?.id || (typeof window !== "undefined" ? getActiveVaultUserId() : null);
+              const isMe = Boolean(myId && m.senderId === myId);
               const isViewOnce = m.privacyMode === "VIEW_ONCE";
               const isBurned = isViewOnce && viewedOnceSet.has(m.id);
 

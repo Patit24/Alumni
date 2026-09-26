@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { LogOut, Loader2 } from "lucide-react";
 import { clearUserLocalVault } from "@/lib/e2ee/vault";
+import { realtimeSignaling } from "@/lib/e2ee/signaling";
 import { createClient } from "@/utils/supabase/client";
 
 interface LogoutButtonProps {
@@ -25,6 +26,11 @@ export default function LogoutButton({
 
     setLoading(true);
     try {
+      // 0. Disconnect realtime websocket signaling channels
+      try {
+        realtimeSignaling.cleanup();
+      } catch {}
+
       // 1. Clear IndexedDB client vault
       clearUserLocalVault();
 

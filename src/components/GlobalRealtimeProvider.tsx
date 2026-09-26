@@ -105,22 +105,44 @@ export default function GlobalRealtimeProvider() {
     setActiveToast(null);
   };
 
-  // One-time bootstrap ref — prevents re-running on navigation (pathname changes).
-  const bootstrappedRef = useRef(false);
+  // Track active subscribed user ID to cleanly support login, logout, and account switching
+  const lastSubscribedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (bootstrappedRef.current) return;
-
     let unsubs: (() => void)[] = [];
 
     async function bootstrapRealtime() {
       try {
         const meRes = await fetch("/api/auth/me");
-        if (!meRes.ok) return;
+        if (!meRes.ok) {
+          if (lastSubscribedUserIdRef.current) {
+            realtimeSignaling.cleanup();
+            lastSubscribedUserIdRef.current = null;
+            setCurrentUser(null);
+          }
+          return;
+        }
         const meData = await meRes.json();
-        if (!meData.authenticated || !meData.user) return;
+        if (!meData.authenticated || !meData.user) {
+          if (lastSubscribedUserIdRef.current) {
+            realtimeSignaling.cleanup();
+            lastSubscribedUserIdRef.current = null;
+            setCurrentUser(null);
+          }
+          return;
+        }
 
         const user = meData.user;
+        if (lastSubscribedUserIdRef.current === user.id) {
+          return; // Already actively subscribed for this user
+        }
+
+        // Clean up any existing subscriptions before binding new user
+        unsubs.forEach((fn) => fn());
+        unsubs = [];
+        realtimeSignaling.cleanup();
+        lastSubscribedUserIdRef.current = user.id;
+
         setActiveVaultUser(user.id);
         setCurrentUser({ id: user.id, name: user.name });
 
@@ -269,7 +291,13 @@ export default function GlobalRealtimeProvider() {
           window.removeEventListener("online", handleFocusOrOnline);
         });
 
-        bootstrappedRef.current = true;
+        const handleAuthChange = () => {
+          bootstrapRealtime();
+        };
+        window.addEventListener("auth-state-changed", handleAuthChange);
+        unsubs.push(() => {
+          window.removeEventListener("auth-state-changed", handleAuthChange);
+        });
       } catch (err) {
         console.warn("Global realtime bootstrap notice:", err);
       }

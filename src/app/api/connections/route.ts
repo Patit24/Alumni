@@ -30,14 +30,39 @@ export async function GET(req: Request) {
     const search = searchParams.get("search") || undefined;
     const limit = parseInt(searchParams.get("limit") || "20", 10);
     const clientPeersParam = searchParams.get("clientPeers");
+    const clientProfilesParam = searchParams.get("clientProfiles");
 
-    // Self-healing: if client reports known connected peers, ensure they exist in DB
+    const profilesMap = new Map<string, any>();
+    if (clientProfilesParam) {
+      try {
+        const parsed = JSON.parse(clientProfilesParam);
+        if (Array.isArray(parsed)) {
+          for (const p of parsed) {
+            if (p?.id && p.id !== user.id) {
+              profilesMap.set(p.id, p);
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Collect all peer IDs from clientPeers or clientProfiles to self-heal
+    const peerIdsToHeal = new Set<string>();
     if (clientPeersParam) {
-      const clientPeers = clientPeersParam.split(",").map((s) => s.trim()).filter((id) => id && id !== user.id);
-      for (const peerId of clientPeers) {
+      clientPeersParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter((id) => id && id !== user.id)
+        .forEach((id) => peerIdsToHeal.add(id));
+    }
+    profilesMap.forEach((_, id) => peerIdsToHeal.add(id));
+
+    if (peerIdsToHeal.size > 0) {
+      for (const peerId of peerIdsToHeal) {
         try {
-          // 1. Ensure peer user exists in this SQLite container so FK constraint never fails
-          await ensurePeerUserExists(peerId, user);
+          const profileData = profilesMap.get(peerId);
+          // 1. Ensure peer user exists in this SQLite container with real profile data if provided
+          await ensurePeerUserExists(peerId, user, profileData);
 
           // 2. Ensure connection request exists and is ACCEPTED
           const { userAId, userBId } = canonicalUserPair(user.id, peerId);

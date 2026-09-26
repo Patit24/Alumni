@@ -119,9 +119,29 @@ export default function MessagesHubPage() {
       }
 
       const clientPeersQuery = Array.from(localPeers).join(",");
+      const cachedProfiles = getCachedConnectionProfiles(currentUserId || undefined);
+      const clientProfilesQuery = cachedProfiles.length > 0
+        ? encodeURIComponent(
+            JSON.stringify(
+              cachedProfiles.slice(0, 30).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                username: p.username,
+                avatarUrl: p.avatarUrl,
+                currentRole: p.currentRole,
+                currentCompany: p.currentCompany,
+                batchYear: p.batchYear,
+              }))
+            )
+          )
+        : "";
 
       const [connRes, dirRes, calls, lockRes, convsRes, latestMap, reqsRes] = await Promise.all([
-        authFetch(`/api/connections?type=connections&clientPeers=${encodeURIComponent(clientPeersQuery)}`).catch(() => null),
+        authFetch(
+          `/api/connections?type=connections&clientPeers=${encodeURIComponent(clientPeersQuery)}${
+            clientProfilesQuery ? `&clientProfiles=${clientProfilesQuery}` : ""
+          }`
+        ).catch(() => null),
         authFetch("/api/directory?limit=200&batchScope=all&institutionScope=all").catch(() => null),
         getCallLogs(currentUserId || undefined).catch(() => []),
         authFetch("/api/privacy/lock").catch(() => null),
@@ -141,25 +161,31 @@ export default function MessagesHubPage() {
       // Start with all local cached peers
       const activeConnectedPeers = new Set<string>(localPeers);
       const mergedLatest = new Map<string, VaultMessage>(latestMap);
+      const conversationPeers: AlumniContact[] = [];
 
       if (convsRes?.ok) {
         const convsData = await convsRes.json();
         if (Array.isArray(convsData.conversations)) {
           for (const conv of convsData.conversations) {
-            if (conv.peerId && conv.latestMessage) {
+            if (conv.peerId) {
               activeConnectedPeers.add(conv.peerId);
-              const serverTs = new Date(conv.latestMessage.createdAt).getTime();
-              const existing = mergedLatest.get(conv.peerId);
-              if (!existing || existing.createdAt < serverTs) {
-                mergedLatest.set(conv.peerId, {
-                  id: conv.latestMessage.id,
-                  peerId: conv.peerId,
-                  senderId: conv.latestMessage.senderId,
-                  text: conv.latestMessage.content,
-                  type: conv.latestMessage.messageType === "EMOJI" ? "EMOJI" : "TEXT",
-                  status: conv.latestMessage.status || "SENT",
-                  createdAt: serverTs,
-                });
+              if (conv.peer) {
+                conversationPeers.push(conv.peer);
+              }
+              if (conv.latestMessage) {
+                const serverTs = new Date(conv.latestMessage.createdAt).getTime();
+                const existing = mergedLatest.get(conv.peerId);
+                if (!existing || existing.createdAt < serverTs) {
+                  mergedLatest.set(conv.peerId, {
+                    id: conv.latestMessage.id,
+                    peerId: conv.peerId,
+                    senderId: conv.latestMessage.senderId,
+                    text: conv.latestMessage.content,
+                    type: conv.latestMessage.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+                    status: conv.latestMessage.status || "SENT",
+                    createdAt: serverTs,
+                  });
+                }
               }
             }
           }
@@ -202,12 +228,53 @@ export default function MessagesHubPage() {
         }
       }
 
-      // Merge all known contacts: canonical connections + directory contacts + cached
+      // Merge all known contacts safely: local cached + conversation peers + canonical + directory
       setContacts((prev) => {
         const map = new Map<string, AlumniContact>();
-        prev.forEach((c) => map.set(c.id, c));
-        loadedContacts.forEach((c) => map.set(c.id, { ...map.get(c.id), ...c }));
-        canonicalConnections.forEach((c) => map.set(c.id, { ...map.get(c.id), ...c }));
+
+        // 1. Seed from local cached connection profiles
+        const cached = getCachedConnectionProfiles<AlumniContact>(currentUserId || undefined);
+        cached.forEach((c) => {
+          if (c?.id) map.set(c.id, c);
+        });
+
+        // 2. Overlay previous state
+        prev.forEach((c) => {
+          const existing = map.get(c.id);
+          const safeName = (c.name && c.name.trim() !== "Alumni Member") ? c.name : (existing?.name || c.name);
+          map.set(c.id, { ...existing, ...c, name: safeName });
+        });
+
+        // 3. Overlay loaded contacts from directory
+        loadedContacts.forEach((c) => {
+          const existing = map.get(c.id);
+          const safeName = (c.name && c.name.trim() !== "Alumni Member") ? c.name : (existing?.name || c.name);
+          map.set(c.id, { ...existing, ...c, name: safeName });
+        });
+
+        // 4. Overlay canonical connections
+        canonicalConnections.forEach((c) => {
+          const existing = map.get(c.id);
+          const safeName = (c.name && c.name.trim() !== "Alumni Member") ? c.name : (existing?.name || c.name);
+          map.set(c.id, { ...existing, ...c, name: safeName });
+        });
+
+        // 5. Overlay conversation peers
+        conversationPeers.forEach((c) => {
+          const existing = map.get(c.id);
+          const safeName = (c.name && c.name.trim() !== "Alumni Member") ? c.name : (existing?.name || c.name);
+          map.set(c.id, { ...existing, ...c, name: safeName });
+        });
+
+        // 6. Ensure all active connected peers have an entry in map
+        activeConnectedPeers.forEach((pid) => {
+          if (!map.has(pid) || map.get(pid)?.name === "Alumni Member") {
+            const cachedMatch = cached.find((cp) => cp.id === pid);
+            if (cachedMatch && cachedMatch.name && cachedMatch.name !== "Alumni Member") {
+              map.set(pid, { ...map.get(pid), ...cachedMatch });
+            }
+          }
+        });
 
         const allList = Array.from(map.values());
         const connectedOnly = allList.filter((c) => activeConnectedPeers.has(c.id));

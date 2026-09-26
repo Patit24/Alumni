@@ -186,34 +186,9 @@ export default function InstitutionDiscoverySection({
     }
   };
 
-  if (loading && users.length === 0) {
-    return (
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <GraduationCap className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-900">
-                People from {institution?.name || "Your Institution"}
-              </p>
-              <p className="text-[11px] text-slate-400">Discover batchmates & peers</p>
-            </div>
-          </div>
-          <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 rounded-2xl bg-slate-50 animate-pulse border border-slate-100" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
+  // Never flash an intrusive white box on initial load that abruptly vanishes
   if (users.length === 0) {
-    return null; // Don't clutter the page if no other users from this institution yet
+    return null;
   }
 
   const institutionDisplayName = institution?.name || initialInstitutionName || "Your Institution";
