@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { createSessionToken, AUTH_COOKIE } from "@/lib/auth";
 import { createServerClient } from "@supabase/ssr";
 import { SignJWT } from "jose";
+import { saveOAuthResult } from "@/lib/oauth-store";
 
 export const dynamic = "force-dynamic";
 
@@ -176,6 +177,12 @@ export async function GET(req: Request) {
         }
       }
 
+      const appSession = requestUrl.searchParams.get("app_session") || "";
+      const isApp =
+        requestUrl.searchParams.get("app") === "1" ||
+        !!appSession ||
+        req.headers.get("x-requested-with") === "com.alumni.app";
+
       if (existingUser) {
         console.log("[OAUTH-CALLBACK] User authenticated successfully:", existingUser.id, userEmail);
         const sessionToken = await createSessionToken({
@@ -195,7 +202,27 @@ export async function GET(req: Request) {
           avatarUrl: existingUser.avatarUrl || userAvatar || null,
         });
 
-        // Redirect to homepage with both HTTP cookie AND token in param for localStorage fallback
+        if (appSession) {
+          saveOAuthResult(appSession, {
+            ready: true,
+            token: sessionToken,
+            mode: "login",
+          });
+        }
+
+        if (isApp) {
+          const deepLink = `samparka://auth?token=${encodeURIComponent(sessionToken)}`;
+          const intentLink = `intent://auth?token=${encodeURIComponent(sessionToken)}#Intent;scheme=samparka;package=com.alumni.app;end`;
+          return renderAppRedirectHtml({
+            deepLink,
+            intentLink,
+            sessionToken,
+            title: "Authenticated!",
+            subtitle: "Returning to your Samparka app...",
+          });
+        }
+
+        // Standard web browser redirect
         const redirectResponse = NextResponse.redirect(
           `${origin}/?login_success=1&token=${encodeURIComponent(sessionToken)}`
         );
@@ -216,6 +243,28 @@ export async function GET(req: Request) {
           .setExpirationTime("2h")
           .sign(JWT_SECRET);
 
+        if (appSession) {
+          saveOAuthResult(appSession, {
+            ready: true,
+            mode: "google-onboard",
+            email: userEmail,
+            name: userName,
+            avatar: userAvatar,
+            signupToken: signupToken,
+          });
+        }
+
+        if (isApp) {
+          const deepLink = `samparka://auth?mode=google-onboard&email=${encodeURIComponent(userEmail)}&name=${encodeURIComponent(userName)}&avatar=${encodeURIComponent(userAvatar)}&signupToken=${encodeURIComponent(signupToken)}`;
+          const intentLink = `intent://auth?mode=google-onboard&email=${encodeURIComponent(userEmail)}&name=${encodeURIComponent(userName)}&avatar=${encodeURIComponent(userAvatar)}&signupToken=${encodeURIComponent(signupToken)}#Intent;scheme=samparka;package=com.alumni.app;end`;
+          return renderAppRedirectHtml({
+            deepLink,
+            intentLink,
+            title: "Welcome to Samparka!",
+            subtitle: "Completing profile setup in app...",
+          });
+        }
+
         return NextResponse.redirect(
           `${origin}/auth?mode=google-onboard&email=${encodeURIComponent(userEmail)}&name=${encodeURIComponent(userName)}&avatar=${encodeURIComponent(userAvatar)}&signupToken=${encodeURIComponent(signupToken)}`
         );
@@ -225,4 +274,143 @@ export async function GET(req: Request) {
 
   console.log("[OAUTH-CALLBACK] Fallback redirecting to /auth");
   return NextResponse.redirect(`${origin}/auth`);
+}
+
+function renderAppRedirectHtml({
+  deepLink,
+  intentLink,
+  sessionToken,
+  title,
+  subtitle,
+}: {
+  deepLink: string;
+  intentLink: string;
+  sessionToken?: string;
+  title: string;
+  subtitle: string;
+}) {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #080811;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+      text-align: center;
+    }
+    .card {
+      background: #111222;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 24px;
+      padding: 36px 24px;
+      max-width: 380px;
+      width: 100%;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .logo {
+      width: 68px;
+      height: 68px;
+      border-radius: 18px;
+      object-fit: cover;
+      margin-bottom: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3.5px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 24px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      padding: 14px 20px;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 15px;
+      border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4);
+      transition: transform 0.15s ease;
+    }
+    .btn:active {
+      transform: scale(0.98);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="/images/samparka_logo.jpg" alt="Samparka" class="logo" />
+    <h1>${title}</h1>
+    <p>${subtitle}</p>
+    <div class="spinner"></div>
+    <a href="${deepLink}" id="launch-btn" class="btn">Open Samparka App</a>
+  </div>
+  <script>
+    (function() {
+      var dl = ${JSON.stringify(deepLink)};
+      var il = ${JSON.stringify(intentLink)};
+      
+      try {
+        window.location.href = dl;
+      } catch (e) {}
+
+      setTimeout(function() {
+        try {
+          window.location.href = il;
+        } catch (e) {}
+      }, 400);
+    })();
+  </script>
+</body>
+</html>`;
+
+  const response = new NextResponse(html, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store, max-age=0",
+    },
+  });
+
+  if (sessionToken) {
+    response.cookies.set(AUTH_COOKIE.name, sessionToken, AUTH_COOKIE.options);
+    response.cookies.set("session_token", sessionToken, AUTH_COOKIE.options);
+  }
+
+  return response;
 }

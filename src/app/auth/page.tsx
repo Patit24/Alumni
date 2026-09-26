@@ -313,12 +313,127 @@ export default function AuthPage() {
     setGoogleLoading(true);
     setError(null);
     try {
+      const isNative = typeof window !== "undefined" && !!(window as any).Capacitor?.isNativePlatform?.();
       const supabase = createClient();
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/api/auth/callback` },
-      });
-      if (oauthError) throw oauthError;
+
+      if (isNative) {
+        const { Browser } = await import("@capacitor/browser");
+        const { App } = await import("@capacitor/app");
+
+        const sessionId = "s_" + Math.random().toString(36).substring(2, 9) + Date.now();
+        const baseOrigin = window.location.origin.includes("localhost")
+          ? "https://alumni-pink.vercel.app"
+          : window.location.origin;
+        const callbackUrl = `${baseOrigin}/api/auth/callback?app=1&app_session=${sessionId}`;
+
+        const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: callbackUrl,
+            skipBrowserRedirect: true,
+          },
+        });
+
+        if (oauthError) throw oauthError;
+        if (!data?.url) throw new Error("Could not initialize Google authentication session");
+
+        let resolved = false;
+
+        const applyAuthData = (
+          token?: string | null,
+          modeParam?: string | null,
+          email?: string | null,
+          name?: string | null,
+          avatar?: string | null,
+          sToken?: string | null
+        ) => {
+          resolved = true;
+          if (token) {
+            localStorage.setItem("alumni_session_token", token);
+            window.location.href = "/";
+            return;
+          }
+
+          if (modeParam === "google-onboard" || sToken) {
+            if (email) setEmailInput(email);
+            if (name) {
+              setWName(name);
+              const clean = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+              if (clean) setWUsername(`${clean}_${Math.random().toString(36).substring(2, 5)}`);
+            }
+            if (sToken) setSignupToken(sToken);
+            if (avatar) setGoogleAvatar(avatar);
+            setMode("google-onboard");
+            setGoogleLoading(false);
+          }
+        };
+
+        const urlListener = await App.addListener("appUrlOpen", async (event) => {
+          if (event?.url) {
+            try {
+              await Browser.close();
+            } catch {}
+
+            try {
+              const normalized = event.url
+                .replace("samparka://auth", "https://samparka.app/auth")
+                .replace("samparka://", "https://samparka.app/")
+                .replace("com.alumni.app://auth", "https://samparka.app/auth")
+                .replace("com.alumni.app://", "https://samparka.app/");
+              const urlObj = new URL(normalized);
+              const token = urlObj.searchParams.get("token");
+              const modeParam = urlObj.searchParams.get("mode");
+              const verifiedEmail = urlObj.searchParams.get("email");
+              const verifiedName = urlObj.searchParams.get("name");
+              const verifiedAvatar = urlObj.searchParams.get("avatar");
+              const sToken = urlObj.searchParams.get("signupToken");
+
+              if (token || modeParam || sToken) {
+                applyAuthData(token, modeParam, verifiedEmail, verifiedName, verifiedAvatar, sToken);
+              }
+            } catch (err) {
+              console.error("[OAUTH-DEEPLINK] Error parsing URL:", err);
+            }
+          }
+        });
+
+        await Browser.open({
+          url: data.url,
+          windowName: "_self",
+        });
+
+        const start = Date.now();
+        const poll = setInterval(async () => {
+          if (resolved || Date.now() - start > 180000) {
+            clearInterval(poll);
+            urlListener.remove();
+            if (!resolved) setGoogleLoading(false);
+            return;
+          }
+
+          try {
+            const res = await fetch(`/api/auth/oauth-status?session=${sessionId}`);
+            if (res.ok) {
+              const resData = await res.json();
+              if (resData?.ready) {
+                clearInterval(poll);
+                urlListener.remove();
+                try {
+                  await Browser.close();
+                } catch {}
+                applyAuthData(resData.token, resData.mode, resData.email, resData.name, resData.avatar, resData.signupToken);
+              }
+            }
+          } catch {}
+        }, 1500);
+
+      } else {
+        const { error: oauthError } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: `${window.location.origin}/api/auth/callback` },
+        });
+        if (oauthError) throw oauthError;
+      }
     } catch (err: any) {
       setError(err?.message || "Google Sign-In failed");
       setGoogleLoading(false);

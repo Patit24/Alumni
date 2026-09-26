@@ -4,6 +4,7 @@ import MobileBottomNav from "@/components/MobileBottomNav";
 import CallModal from "@/components/CallModal";
 import GlobalRealtimeProvider from "@/components/GlobalRealtimeProvider";
 import AntiScreenshotShield from "@/components/AntiScreenshotShield";
+import NativeAppAuthListener from "@/components/NativeAppAuthListener";
 
 export const metadata: Metadata = {
   title: "Samparka | Connect. Chat. Belong.",
@@ -35,6 +36,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-[#080811] text-white selection:bg-[#ff9933]/30 selection:text-orange-200">
         <GlobalRealtimeProvider />
         <AntiScreenshotShield />
+        <NativeAppAuthListener />
         {children}
         <CallModal />
         <MobileBottomNav />
