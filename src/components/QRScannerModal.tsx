@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { addLocalConnectedPeer, getLocalConnectedPeerIds } from "@/lib/e2ee/vault";
+import { authFetch } from "@/lib/auth-fetch";
 import jsQR from "jsqr";
 
 interface QRScannerModalProps {
@@ -101,20 +102,20 @@ export default function QRScannerModal({
 
     try {
       // 1. Try finding by ID directly
-      let res = await fetch(`/api/directory?id=${encodeURIComponent(target)}&batchScope=all&institutionScope=all`);
+      let res = await authFetch(`/api/directory?id=${encodeURIComponent(target)}&batchScope=all&institutionScope=all`);
       let data = await res.json();
       let peer = data.alumni?.[0];
 
       // 2. Try by username
       if (!peer) {
-        res = await fetch(`/api/directory?username=${encodeURIComponent(target)}&batchScope=all&institutionScope=all`);
+        res = await authFetch(`/api/directory?username=${encodeURIComponent(target)}&batchScope=all&institutionScope=all`);
         data = await res.json();
         peer = data.alumni?.[0];
       }
 
       // 3. Fallback search
       if (!peer) {
-        res = await fetch(`/api/directory?q=${encodeURIComponent(target)}&batchScope=all&institutionScope=all`);
+        res = await authFetch(`/api/directory?q=${encodeURIComponent(target)}&batchScope=all&institutionScope=all`);
         data = await res.json();
         peer = data.alumni?.[0];
       }
@@ -126,30 +127,20 @@ export default function QRScannerModal({
         let resolvedStatus: "NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED" | "SELF" = "NONE";
 
         try {
-          const reqRes = await fetch(`/api/contacts/requests?targetUserId=${encodeURIComponent(peer.id)}`);
+          const reqRes = await authFetch(`/api/connections?targetUserId=${encodeURIComponent(peer.id)}`);
           if (reqRes.ok) {
             const data = await reqRes.json();
-            const myId = data.myUserId || data.currentUserId || currentUser?.id;
-
-            if (myId && myId === peer.id) {
-              resolvedStatus = "SELF";
-            } else {
-              const isConn =
-                data.targetRelationship?.status === "CONNECTED" ||
-                data.targetRelationship?.isFriend === true ||
-                data.statusMap?.[peer.id] === "CONNECTED" ||
-                (Array.isArray(data.connectedPeerIds) && data.connectedPeerIds.includes(peer.id)) ||
-                (Array.isArray(data.connectedFriends) && data.connectedFriends.some((f: any) => f.id === peer.id));
-
-              if (isConn) {
+            const rel = data.relationship;
+            if (rel) {
+              if (rel.status === "SELF") {
+                resolvedStatus = "SELF";
+              } else if (rel.status === "CONNECTED" || rel.isConnection) {
                 resolvedStatus = "CONNECTED";
-                if (myId) addLocalConnectedPeer(peer.id, myId);
-              } else if (data.targetRelationship?.status) {
-                resolvedStatus = data.targetRelationship.status;
-              } else if (data.statusMap?.[peer.id]) {
-                resolvedStatus = data.statusMap[peer.id];
-              } else {
-                resolvedStatus = "NONE";
+                if (currentUser?.id) addLocalConnectedPeer(peer.id, currentUser.id);
+              } else if (rel.status === "PENDING_OUTGOING") {
+                resolvedStatus = "PENDING_OUTGOING";
+              } else if (rel.status === "PENDING_INCOMING") {
+                resolvedStatus = "PENDING_INCOMING";
               }
             }
           }
@@ -332,19 +323,19 @@ export default function QRScannerModal({
     setActionLoading(true);
     setActionNotice(null);
     try {
-      const res = await fetch("/api/contacts/connect", {
+      const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: peerId, action: "REQUEST" }),
+        body: JSON.stringify({ targetUserId: peerId, action: "CONNECT" }),
       });
       const data = await res.json().catch(() => ({}));
-      if (data.status === "CONNECTED" || data.status === "ACCEPTED" || data.isFriend === true) {
+      if (data.relationship?.isConnection || data.relationship?.status === "CONNECTED") {
         if (currentUser?.id) addLocalConnectedPeer(peerId, currentUser.id);
         setScannedRelStatus("CONNECTED");
-        setActionNotice("Connected! You are now friends.");
+        setActionNotice("Connected! You are now 1st-degree connections.");
       } else {
         setScannedRelStatus("PENDING_OUTGOING");
-        setActionNotice("Friend request sent! Once accepted, messaging will be unlocked.");
+        setActionNotice("Invitation sent! Once accepted, messaging and calling will be unlocked.");
       }
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (e) {
@@ -358,7 +349,7 @@ export default function QRScannerModal({
     setActionLoading(true);
     setActionNotice(null);
     try {
-      const res = await fetch("/api/contacts/connect", {
+      const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: peerId, action: "ACCEPT" }),
@@ -367,7 +358,7 @@ export default function QRScannerModal({
       if (res.ok) {
         if (currentUser?.id) addLocalConnectedPeer(peerId, currentUser.id);
         setScannedRelStatus("CONNECTED");
-        setActionNotice("Connection accepted! You are now friends.");
+        setActionNotice("Invitation accepted! You are now 1st-degree connections.");
         window.dispatchEvent(new CustomEvent("connection-requests-updated"));
       }
     } catch (e) {

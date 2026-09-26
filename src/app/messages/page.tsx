@@ -13,8 +13,9 @@ import {
   getCallLogs, clearCallLogs, VaultCallLog,
   getVaultConnectedPeerIds, getLocalConnectedPeerIds,
   addLocalConnectedPeer, syncLocalConnectedPeers, getLatestMessagesPerPeer,
-  setActiveVaultUser, VaultMessage,
+  setActiveVaultUser, VaultMessage, cacheConnectionProfiles, getCachedConnectionProfiles,
 } from "@/lib/e2ee/vault";
+import { authFetch } from "@/lib/auth-fetch";
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
 import { motion, AnimatePresence } from "framer-motion";
@@ -65,9 +66,19 @@ export default function MessagesHubPage() {
   const router = useRouter();
   const [tab, setTab] = useState<NavTab>("CHATS");
   const [searchQuery, setSearchQuery] = useState("");
-  const [contacts, setContacts] = useState<AlumniContact[]>([]);
+  const [contacts, setContacts] = useState<AlumniContact[]>(() => {
+    if (typeof window !== "undefined") {
+      return getCachedConnectionProfiles<AlumniContact>();
+    }
+    return [];
+  });
   const [callLogs, setCallLogs] = useState<VaultCallLog[]>([]);
-  const [connectedPeerIds, setConnectedPeerIds] = useState<Set<string>>(new Set());
+  const [connectedPeerIds, setConnectedPeerIds] = useState<Set<string>>(() => {
+    if (typeof window !== "undefined") {
+      return new Set(getLocalConnectedPeerIds());
+    }
+    return new Set();
+  });
   const [latestMessages, setLatestMessages] = useState<Map<string, VaultMessage>>(new Map());
   const [loading, setLoading] = useState(true);
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
@@ -82,7 +93,7 @@ export default function MessagesHubPage() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const meRes = await fetch("/api/auth/me").catch(() => null);
+      const meRes = await authFetch("/api/auth/me").catch(() => null);
       let currentUserId: string | null = null;
 
       if (meRes?.ok) {
@@ -100,82 +111,89 @@ export default function MessagesHubPage() {
         }
       }
 
-      const [dirRes, calls, lockRes, vaultPeers, latestMap, reqsRes] = await Promise.all([
-        fetch("/api/directory?limit=200&batchScope=all&institutionScope=all").catch(() => null),
+      // Read local peers for current user
+      const localPeers = new Set(getLocalConnectedPeerIds(currentUserId || undefined));
+      if (localPeers.size > 0) {
+        setConnectedPeerIds((prev) => new Set([...prev, ...localPeers]));
+      }
+
+      const clientPeersQuery = Array.from(localPeers).join(",");
+
+      const [connRes, dirRes, calls, lockRes, vaultPeers, latestMap, reqsRes] = await Promise.all([
+        authFetch(`/api/connections?type=connections&clientPeers=${encodeURIComponent(clientPeersQuery)}`).catch(() => null),
+        authFetch("/api/directory?limit=200&batchScope=all&institutionScope=all").catch(() => null),
         getCallLogs(currentUserId || undefined).catch(() => []),
-        fetch("/api/privacy/lock").catch(() => null),
+        authFetch("/api/privacy/lock").catch(() => null),
         getVaultConnectedPeerIds(currentUserId || undefined).catch(() => []),
         getLatestMessagesPerPeer(currentUserId || undefined).catch(() => new Map()),
-        fetch("/api/contacts/requests").catch(() => null),
+        authFetch("/api/contacts/requests").catch(() => null),
       ]);
 
       let loadedContacts: AlumniContact[] = [];
       if (dirRes?.ok) {
         const dirData = await dirRes.json();
         loadedContacts = dirData.alumni || dirData.users || [];
-        setContacts(loadedContacts);
       }
 
       setCallLogs(calls);
       setLatestMessages(latestMap);
 
-      // Build connected peer set from server DB (authoritative)
-      const serverConnectedPeers = new Set<string>();
+      // Start with all local cached peers
+      const activeConnectedPeers = new Set<string>(localPeers);
+
+      // 1. Process /api/connections (canonical 1st-degree connections)
+      let canonicalConnections: AlumniContact[] = [];
+      if (connRes?.ok) {
+        const connData = await connRes.json();
+        if (Array.isArray(connData.connections)) {
+          canonicalConnections = connData.connections;
+          for (const c of canonicalConnections) {
+            if (c.id && c.id !== currentUserId) {
+              activeConnectedPeers.add(c.id);
+            }
+          }
+        }
+      }
+
+      // 2. Process /api/contacts/requests (for incoming requests & backup peer IDs)
       if (reqsRes?.ok) {
         const reqsData = await reqsRes.json();
         if (reqsData.incoming) setIncomingRequests(reqsData.incoming);
         if (Array.isArray(reqsData.connectedPeerIds)) {
           for (const pid of reqsData.connectedPeerIds) {
             if (pid && pid !== currentUserId) {
-              serverConnectedPeers.add(pid);
+              activeConnectedPeers.add(pid);
             }
           }
         }
         if (Array.isArray(reqsData.connections)) {
-          setContacts((prev) => {
-            const map = new Map<string, AlumniContact>();
-            prev.forEach((c) => map.set(c.id, c));
-            reqsData.connections.forEach((c: any) => {
-              if (c && c.id) {
-                if (c.id !== currentUserId) serverConnectedPeers.add(c.id);
-                map.set(c.id, { ...map.get(c.id), ...c });
-              }
-            });
-            return Array.from(map.values());
-          });
+          for (const c of reqsData.connections) {
+            if (c?.id && c.id !== currentUserId) {
+              activeConnectedPeers.add(c.id);
+            }
+          }
         }
       }
 
-      // Sync local storage vault with authoritative server-confirmed friends
-      if (currentUserId) {
-        syncLocalConnectedPeers(Array.from(serverConnectedPeers), currentUserId);
-      }
+      // Merge all known contacts: canonical connections + directory contacts + cached
+      setContacts((prev) => {
+        const map = new Map<string, AlumniContact>();
+        prev.forEach((c) => map.set(c.id, c));
+        loadedContacts.forEach((c) => map.set(c.id, { ...map.get(c.id), ...c }));
+        canonicalConnections.forEach((c) => map.set(c.id, { ...map.get(c.id), ...c }));
 
-      // Authoritative friends list
-      setConnectedPeerIds(serverConnectedPeers);
+        const allList = Array.from(map.values());
+        const connectedOnly = allList.filter((c) => activeConnectedPeers.has(c.id));
+        if (connectedOnly.length > 0) {
+          cacheConnectionProfiles(connectedOnly, currentUserId || undefined);
+        }
+        return allList;
+      });
 
-      // Ensure any connected peer not in directory is dynamically resolved
-      const loadedIds = new Set(loadedContacts.map((c) => c.id));
-      const missingPeerIds = Array.from(serverConnectedPeers).filter((id): id is string => Boolean(id) && !loadedIds.has(id));
-      if (missingPeerIds.length > 0) {
-        try {
-          const fetchedMissing = await Promise.all(
-            missingPeerIds.map((id) =>
-              fetch(`/api/directory?id=${encodeURIComponent(id)}&batchScope=all&institutionScope=all`)
-                .then((r) => r.json())
-                .then((d) => d.alumni?.[0])
-                .catch(() => null)
-            )
-          );
-          const validMissing: AlumniContact[] = fetchedMissing.filter(Boolean);
-          if (validMissing.length > 0) {
-            setContacts((prev) => {
-              const prevIds = new Set(prev.map((c) => c.id));
-              const newUnique = validMissing.filter((m) => !prevIds.has(m.id));
-              return [...prev, ...newUnique];
-            });
-          }
-        } catch {}
+      // Update state and sync local storage
+      setConnectedPeerIds(activeConnectedPeers);
+      if (currentUserId && activeConnectedPeers.size > 0) {
+        syncLocalConnectedPeers(Array.from(activeConnectedPeers), currentUserId);
       }
 
       // Handle ?connect= query param from QR scan
@@ -189,7 +207,7 @@ export default function MessagesHubPage() {
             `/api/directory?id=${encodeURIComponent(clean)}&batchScope=all&institutionScope=all`,
             `/api/directory?q=${encodeURIComponent(clean)}&batchScope=all&institutionScope=all`,
           ]) {
-            const r = await fetch(endpoint).catch(() => null);
+            const r = await authFetch(endpoint).catch(() => null);
             if (r?.ok) {
               const data = await r.json();
               const peer = data.alumni?.[0];
@@ -216,29 +234,34 @@ export default function MessagesHubPage() {
   useEffect(() => {
     const refresh = () => {
       const uid = currentUserProfile?.id;
-      fetch("/api/contacts/requests").then(r => r.json()).then(data => {
-        if (data.incoming) setIncomingRequests(data.incoming);
-        const ids = new Set<string>();
-        if (Array.isArray(data.connectedPeerIds)) {
-          data.connectedPeerIds.forEach((id: string) => { if (id && id !== uid) ids.add(id); });
-        }
+      authFetch("/api/connections?type=connections").then(r => r.json()).then(data => {
         if (Array.isArray(data.connections)) {
           setContacts((prev) => {
             const map = new Map<string, AlumniContact>();
             prev.forEach((c) => map.set(c.id, c));
             data.connections.forEach((c: any) => {
-              if (c && c.id) {
-                if (c.id !== uid) ids.add(c.id);
-                map.set(c.id, { ...map.get(c.id), ...c });
-              }
+              if (c && c.id) map.set(c.id, { ...map.get(c.id), ...c });
             });
-            return Array.from(map.values());
+            const all = Array.from(map.values());
+            cacheConnectionProfiles(all.filter(c => data.connections.some((dc: any) => dc.id === c.id)), uid);
+            return all;
+          });
+          setConnectedPeerIds((prev) => {
+            const next = new Set(prev);
+            data.connections.forEach((c: any) => { if (c.id && c.id !== uid) next.add(c.id); });
+            return next;
           });
         }
-        if (uid) syncLocalConnectedPeers(Array.from(ids), uid);
-        setConnectedPeerIds(ids);
       }).catch(() => {});
-      getLatestMessagesPerPeer(uid).then(map => setLatestMessages(map)).catch(() => {});
+      authFetch("/api/contacts/requests").then(r => r.json()).then(data => {
+        if (data.incoming) setIncomingRequests(data.incoming);
+      }).catch(() => {});
+      if (uid) {
+        getVaultConnectedPeerIds(uid).then((peerIds) => {
+          if (peerIds.length > 0) setConnectedPeerIds(prev => new Set([...prev, ...peerIds]));
+        }).catch(() => {});
+        getLatestMessagesPerPeer(uid).then(map => setLatestMessages(map)).catch(() => {});
+      }
     };
     window.addEventListener("connection-requests-updated", refresh);
     window.addEventListener("vault-messages-updated", refresh);
@@ -251,7 +274,7 @@ export default function MessagesHubPage() {
   const handleAcceptRequest = async (userId: string) => {
     try {
       setRequestsLoading(true);
-      const res = await fetch("/api/contacts/connect", {
+      const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: userId, action: "ACCEPT" }),
@@ -261,6 +284,7 @@ export default function MessagesHubPage() {
         setConnectedPeerIds(prev => new Set(prev).add(userId));
         setIncomingRequests(prev => prev.filter(r => r.user.id !== userId));
         triggerHaptic("success");
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
       }
     } finally {
       setRequestsLoading(false);
@@ -270,14 +294,15 @@ export default function MessagesHubPage() {
   const handleDeclineRequest = async (userId: string) => {
     try {
       setRequestsLoading(true);
-      const res = await fetch("/api/contacts/connect", {
+      const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: userId, action: "REJECT" }),
+        body: JSON.stringify({ targetUserId: userId, action: "IGNORE" }),
       });
       if (res.ok) {
         setIncomingRequests(prev => prev.filter(r => r.user.id !== userId));
         triggerHaptic("light");
+        window.dispatchEvent(new CustomEvent("connection-requests-updated"));
       }
     } finally {
       setRequestsLoading(false);
@@ -290,13 +315,13 @@ export default function MessagesHubPage() {
   const handleQuickConnectAndChat = async (targetUserId: string) => {
     triggerHaptic("medium");
     try {
-      const res = await fetch("/api/contacts/connect", {
+      const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId, action: "REQUEST" }),
+        body: JSON.stringify({ targetUserId, action: "CONNECT" }),
       });
       const data = await res.json();
-      if (data.isFriend || data.status === "CONNECTED") {
+      if (data.relationship?.isConnection || data.relationship?.status === "CONNECTED") {
         addLocalConnectedPeer(targetUserId, currentUserId || undefined);
         setConnectedPeerIds((prev) => new Set(prev).add(targetUserId));
       }

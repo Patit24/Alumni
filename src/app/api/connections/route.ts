@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { db } from "@/lib/db";
 import {
+  canonicalUserPair,
   getConnectionRelationship,
   sendConnectionInvitation,
   acceptConnectionInvitation,
@@ -26,6 +28,39 @@ export async function GET(req: Request) {
     const type = searchParams.get("type");
     const search = searchParams.get("search") || undefined;
     const limit = parseInt(searchParams.get("limit") || "20", 10);
+    const clientPeersParam = searchParams.get("clientPeers");
+
+    // Self-healing: if client reports known connected peers, ensure they exist in DB
+    if (clientPeersParam) {
+      const clientPeers = clientPeersParam.split(",").map((s) => s.trim()).filter((id) => id && id !== user.id);
+      for (const peerId of clientPeers) {
+        try {
+          const { userAId, userBId } = canonicalUserPair(user.id, peerId);
+          const existing = await db.connectionRequest.findFirst({
+            where: {
+              OR: [
+                { userAId, userBId },
+                { senderId: user.id, receiverId: peerId },
+                { senderId: peerId, receiverId: user.id },
+              ],
+            },
+          });
+          if (!existing) {
+            await db.connectionRequest.create({
+              data: {
+                userAId,
+                userBId,
+                senderId: user.id,
+                receiverId: peerId,
+                initiatedBy: user.id,
+                status: "ACCEPTED",
+                acceptedAt: new Date(),
+              },
+            });
+          }
+        } catch {}
+      }
+    }
 
     // 1. Single user relationship lookup
     if (targetUserId) {
@@ -85,6 +120,46 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const { action, targetUserId, message } = body;
+
+    // SYNC action: restores accepted connections from client's knownPeerIds
+    if (action === "SYNC") {
+      const knownPeerIds: string[] = Array.isArray(body.knownPeerIds) ? body.knownPeerIds : [];
+      for (const peerId of knownPeerIds) {
+        if (!peerId || peerId === user.id) continue;
+        try {
+          const { userAId, userBId } = canonicalUserPair(user.id, peerId);
+          const existing = await db.connectionRequest.findFirst({
+            where: {
+              OR: [
+                { userAId, userBId },
+                { senderId: user.id, receiverId: peerId },
+                { senderId: peerId, receiverId: user.id },
+              ],
+            },
+          });
+          if (!existing) {
+            await db.connectionRequest.create({
+              data: {
+                userAId,
+                userBId,
+                senderId: user.id,
+                receiverId: peerId,
+                initiatedBy: user.id,
+                status: "ACCEPTED",
+                acceptedAt: new Date(),
+              },
+            });
+          } else if (existing.status !== "ACCEPTED" && existing.status !== "CONNECTED") {
+            await db.connectionRequest.update({
+              where: { id: existing.id },
+              data: { status: "ACCEPTED", acceptedAt: new Date() },
+            });
+          }
+        } catch {}
+      }
+      const connections = await getMyConnections(user.id);
+      return NextResponse.json({ success: true, connections, total: connections.length });
+    }
 
     if (!targetUserId) {
       return NextResponse.json({ error: "targetUserId is required" }, { status: 400 });

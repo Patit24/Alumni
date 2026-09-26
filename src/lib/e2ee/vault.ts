@@ -578,6 +578,14 @@ export function removeLocalConnectedPeer(peerId: string, userId?: string): void 
       const filtered = scopedList.filter((id) => id !== peerId);
       localStorage.setItem(scopedKey, JSON.stringify(filtered));
     }
+    // Also clean up cached connection profiles
+    const cachedKey = `alumni_cached_connections_${uid}`;
+    const rawCached = localStorage.getItem(cachedKey);
+    if (rawCached) {
+      const cachedList: any[] = JSON.parse(rawCached);
+      const filteredCached = cachedList.filter((c: any) => (c.id || c.userId) !== peerId);
+      localStorage.setItem(cachedKey, JSON.stringify(filteredCached));
+    }
     window.dispatchEvent(new CustomEvent("connection-requests-updated"));
   } catch {}
 }
@@ -588,12 +596,46 @@ export function syncLocalConnectedPeers(serverPeerIds: string[], userId?: string
   if (!uid) return;
   try {
     const scopedKey = `alumni_connected_peer_ids_${uid}`;
-    const valid = Array.from(new Set(serverPeerIds.filter((id) => id && id !== uid)));
-    localStorage.setItem(scopedKey, JSON.stringify(valid));
+    const rawScoped = localStorage.getItem(scopedKey);
+    const existingList: string[] = rawScoped ? JSON.parse(rawScoped) : [];
+    
+    // Always merge existing local peers with server peer IDs so temporary network
+    // failures or server container cold-starts NEVER erase connected friends!
+    const validServer = (serverPeerIds || []).filter((id) => id && id !== uid);
+    const merged = Array.from(
+      new Set([...existingList.filter((id) => id && id !== uid), ...validServer])
+    );
+    
+    if (merged.length > 0) {
+      localStorage.setItem(scopedKey, JSON.stringify(merged));
+    }
     if (localStorage.getItem("alumni_connected_peer_ids_global")) {
       localStorage.removeItem("alumni_connected_peer_ids_global");
     }
   } catch {}
+}
+
+export function cacheConnectionProfiles(profiles: any[], userId?: string): void {
+  if (typeof window === "undefined" || !Array.isArray(profiles)) return;
+  const uid = userId || getActiveVaultUserId();
+  if (!uid) return;
+  try {
+    const key = `alumni_cached_connections_${uid}`;
+    localStorage.setItem(key, JSON.stringify(profiles));
+  } catch {}
+}
+
+export function getCachedConnectionProfiles<T = any>(userId?: string): T[] {
+  if (typeof window === "undefined") return [];
+  const uid = userId || getActiveVaultUserId();
+  if (!uid) return [];
+  try {
+    const key = `alumni_cached_connections_${uid}`;
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function clearUserLocalVault(userId?: string): void {

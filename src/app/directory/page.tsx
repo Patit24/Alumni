@@ -25,7 +25,15 @@ import {
   Inbox,
   MoreVertical,
 } from "lucide-react";
-import { addLocalConnectedPeer, syncLocalConnectedPeers, setActiveVaultUser } from "@/lib/e2ee/vault";
+import {
+  addLocalConnectedPeer,
+  removeLocalConnectedPeer,
+  syncLocalConnectedPeers,
+  setActiveVaultUser,
+  cacheConnectionProfiles,
+  getCachedConnectionProfiles,
+} from "@/lib/e2ee/vault";
+import { authFetch } from "@/lib/auth-fetch";
 
 interface ConnectionProfile {
   id: string;
@@ -94,7 +102,7 @@ export default function DirectoryPage() {
   // 1. Fetch Authoritative Connection Network Data
   const fetchNetworkData = async () => {
     try {
-      const res = await fetch("/api/connections");
+      const res = await authFetch("/api/connections");
       if (!res.ok) return;
       const data = await res.json();
 
@@ -161,7 +169,7 @@ export default function DirectoryPage() {
         if (selectedCity !== "all") params.set("city", selectedCity);
         if (selectedDept !== "all") params.set("department", selectedDept);
 
-        const res = await fetch(`/api/directory?${params.toString()}`);
+        const res = await authFetch(`/api/directory?${params.toString()}`);
         const data = await res.json();
 
         if (!isCancelled && data.alumni) {
@@ -199,7 +207,7 @@ export default function DirectoryPage() {
     setStatusMap((prev) => ({ ...prev, [targetUserId]: "PENDING_OUTGOING" }));
 
     try {
-      const res = await fetch("/api/connections", {
+      const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "CONNECT", targetUserId }),
@@ -230,7 +238,7 @@ export default function DirectoryPage() {
     if (currentUserId) addLocalConnectedPeer(targetUserId, currentUserId);
 
     try {
-      await fetch("/api/connections", {
+      await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "ACCEPT", targetUserId }),
@@ -255,7 +263,7 @@ export default function DirectoryPage() {
     setReceivedInvitations((prev) => prev.filter((inv) => inv.user?.id !== targetUserId));
 
     try {
-      await fetch("/api/connections", {
+      await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "IGNORE", targetUserId }),
@@ -280,7 +288,7 @@ export default function DirectoryPage() {
     setSentInvitations((prev) => prev.filter((inv) => inv.user?.id !== targetUserId));
 
     try {
-      await fetch("/api/connections", {
+      await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "WITHDRAW", targetUserId }),
@@ -302,9 +310,12 @@ export default function DirectoryPage() {
     setActionLoadingId(targetUserId);
     setStatusMap((prev) => ({ ...prev, [targetUserId]: "NOT_CONNECTED" }));
     setConnections((prev) => prev.filter((c) => c.id !== targetUserId));
+    if (currentUserId) {
+      removeLocalConnectedPeer(targetUserId, currentUserId);
+    }
 
     try {
-      await fetch("/api/connections", {
+      await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "REMOVE", targetUserId }),

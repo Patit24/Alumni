@@ -44,9 +44,11 @@ import {
   markMessageBurned,
   addLocalConnectedPeer,
   removeLocalConnectedPeer,
+  getLocalConnectedPeerIds,
   setActiveVaultUser,
   VaultMessage,
 } from "@/lib/e2ee/vault";
+import { authFetch } from "@/lib/auth-fetch";
 import {
   importPeerPublicKey,
   deriveSharedSessionKey,
@@ -160,7 +162,7 @@ export default function DirectMessageChatPage(props: {
         setLoading(true);
 
         // Fetch current authenticated user
-        const meRes = await fetch("/api/auth/me");
+        const meRes = await authFetch("/api/auth/me");
         const meData = await meRes.json();
         if (!meData.authenticated || !meData.user) {
           router.push("/auth");
@@ -170,23 +172,29 @@ export default function DirectMessageChatPage(props: {
         setActiveVaultUser(user.id);
         setCurrentUser({ id: user.id, name: user.name });
 
+        // Check local peer vault first
+        const localPeers = getLocalConnectedPeerIds(user.id);
+        const isLocallyConnected = localPeers.includes(peerId);
+
         // Fetch peer profile from directory, trust, and canonical connection relationship
         const [peerRes, trustRes, connRes] = await Promise.all([
-          fetch(`/api/directory?id=${peerId}`, { cache: "no-store" }),
-          fetch(`/api/contacts/trust?contactId=${peerId}`, { cache: "no-store" }),
-          fetch(`/api/contacts/requests?targetUserId=${peerId}`, { cache: "no-store" }),
+          authFetch(`/api/directory?id=${peerId}`, { cache: "no-store" }),
+          authFetch(`/api/contacts/trust?contactId=${peerId}`, { cache: "no-store" }),
+          authFetch(`/api/connections?targetUserId=${peerId}`, { cache: "no-store" }),
         ]);
 
-        let relStatus: "CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE" = "NONE";
+        let relStatus: "CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE" = isLocallyConnected ? "CONNECTED" : "NONE";
         if (connRes.ok) {
           const cData = await connRes.json();
-          if (cData.targetRelationship?.status) {
-            relStatus = cData.targetRelationship.status;
-          } else if (cData.statusMap && cData.statusMap[peerId]) {
-            relStatus = cData.statusMap[peerId];
-          }
-          if (Array.isArray(cData.connectedPeerIds) && cData.connectedPeerIds.includes(peerId)) {
-            relStatus = "CONNECTED";
+          const rel = cData.relationship;
+          if (rel) {
+            if (rel.status === "CONNECTED" || rel.isConnection) {
+              relStatus = "CONNECTED";
+            } else if (rel.status === "PENDING_OUTGOING") {
+              relStatus = "PENDING_OUTGOING";
+            } else if (rel.status === "PENDING_INCOMING") {
+              relStatus = "PENDING_INCOMING";
+            }
           }
         }
 
@@ -224,7 +232,7 @@ export default function DirectMessageChatPage(props: {
         setMyDeviceId(localIdentity.deviceId);
 
         // Register device public key on server
-        await fetch("/api/messages/devices", {
+        await authFetch("/api/messages/devices", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -235,7 +243,7 @@ export default function DirectMessageChatPage(props: {
         }).catch(() => {});
 
         // Fetch peer's registered device public keys
-        const devRes = await fetch(`/api/messages/devices?userId=${peerId}`);
+        const devRes = await authFetch(`/api/messages/devices?userId=${peerId}`);
         const devData = await devRes.json();
         let peerPubKeySpki: string | null = null;
 
@@ -251,7 +259,7 @@ export default function DirectMessageChatPage(props: {
           }
         } else {
           // Retry once in case server auto-provisioned
-          const retryRes = await fetch(`/api/messages/devices?userId=${peerId}`);
+          const retryRes = await authFetch(`/api/messages/devices?userId=${peerId}`);
           const retryData = await retryRes.json();
           if (retryData.devices && retryData.devices.length > 0 && retryData.devices[0].publicKey) {
             peerPubKeySpki = retryData.devices[0].publicKey;
@@ -580,7 +588,7 @@ export default function DirectMessageChatPage(props: {
 
       // 4. Relay encrypted payload to server queue (Persisted for 2 days) & push notification
       const activeDeviceId = myDeviceId || "device_web_identity";
-      const res = await fetch("/api/messages/relay", {
+      const res = await authFetch("/api/messages/relay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -626,7 +634,7 @@ export default function DirectMessageChatPage(props: {
   // Trust Handshake Actions
   const handleUpdateTrust = async (newLevel: "CONNECTED" | "TRUSTED" | "BLOCKED") => {
     try {
-      const res = await fetch("/api/contacts/trust", {
+      const res = await authFetch("/api/contacts/trust", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -641,8 +649,8 @@ export default function DirectMessageChatPage(props: {
           if (currentUser) {
             addLocalConnectedPeer(peerId, currentUser.id);
           }
-          // Sync to /api/contacts/connect so connectionRequest table is marked ACCEPTED
-          await fetch("/api/contacts/connect", {
+          // Sync to /api/connections so connectionRequest is marked ACCEPTED
+          await authFetch("/api/connections", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ targetUserId: peerId, action: "ACCEPT" }),
@@ -653,10 +661,10 @@ export default function DirectMessageChatPage(props: {
           if (currentUser) {
             removeLocalConnectedPeer(peerId, currentUser.id);
           }
-          await fetch("/api/contacts/connect", {
+          await authFetch("/api/connections", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ targetUserId: peerId, action: "BLOCK" }),
+            body: JSON.stringify({ targetUserId: peerId, action: "REMOVE" }),
           }).catch(() => {});
           window.dispatchEvent(new CustomEvent("connection-requests-updated"));
         }
@@ -671,10 +679,10 @@ export default function DirectMessageChatPage(props: {
       return;
     }
     try {
-      await fetch("/api/contacts/connect", {
+      await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: peerId, action: "UNFRIEND" }),
+        body: JSON.stringify({ targetUserId: peerId, action: "REMOVE" }),
       });
       if (currentUser) {
         removeLocalConnectedPeer(peerId, currentUser.id);
@@ -695,7 +703,7 @@ export default function DirectMessageChatPage(props: {
     if (!safetyNumber) return;
     try {
       await verifyContactSafety(peerId, true);
-      await fetch("/api/contacts/trust", {
+      await authFetch("/api/contacts/trust", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -715,7 +723,7 @@ export default function DirectMessageChatPage(props: {
     const updated = { ...myReveals, [field]: !myReveals[field] };
     setMyReveals(updated);
     try {
-      await fetch("/api/contacts/trust", {
+      await authFetch("/api/contacts/trust", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

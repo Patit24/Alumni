@@ -28,7 +28,8 @@ import {
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
 import EditProfileModal from "@/components/EditProfileModal";
-import { addLocalConnectedPeer, getLocalConnectedPeerIds, setActiveVaultUser } from "@/lib/e2ee/vault";
+import { addLocalConnectedPeer, removeLocalConnectedPeer, getLocalConnectedPeerIds, setActiveVaultUser } from "@/lib/e2ee/vault";
+import { authFetch } from "@/lib/auth-fetch";
 
 interface ProfileHeaderCardProps {
   user: {
@@ -300,28 +301,24 @@ export default function ProfileHeaderCard({
   useEffect(() => {
     if (!currentUser || isOwnProfile) return;
     const fetchStatus = () => {
-      fetch(`/api/contacts/requests?targetUserId=${user.id}`)
+      authFetch(`/api/connections?targetUserId=${user.id}`)
         .then((r) => r.json())
         .then((data) => {
-          const isConn =
-            data.targetRelationship?.status === "CONNECTED" ||
-            data.targetRelationship?.isFriend === true ||
-            data.statusMap?.[user.id] === "CONNECTED" ||
-            (Array.isArray(data.connectedPeerIds) && data.connectedPeerIds.includes(user.id)) ||
-            (Array.isArray(data.connectedFriends) && data.connectedFriends.some((f: any) => f.id === user.id));
-
-          if (isConn) {
-            setRelStatus("CONNECTED");
-            if (currentUser?.id) addLocalConnectedPeer(user.id, currentUser.id);
-          } else if (data.targetRelationship?.status) {
-            setRelStatus(data.targetRelationship.status);
-          } else if (data.statusMap && data.statusMap[user.id]) {
-            setRelStatus(data.statusMap[user.id]);
-          } else {
-            setRelStatus("NONE");
-          }
-          if (typeof data.mutualCount === "number") {
-            setMutualCount(data.mutualCount);
+          const rel = data.relationship;
+          if (rel) {
+            if (rel.status === "CONNECTED" || rel.isConnection) {
+              setRelStatus("CONNECTED");
+              if (currentUser?.id) addLocalConnectedPeer(user.id, currentUser.id);
+            } else if (rel.status === "PENDING_OUTGOING") {
+              setRelStatus("PENDING_OUTGOING");
+            } else if (rel.status === "PENDING_INCOMING") {
+              setRelStatus("PENDING_INCOMING");
+            } else {
+              setRelStatus("NONE");
+            }
+            if (typeof rel.mutualCount === "number") {
+              setMutualCount(rel.mutualCount);
+            }
           }
         })
         .catch(() => {});
@@ -338,17 +335,16 @@ export default function ProfileHeaderCard({
       return;
     }
     setConnecting(true);
-    // Optimistic UI update: Request sent (PENDING)
     setRelStatus("PENDING_OUTGOING");
 
     try {
-      const res = await fetch("/api/contacts/connect", {
+      const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: user.id, action: "REQUEST" }),
+        body: JSON.stringify({ targetUserId: user.id, action: "CONNECT" }),
       });
       const data = await res.json().catch(() => ({}));
-      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || data.isFriend) {
+      if (data.relationship?.isConnection || data.relationship?.status === "CONNECTED") {
         setRelStatus("CONNECTED");
         addLocalConnectedPeer(user.id, currentUser.id);
       } else {
@@ -357,11 +353,6 @@ export default function ProfileHeaderCard({
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (err) {
       console.error(err);
-      fetch(`/api/contacts/requests?targetUserId=${user.id}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.statusMap) setRelStatus(data.statusMap[user.id] || "NONE");
-        });
     } finally {
       setConnecting(false);
     }
@@ -374,13 +365,13 @@ export default function ProfileHeaderCard({
       addLocalConnectedPeer(user.id, currentUser.id);
     }
     try {
-      const res = await fetch("/api/contacts/connect", {
+      const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: user.id, action: "ACCEPT" }),
       });
       const data = await res.json();
-      if (data.status === "ACCEPTED" || data.status === "CONNECTED" || data.isFriend) {
+      if (data.relationship?.isConnection || data.relationship?.status === "CONNECTED") {
         setRelStatus("CONNECTED");
         if (currentUser?.id) addLocalConnectedPeer(user.id, currentUser.id);
       }
@@ -396,10 +387,10 @@ export default function ProfileHeaderCard({
     setConnecting(true);
     setRelStatus("NONE");
     try {
-      await fetch("/api/contacts/connect", {
+      await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: user.id, action: "REJECT" }),
+        body: JSON.stringify({ targetUserId: user.id, action: "IGNORE" }),
       });
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (err) {
@@ -413,10 +404,10 @@ export default function ProfileHeaderCard({
     setConnecting(true);
     setRelStatus("NONE");
     try {
-      await fetch("/api/contacts/connect", {
+      await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: user.id, action: "CANCEL" }),
+        body: JSON.stringify({ targetUserId: user.id, action: "WITHDRAW" }),
       });
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (err) {
@@ -430,8 +421,11 @@ export default function ProfileHeaderCard({
     if (!confirm(`Are you sure you want to remove ${user.name} from your 1st-degree connections?`)) return;
     setConnecting(true);
     setRelStatus("NONE");
+    if (currentUser?.id) {
+      removeLocalConnectedPeer(user.id, currentUser.id);
+    }
     try {
-      await fetch("/api/connections", {
+      await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: user.id, action: "REMOVE" }),

@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { db } from "@/lib/db";
 
 const JWT_SECRET = new TextEncoder().encode(
@@ -83,7 +83,23 @@ export async function getCurrentUser(explicitToken?: string | null) {
       payload = await verifySessionToken(explicitToken.trim());
     }
 
-    // 2. If explicit token is missing or failed verification, fall back to cookies
+    // 2. Check Authorization header for Bearer token (critical for mobile webviews / capacitor)
+    if (!payload) {
+      try {
+        const reqHeaders = await headers();
+        const authHeader = reqHeaders.get("authorization") || reqHeaders.get("Authorization");
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+          const bearer = authHeader.slice(7).trim();
+          if (bearer && bearer !== "null" && bearer !== "undefined") {
+            payload = await verifySessionToken(bearer);
+          }
+        }
+      } catch {
+        // Headers might not be available in some contexts, fall through
+      }
+    }
+
+    // 3. If explicit or header token is missing or failed verification, fall back to cookies
     if (!payload) {
       const cookieToken =
         cookieStore.get(SESSION_COOKIE_NAME)?.value ||
