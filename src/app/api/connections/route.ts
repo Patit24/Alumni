@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
   canonicalUserPair,
+  ensurePeerUserExists,
   getConnectionRelationship,
   sendConnectionInvitation,
   acceptConnectionInvitation,
@@ -35,6 +36,10 @@ export async function GET(req: Request) {
       const clientPeers = clientPeersParam.split(",").map((s) => s.trim()).filter((id) => id && id !== user.id);
       for (const peerId of clientPeers) {
         try {
+          // 1. Ensure peer user exists in this SQLite container so FK constraint never fails
+          await ensurePeerUserExists(peerId, user);
+
+          // 2. Ensure connection request exists and is ACCEPTED
           const { userAId, userBId } = canonicalUserPair(user.id, peerId);
           const existing = await db.connectionRequest.findFirst({
             where: {
@@ -57,8 +62,18 @@ export async function GET(req: Request) {
                 acceptedAt: new Date(),
               },
             });
+          } else if (existing.status !== "ACCEPTED" && existing.status !== "CONNECTED") {
+            await db.connectionRequest.update({
+              where: { id: existing.id },
+              data: {
+                status: "ACCEPTED",
+                acceptedAt: existing.acceptedAt || new Date(),
+              },
+            });
           }
-        } catch {}
+        } catch (healErr) {
+          console.warn(`[GET /api/connections] Error healing peer ${peerId}:`, healErr);
+        }
       }
     }
 
@@ -124,9 +139,16 @@ export async function POST(req: Request) {
     // SYNC action: restores accepted connections from client's knownPeerIds
     if (action === "SYNC") {
       const knownPeerIds: string[] = Array.isArray(body.knownPeerIds) ? body.knownPeerIds : [];
+      const knownProfiles: any[] = Array.isArray(body.knownProfiles) ? body.knownProfiles : [];
+      const profileMap = new Map<string, any>();
+      knownProfiles.forEach((p) => { if (p?.id) profileMap.set(p.id, p); });
+
       for (const peerId of knownPeerIds) {
         if (!peerId || peerId === user.id) continue;
         try {
+          // Ensure peer user exists in this SQLite container
+          await ensurePeerUserExists(peerId, user, profileMap.get(peerId));
+
           const { userAId, userBId } = canonicalUserPair(user.id, peerId);
           const existing = await db.connectionRequest.findFirst({
             where: {
@@ -152,10 +174,12 @@ export async function POST(req: Request) {
           } else if (existing.status !== "ACCEPTED" && existing.status !== "CONNECTED") {
             await db.connectionRequest.update({
               where: { id: existing.id },
-              data: { status: "ACCEPTED", acceptedAt: new Date() },
+              data: { status: "ACCEPTED", acceptedAt: existing.acceptedAt || new Date() },
             });
           }
-        } catch {}
+        } catch (syncErr) {
+          console.warn(`[POST /api/connections SYNC] Error syncing peer ${peerId}:`, syncErr);
+        }
       }
       const connections = await getMyConnections(user.id);
       return NextResponse.json({ success: true, connections, total: connections.length });

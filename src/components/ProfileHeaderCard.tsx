@@ -28,7 +28,14 @@ import {
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
 import EditProfileModal from "@/components/EditProfileModal";
-import { addLocalConnectedPeer, removeLocalConnectedPeer, getLocalConnectedPeerIds, setActiveVaultUser } from "@/lib/e2ee/vault";
+import {
+  addLocalConnectedPeer,
+  removeLocalConnectedPeer,
+  getLocalConnectedPeerIds,
+  setActiveVaultUser,
+  cacheConnectionProfiles,
+  getActiveVaultUserId,
+} from "@/lib/e2ee/vault";
 import { authFetch } from "@/lib/auth-fetch";
 
 interface ProfileHeaderCardProps {
@@ -294,27 +301,43 @@ export default function ProfileHeaderCard({
     e.target.value = "";
   };
 
-  const [relStatus, setRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">("NONE");
+  const [relStatus, setRelStatus] = useState<"NONE" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">(() => {
+    if (typeof window !== "undefined" && user?.id) {
+      const uid = currentUser?.id || getActiveVaultUserId();
+      const localPeers = getLocalConnectedPeerIds(uid || undefined);
+      if (localPeers.includes(user.id)) return "CONNECTED";
+    }
+    return "NONE";
+  });
   const [mutualCount, setMutualCount] = useState<number>(0);
 
   // Fetch true relationship status and mutual connections from server
   useEffect(() => {
     if (!currentUser || isOwnProfile) return;
+    const uid = currentUser.id || getActiveVaultUserId();
     const fetchStatus = () => {
-      authFetch(`/api/connections?targetUserId=${user.id}`)
+      const localPeers = getLocalConnectedPeerIds(uid || undefined);
+      const isLocallyConnected = localPeers.includes(user.id);
+      if (isLocallyConnected) {
+        setRelStatus("CONNECTED");
+      }
+      const clientPeersQuery = isLocallyConnected ? user.id : "";
+      const url = `/api/connections?targetUserId=${user.id}${clientPeersQuery ? `&clientPeers=${encodeURIComponent(clientPeersQuery)}` : ""}`;
+      authFetch(url)
         .then((r) => r.json())
         .then((data) => {
           const rel = data.relationship;
           if (rel) {
             if (rel.status === "CONNECTED" || rel.isConnection) {
               setRelStatus("CONNECTED");
-              if (currentUser?.id) addLocalConnectedPeer(user.id, currentUser.id);
+              if (uid) addLocalConnectedPeer(user.id, uid);
             } else if (rel.status === "PENDING_OUTGOING") {
-              setRelStatus("PENDING_OUTGOING");
+              if (!isLocallyConnected) setRelStatus("PENDING_OUTGOING");
             } else if (rel.status === "PENDING_INCOMING") {
-              setRelStatus("PENDING_INCOMING");
+              if (!isLocallyConnected) setRelStatus("PENDING_INCOMING");
             } else {
-              setRelStatus("NONE");
+              // Never downgrade to NONE if already locally known to be connected
+              if (!isLocallyConnected) setRelStatus("NONE");
             }
             if (typeof rel.mutualCount === "number") {
               setMutualCount(rel.mutualCount);
@@ -346,7 +369,24 @@ export default function ProfileHeaderCard({
       const data = await res.json().catch(() => ({}));
       if (data.relationship?.isConnection || data.relationship?.status === "CONNECTED") {
         setRelStatus("CONNECTED");
-        addLocalConnectedPeer(user.id, currentUser.id);
+        const uid = currentUser.id || getActiveVaultUserId();
+        if (uid) {
+          addLocalConnectedPeer(user.id, uid);
+          cacheConnectionProfiles([{
+            id: user.id,
+            name: user.name,
+            username: user.username,
+            avatarUrl: user.avatarUrl,
+            batchYear: user.batchYear,
+            currentRole: user.currentRole,
+            currentCompany: user.currentCompany,
+            city: user.city,
+            verificationStatus: user.verificationStatus,
+            institution: user.institution,
+            department: user.department,
+            connectedAt: new Date().toISOString(),
+          }], uid);
+        }
       } else {
         setRelStatus("PENDING_OUTGOING");
       }
@@ -361,8 +401,23 @@ export default function ProfileHeaderCard({
   const handleAcceptConnect = async () => {
     setConnecting(true);
     setRelStatus("CONNECTED");
-    if (currentUser?.id) {
-      addLocalConnectedPeer(user.id, currentUser.id);
+    const uid = currentUser?.id || getActiveVaultUserId();
+    if (uid) {
+      addLocalConnectedPeer(user.id, uid);
+      cacheConnectionProfiles([{
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        avatarUrl: user.avatarUrl,
+        batchYear: user.batchYear,
+        currentRole: user.currentRole,
+        currentCompany: user.currentCompany,
+        city: user.city,
+        verificationStatus: user.verificationStatus,
+        institution: user.institution,
+        department: user.department,
+        connectedAt: new Date().toISOString(),
+      }], uid);
     }
     try {
       const res = await authFetch("/api/connections", {
@@ -370,10 +425,9 @@ export default function ProfileHeaderCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetUserId: user.id, action: "ACCEPT" }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (data.relationship?.isConnection || data.relationship?.status === "CONNECTED") {
         setRelStatus("CONNECTED");
-        if (currentUser?.id) addLocalConnectedPeer(user.id, currentUser.id);
       }
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
     } catch (err) {

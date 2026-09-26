@@ -32,6 +32,8 @@ import {
   setActiveVaultUser,
   cacheConnectionProfiles,
   getCachedConnectionProfiles,
+  getActiveVaultUserId,
+  getLocalConnectedPeerIds,
 } from "@/lib/e2ee/vault";
 import { authFetch } from "@/lib/auth-fetch";
 
@@ -72,8 +74,14 @@ export default function DirectoryPage() {
   const [activeTab, setActiveTab] = useState<"grow" | "invitations" | "connections">("grow");
   const [invitationsSubTab, setInvitationsSubTab] = useState<"received" | "sent">("received");
 
-  // Core Data
-  const [connections, setConnections] = useState<ConnectionProfile[]>([]);
+  // Core Data - initialized from local cache so friend lists are never wiped on server cold starts
+  const [connections, setConnections] = useState<ConnectionProfile[]>(() => {
+    if (typeof window !== "undefined") {
+      const uid = getActiveVaultUserId();
+      return getCachedConnectionProfiles<ConnectionProfile>(uid || undefined);
+    }
+    return [];
+  });
   const [receivedInvitations, setReceivedInvitations] = useState<InvitationItem[]>([]);
   const [sentInvitations, setSentInvitations] = useState<InvitationItem[]>([]);
   const [alumni, setAlumni] = useState<ConnectionProfile[]>([]);
@@ -91,28 +99,68 @@ export default function DirectoryPage() {
   const [availableCities, setAvailableCities] = useState<string[]>([]);
   const [availableDepts, setAvailableDepts] = useState<string[]>([]);
 
-  // States & Status Map
+  // States & Status Map - seeded from local storage so connected friends show CONNECTED immediately
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [statusMap, setStatusMap] = useState<Record<string, "NOT_CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">>({});
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") return getActiveVaultUserId();
+    return null;
+  });
+  const [statusMap, setStatusMap] = useState<Record<string, "NOT_CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED">>(() => {
+    const initial: Record<string, "NOT_CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED"> = {};
+    if (typeof window !== "undefined") {
+      const uid = getActiveVaultUserId();
+      const peers = getLocalConnectedPeerIds(uid || undefined);
+      peers.forEach((pid) => { initial[pid] = "CONNECTED"; });
+      const cached = getCachedConnectionProfiles<ConnectionProfile>(uid || undefined);
+      cached.forEach((c) => { if (c?.id) initial[c.id] = "CONNECTED"; });
+    }
+    return initial;
+  });
   const [mutualMap, setMutualMap] = useState<Record<string, number>>({});
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
-  // 1. Fetch Authoritative Connection Network Data
+  // 1. Fetch Authoritative Connection Network Data with self-healing clientPeers
   const fetchNetworkData = async () => {
     try {
-      const res = await authFetch("/api/connections");
+      const uid = currentUserId || getActiveVaultUserId();
+      const localPeers = getLocalConnectedPeerIds(uid || undefined);
+      const clientPeersQuery = localPeers.join(",");
+
+      const url = clientPeersQuery
+        ? `/api/connections?clientPeers=${encodeURIComponent(clientPeersQuery)}`
+        : "/api/connections";
+
+      const res = await authFetch(url);
       if (!res.ok) return;
       const data = await res.json();
 
-      if (data.connections) {
-        setConnections(data.connections);
-        const peerIds = data.connections.map((c: ConnectionProfile) => c.id);
-        if (currentUserId) {
-          syncLocalConnectedPeers(peerIds, currentUserId);
-        }
+      // Merge server connections with cached profiles so server cold-starts NEVER erase friends
+      const cachedProfiles = getCachedConnectionProfiles<ConnectionProfile>(uid || undefined);
+      const map = new Map<string, ConnectionProfile>();
+
+      // 1. Start with local cached profiles
+      cachedProfiles.forEach((p) => {
+        if (p && p.id && p.id !== uid) map.set(p.id, p);
+      });
+
+      // 2. Overlay server connections
+      if (Array.isArray(data.connections)) {
+        data.connections.forEach((c: ConnectionProfile) => {
+          if (c && c.id && c.id !== uid) {
+            map.set(c.id, { ...(map.get(c.id) || {}), ...c });
+          }
+        });
       }
+
+      const mergedConnections = Array.from(map.values());
+      setConnections(mergedConnections);
+
+      if (uid && mergedConnections.length > 0) {
+        cacheConnectionProfiles(mergedConnections, uid);
+        syncLocalConnectedPeers(mergedConnections.map((c) => c.id), uid);
+      }
+
       if (Array.isArray(data.receivedInvitations)) {
         setReceivedInvitations(data.receivedInvitations);
       }
@@ -120,24 +168,30 @@ export default function DirectoryPage() {
         setSentInvitations(data.sentInvitations);
       }
 
-      // Build status map from database
+      // Build status map from local persistence + server database
       const newStatusMap: Record<string, "NOT_CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "CONNECTED"> = {};
       const newMutualMap: Record<string, number> = {};
 
-      data.connections?.forEach((c: ConnectionProfile) => {
+      // All merged connections are authoritatively CONNECTED
+      mergedConnections.forEach((c: ConnectionProfile) => {
         newStatusMap[c.id] = "CONNECTED";
         if (typeof c.mutualCount === "number") newMutualMap[c.id] = c.mutualCount;
       });
 
+      // All local connected peer IDs are authoritatively CONNECTED
+      localPeers.forEach((pid) => {
+        newStatusMap[pid] = "CONNECTED";
+      });
+
       data.receivedInvitations?.forEach((inv: InvitationItem) => {
-        if (inv.user?.id) {
+        if (inv.user?.id && newStatusMap[inv.user.id] !== "CONNECTED") {
           newStatusMap[inv.user.id] = "PENDING_INCOMING";
           newMutualMap[inv.user.id] = inv.mutualCount || 0;
         }
       });
 
       data.sentInvitations?.forEach((inv: InvitationItem) => {
-        if (inv.user?.id) {
+        if (inv.user?.id && newStatusMap[inv.user.id] !== "CONNECTED") {
           newStatusMap[inv.user.id] = "PENDING_OUTGOING";
           newMutualMap[inv.user.id] = inv.mutualCount || 0;
         }
@@ -203,6 +257,9 @@ export default function DirectoryPage() {
     e.stopPropagation();
     setActionLoadingId(targetUserId);
 
+    const uid = currentUserId || getActiveVaultUserId();
+    const person = alumni.find((a) => a.id === targetUserId);
+
     // Optimistic UI
     setStatusMap((prev) => ({ ...prev, [targetUserId]: "PENDING_OUTGOING" }));
 
@@ -212,10 +269,22 @@ export default function DirectoryPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "CONNECT", targetUserId }),
       });
-      const data = await res.json();
-      if (data.relationship?.status === "CONNECTED") {
+      const data = await res.json().catch(() => ({}));
+      if (data.relationship?.status === "CONNECTED" || data.relationship?.isConnection) {
         setStatusMap((prev) => ({ ...prev, [targetUserId]: "CONNECTED" }));
-        if (currentUserId) addLocalConnectedPeer(targetUserId, currentUserId);
+        if (uid) {
+          addLocalConnectedPeer(targetUserId, uid);
+          if (person) {
+            setConnections((prev) => {
+              const map = new Map<string, ConnectionProfile>();
+              prev.forEach((c) => map.set(c.id, c));
+              map.set(person.id, { ...person, connectedAt: new Date().toISOString() });
+              const list = Array.from(map.values());
+              cacheConnectionProfiles(list, uid);
+              return list;
+            });
+          }
+        }
       }
       fetchNetworkData();
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
@@ -232,10 +301,29 @@ export default function DirectoryPage() {
     e.stopPropagation();
     setActionLoadingId(targetUserId);
 
+    const uid = currentUserId || getActiveVaultUserId();
+
+    // Find person profile from received invitations or directory list
+    const person =
+      receivedInvitations.find((inv) => inv.user?.id === targetUserId)?.user ||
+      alumni.find((a) => a.id === targetUserId);
+
     // Optimistic UI
     setStatusMap((prev) => ({ ...prev, [targetUserId]: "CONNECTED" }));
     setReceivedInvitations((prev) => prev.filter((inv) => inv.user?.id !== targetUserId));
-    if (currentUserId) addLocalConnectedPeer(targetUserId, currentUserId);
+    if (uid) {
+      addLocalConnectedPeer(targetUserId, uid);
+      if (person) {
+        setConnections((prev) => {
+          const map = new Map<string, ConnectionProfile>();
+          prev.forEach((c) => map.set(c.id, c));
+          map.set(person.id, { ...person, connectedAt: new Date().toISOString() });
+          const list = Array.from(map.values());
+          cacheConnectionProfiles(list, uid);
+          return list;
+        });
+      }
+    }
 
     try {
       await authFetch("/api/connections", {

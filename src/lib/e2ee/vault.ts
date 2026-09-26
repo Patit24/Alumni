@@ -544,6 +544,18 @@ export function getLocalConnectedPeerIds(userId?: string): string[] {
       const list = JSON.parse(raw);
       if (Array.isArray(list)) list.forEach((id: string) => { if (id && id !== uid) set.add(id); });
     }
+    // Also include any profiles from cached connections so lists never drift
+    const cachedKey = `alumni_cached_connections_${uid}`;
+    const rawCached = localStorage.getItem(cachedKey);
+    if (rawCached) {
+      const cachedList = JSON.parse(rawCached);
+      if (Array.isArray(cachedList)) {
+        cachedList.forEach((c: any) => {
+          const id = c?.id || c?.userId;
+          if (id && id !== uid) set.add(id);
+        });
+      }
+    }
     // Clean up deprecated global key to prevent cross-account leak
     if (localStorage.getItem("alumni_connected_peer_ids_global")) {
       localStorage.removeItem("alumni_connected_peer_ids_global");
@@ -552,7 +564,7 @@ export function getLocalConnectedPeerIds(userId?: string): string[] {
   return Array.from(set);
 }
 
-export function addLocalConnectedPeer(peerId: string, userId?: string): void {
+export function addLocalConnectedPeer(peerId: string, userId?: string, profile?: any): void {
   if (typeof window === "undefined" || !peerId) return;
   const uid = userId || getActiveVaultUserId();
   if (!uid || peerId === uid) return; // Never add self as connected peer!
@@ -563,6 +575,9 @@ export function addLocalConnectedPeer(peerId: string, userId?: string): void {
     if (!scopedList.includes(peerId)) {
       scopedList.unshift(peerId);
       localStorage.setItem(scopedKey, JSON.stringify(scopedList));
+    }
+    if (profile && (profile.id || profile.userId)) {
+      cacheConnectionProfiles([profile], uid);
     }
     window.dispatchEvent(new CustomEvent("connection-requests-updated"));
   } catch {}
@@ -623,7 +638,26 @@ export function cacheConnectionProfiles(profiles: any[], userId?: string): void 
   if (!uid) return;
   try {
     const key = `alumni_cached_connections_${uid}`;
-    localStorage.setItem(key, JSON.stringify(profiles));
+    const raw = localStorage.getItem(key);
+    const existing: any[] = raw ? JSON.parse(raw) : [];
+
+    const map = new Map<string, any>();
+    // 1. Existing cached profiles
+    for (const p of existing) {
+      const pid = p?.id || p?.userId;
+      if (pid && pid !== uid) map.set(pid, p);
+    }
+    // 2. Overlay new profiles
+    for (const p of profiles) {
+      const pid = p?.id || p?.userId;
+      if (pid && pid !== uid) {
+        map.set(pid, { ...(map.get(pid) || {}), ...p });
+      }
+    }
+    const merged = Array.from(map.values());
+    if (merged.length > 0) {
+      localStorage.setItem(key, JSON.stringify(merged));
+    }
   } catch {}
 }
 

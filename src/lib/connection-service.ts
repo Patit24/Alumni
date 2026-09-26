@@ -70,6 +70,115 @@ export function canonicalUserPair(userId1: string, userId2: string): { userAId: 
 }
 
 /**
+ * Ensures a peer user exists in this container's SQLite DB so that foreign key constraints
+ * on ConnectionRequest, DirectMessage, and User lookups never fail during serverless cold starts.
+ */
+export async function ensurePeerUserExists(
+  peerId: string,
+  fallbackUser?: {
+    institutionId?: string | null;
+    batchId?: string | null;
+    batchYear?: number | null;
+  } | null,
+  profileData?: Partial<ConnectionProfile> | null
+) {
+  if (!peerId) return null;
+  try {
+    let peer = await db.user.findUnique({
+      where: { id: peerId },
+      include: { institution: true, department: true, batch: true },
+    });
+
+    if (peer) {
+      if (
+        profileData &&
+        ((profileData.name && peer.name !== profileData.name) ||
+          (profileData.avatarUrl && peer.avatarUrl !== profileData.avatarUrl) ||
+          (profileData.currentRole && peer.currentRole !== profileData.currentRole) ||
+          (profileData.currentCompany && peer.currentCompany !== profileData.currentCompany) ||
+          (profileData.city && peer.city !== profileData.city))
+      ) {
+        try {
+          peer = await db.user.update({
+            where: { id: peerId },
+            data: {
+              name: profileData.name || peer.name,
+              username: profileData.username || peer.username,
+              avatarUrl: profileData.avatarUrl || peer.avatarUrl,
+              currentRole: profileData.currentRole || peer.currentRole,
+              currentCompany: profileData.currentCompany || peer.currentCompany,
+              city: profileData.city || peer.city,
+            },
+            include: { institution: true, department: true, batch: true },
+          });
+        } catch {}
+      }
+      return peer;
+    }
+
+    // Resolve institution
+    let institutionId =
+      profileData?.institution?.id ||
+      fallbackUser?.institutionId ||
+      null;
+
+    if (!institutionId) {
+      const defaultInst = await db.institution.findFirst();
+      if (defaultInst) {
+        institutionId = defaultInst.id;
+      } else {
+        const createdInst = await db.institution.create({
+          data: {
+            name: profileData?.institution?.name || "Campus Network",
+            slug: `inst-${Math.floor(1000 + Math.random() * 9000)}`,
+            type: "COLLEGE",
+          },
+        });
+        institutionId = createdInst.id;
+      }
+    }
+
+    // Resolve batch
+    const batchYear = profileData?.batchYear || fallbackUser?.batchYear || 2026;
+    let batch = await db.batch.findFirst({
+      where: { institutionId, year: batchYear },
+    });
+    if (!batch) {
+      batch = await db.batch.create({
+        data: {
+          institutionId,
+          year: batchYear,
+          estimatedSize: 60,
+        },
+      });
+    }
+
+    // Create user in this SQLite container
+    peer = await db.user.create({
+      data: {
+        id: peerId,
+        name: profileData?.name || "Alumni Member",
+        username: profileData?.username || null,
+        avatarUrl: profileData?.avatarUrl || null,
+        batchYear,
+        currentRole: profileData?.currentRole || null,
+        currentCompany: profileData?.currentCompany || null,
+        city: profileData?.city || null,
+        verificationStatus: profileData?.verificationStatus || "VERIFIED",
+        institutionId,
+        batchId: batch.id,
+      },
+      include: { institution: true, department: true, batch: true },
+    });
+
+    return peer;
+  } catch (err) {
+    console.warn(`[ensurePeerUserExists] Error ensuring peer ${peerId}:`, err);
+    return null;
+  }
+}
+
+/**
  * Get all 1st-degree connected user IDs for a given user.
  */
 export async function getConnectedUserIds(userId: string): Promise<Set<string>> {
@@ -274,6 +383,12 @@ export async function sendConnectionInvitation(
 
   const { userAId, userBId } = canonicalUserPair(senderId, targetUserId);
 
+  const senderUser = await db.user.findUnique({
+    where: { id: senderId },
+    select: { id: true, name: true, username: true, avatarUrl: true, institutionId: true, batchId: true, batchYear: true },
+  });
+  await ensurePeerUserExists(targetUserId, senderUser);
+
   // Check if blocked
   const isBlocked = await db.userBlock.findFirst({
     where: {
@@ -311,11 +426,6 @@ export async function sendConnectionInvitation(
     // Already sent
     return getConnectionRelationship(senderId, targetUserId);
   }
-
-  const senderUser = await db.user.findUnique({
-    where: { id: senderId },
-    select: { id: true, name: true, username: true, avatarUrl: true },
-  });
 
   const now = new Date();
   let connection;
@@ -406,8 +516,9 @@ export async function acceptConnectionInvitation(
   const now = new Date();
   const currentUser = await db.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, username: true, avatarUrl: true },
+    select: { id: true, name: true, username: true, avatarUrl: true, institutionId: true, batchId: true, batchYear: true },
   });
+  await ensurePeerUserExists(senderId, currentUser);
 
   if (existing) {
     await db.connectionRequest.update({

@@ -14,6 +14,7 @@ import {
   getVaultConnectedPeerIds, getLocalConnectedPeerIds,
   addLocalConnectedPeer, syncLocalConnectedPeers, getLatestMessagesPerPeer,
   setActiveVaultUser, VaultMessage, cacheConnectionProfiles, getCachedConnectionProfiles,
+  getActiveVaultUserId,
 } from "@/lib/e2ee/vault";
 import { authFetch } from "@/lib/auth-fetch";
 import QRCodeModal from "@/components/QRCodeModal";
@@ -259,26 +260,37 @@ export default function MessagesHubPage() {
   // Live sync on connection/vault updates
   useEffect(() => {
     const refresh = () => {
-      const uid = currentUserProfile?.id;
-      authFetch("/api/connections?type=connections").then(r => r.json()).then(data => {
-        if (Array.isArray(data.connections)) {
-          setContacts((prev) => {
-            const map = new Map<string, AlumniContact>();
-            prev.forEach((c) => map.set(c.id, c));
-            data.connections.forEach((c: any) => {
-              if (c && c.id) map.set(c.id, { ...map.get(c.id), ...c });
+      const uid = currentUserProfile?.id || getActiveVaultUserId();
+      const localPeers = getLocalConnectedPeerIds(uid || undefined);
+      const clientPeersQuery = Array.from(localPeers).join(",");
+      authFetch(`/api/connections?type=connections&clientPeers=${encodeURIComponent(clientPeersQuery)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (Array.isArray(data.connections) && data.connections.length > 0) {
+            setContacts((prev) => {
+              const map = new Map<string, AlumniContact>();
+              prev.forEach((c) => map.set(c.id, c));
+              data.connections.forEach((c: any) => {
+                if (c && c.id) map.set(c.id, { ...map.get(c.id), ...c });
+              });
+              const all = Array.from(map.values());
+              const connectedOnly = all.filter((c) =>
+                data.connections.some((dc: any) => dc.id === c.id) || localPeers.includes(c.id)
+              );
+              cacheConnectionProfiles(connectedOnly, uid || undefined);
+              return all;
             });
-            const all = Array.from(map.values());
-            cacheConnectionProfiles(all.filter(c => data.connections.some((dc: any) => dc.id === c.id)), uid);
-            return all;
-          });
-          setConnectedPeerIds((prev) => {
-            const next = new Set(prev);
-            data.connections.forEach((c: any) => { if (c.id && c.id !== uid) next.add(c.id); });
-            return next;
-          });
-        }
-      }).catch(() => {});
+            setConnectedPeerIds((prev) => {
+              const next = new Set(prev);
+              data.connections.forEach((c: any) => {
+                if (c.id && c.id !== uid) next.add(c.id);
+              });
+              localPeers.forEach((pid) => next.add(pid));
+              return next;
+            });
+          }
+        })
+        .catch(() => {});
       authFetch("/api/contacts/requests").then(r => r.json()).then(data => {
         if (data.incoming) setIncomingRequests(data.incoming);
       }).catch(() => {});
