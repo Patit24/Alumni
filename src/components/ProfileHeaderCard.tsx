@@ -364,7 +364,7 @@ export default function ProfileHeaderCard({
       const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: user.id, action: "CONNECT" }),
+        body: JSON.stringify({ targetUserId: user.id, action: "CONNECT", targetProfile: user }),
       });
       const data = await res.json().catch(() => ({}));
       if (data.relationship?.isConnection || data.relationship?.status === "CONNECTED") {
@@ -423,7 +423,7 @@ export default function ProfileHeaderCard({
       const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId: user.id, action: "ACCEPT" }),
+        body: JSON.stringify({ targetUserId: user.id, action: "ACCEPT", targetProfile: user }),
       });
       const data = await res.json().catch(() => ({}));
       if (data.relationship?.isConnection || data.relationship?.status === "CONNECTED") {

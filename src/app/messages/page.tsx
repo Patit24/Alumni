@@ -498,10 +498,12 @@ export default function MessagesHubPage() {
   const handleQuickConnectAndChat = async (targetUserId: string) => {
     triggerHaptic("medium");
     try {
+      // Find the person profile to pass along for serverless self-healing
+      const person = contacts.find((s) => s.id === targetUserId);
       const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetUserId, action: "CONNECT" }),
+        body: JSON.stringify({ targetUserId, action: "CONNECT", targetProfile: person }),
       });
       const data = await res.json();
       if (data.relationship?.isConnection || data.relationship?.status === "CONNECTED") {

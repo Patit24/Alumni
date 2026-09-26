@@ -127,16 +127,17 @@ export default function DirectoryPage() {
       const localPeers = getLocalConnectedPeerIds(uid || undefined);
       const clientPeersQuery = localPeers.join(",");
 
+      const cachedProfiles = getCachedConnectionProfiles<ConnectionProfile>(uid || undefined);
+      const encodedProfiles = encodeURIComponent(JSON.stringify(cachedProfiles));
       const url = clientPeersQuery
-        ? `/api/connections?clientPeers=${encodeURIComponent(clientPeersQuery)}`
-        : "/api/connections";
+        ? `/api/connections?clientPeers=${encodeURIComponent(clientPeersQuery)}&clientProfiles=${encodedProfiles}`
+        : `/api/connections?clientProfiles=${encodedProfiles}`;
 
       const res = await authFetch(url);
       if (!res.ok) return;
       const data = await res.json();
 
       // Merge server connections with cached profiles so server cold-starts NEVER erase friends
-      const cachedProfiles = getCachedConnectionProfiles<ConnectionProfile>(uid || undefined);
       const map = new Map<string, ConnectionProfile>();
 
       // 1. Start with local cached profiles
@@ -267,7 +268,7 @@ export default function DirectoryPage() {
       const res = await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "CONNECT", targetUserId }),
+        body: JSON.stringify({ action: "CONNECT", targetUserId, targetProfile: person }),
       });
       const data = await res.json().catch(() => ({}));
       if (data.relationship?.status === "CONNECTED" || data.relationship?.isConnection) {
@@ -329,7 +330,7 @@ export default function DirectoryPage() {
       await authFetch("/api/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "ACCEPT", targetUserId }),
+        body: JSON.stringify({ action: "ACCEPT", targetUserId, targetProfile: person }),
       });
       fetchNetworkData();
       window.dispatchEvent(new CustomEvent("connection-requests-updated"));
