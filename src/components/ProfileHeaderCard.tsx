@@ -23,6 +23,7 @@ import {
   UserPlus,
   Users,
   Clock,
+  UserMinus,
 } from "lucide-react";
 import QRCodeModal from "@/components/QRCodeModal";
 import QRScannerModal from "@/components/QRScannerModal";
@@ -425,6 +426,24 @@ export default function ProfileHeaderCard({
     }
   };
 
+  const handleRemoveConnection = async () => {
+    if (!confirm(`Are you sure you want to remove ${user.name} from your 1st-degree connections?`)) return;
+    setConnecting(true);
+    setRelStatus("NONE");
+    try {
+      await fetch("/api/connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: user.id, action: "REMOVE" }),
+      });
+      window.dispatchEvent(new CustomEvent("connection-requests-updated"));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
   const handleGoToChat = () => {
     if (currentUser?.id) {
       setActiveVaultUser(currentUser.id);
@@ -656,33 +675,38 @@ export default function ProfileHeaderCard({
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   {relStatus === "CONNECTED" ? (
                     <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-                      <span className="badge-connected inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold">
-                        <CheckCircle2 className="w-4 h-4 text-[#138808]" />
-                        <span>Already Connected</span>
-                      </span>
                       <button
                         type="button"
                         onClick={handleGoToChat}
                         className="btn-saffron flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition active:scale-98 cursor-pointer shadow-xs"
                       >
                         <MessageSquare className="w-4 h-4" />
-                        <span>Tap to Message (SMS)</span>
+                        <span>Message</span>
                         <ArrowRight className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveConnection}
+                        disabled={connecting}
+                        className="p-2.5 rounded-2xl bg-white/10 hover:bg-rose-500/15 text-slate-400 hover:text-rose-400 border border-white/10 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                        title="Remove Connection"
+                      >
+                        <UserMinus className="w-4 h-4" />
                       </button>
                     </div>
                   ) : relStatus === "PENDING_OUTGOING" ? (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="badge-saffron inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold">
+                      <span className="badge-saffron inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-bold">
                         <Clock className="w-4 h-4 text-[#c2410c]" />
-                        <span>Request Sent</span>
+                        <span>Pending</span>
                       </span>
                       <button
                         type="button"
                         onClick={handleCancelConnect}
                         disabled={connecting}
-                        className="px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-white transition disabled:opacity-50 cursor-pointer"
+                        className="px-3.5 py-2 rounded-xl text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 transition disabled:opacity-50 cursor-pointer"
                       >
-                        Cancel
+                        Withdraw
                       </button>
                     </div>
                   ) : relStatus === "PENDING_INCOMING" ? (
@@ -702,7 +726,7 @@ export default function ProfileHeaderCard({
                         disabled={connecting}
                         className="px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-semibold border border-white/10 transition active:scale-98 cursor-pointer disabled:opacity-50"
                       >
-                        Decline
+                        Ignore
                       </button>
                     </div>
                   ) : (
@@ -738,6 +762,17 @@ export default function ProfileHeaderCard({
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                 {user.name}
               </h1>
+              {!isOwnProfile && (
+                relStatus === "CONNECTED" ? (
+                  <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" /> 1st
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-semibold text-slate-300 bg-white/10 border border-white/15 px-2 py-0.5 rounded-full">
+                    {mutualCount > 0 ? "2nd" : "3rd"}
+                  </span>
+                )
+              )}
               {user.username && (
                 <span className="text-xs font-mono font-semibold text-blue-300 bg-[#000080]/30 border border-blue-500/30 px-2.5 py-0.5 rounded-lg">
                   @{user.username}
@@ -759,6 +794,14 @@ export default function ProfileHeaderCard({
                   : user.currentRole || user.currentCompany || "Alumni Member"}
               </span>
             </p>
+
+            {!isOwnProfile && mutualCount > 0 && (
+              <p className="text-xs text-slate-300 flex items-center gap-1.5 pt-0.5">
+                <Users className="w-3.5 h-3.5 text-[#FF9933] shrink-0" />
+                <span className="text-[#FF9933] font-semibold">{mutualCount}</span>
+                <span>mutual {mutualCount === 1 ? "connection" : "connections"}</span>
+              </p>
+            )}
 
             {/* Meta Chips */}
             <div className="flex items-center gap-2 pt-1 flex-wrap text-xs font-medium text-slate-400">

@@ -460,7 +460,7 @@ export default function QRScannerModal({
                 <div className="space-y-2.5">
                   <div className="badge-connected p-2.5 rounded-2xl text-xs flex items-center justify-center gap-2 font-bold shadow-xs">
                     <CheckCircle2 className="w-4 h-4 text-[#138808]" />
-                    <span>Connected Friends</span>
+                    <span>1st Degree Connection</span>
                   </div>
                   <button
                     type="button"
@@ -468,7 +468,7 @@ export default function QRScannerModal({
                     className="btn-saffron w-full py-3 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 shadow-sm"
                   >
                     <MessageSquare className="w-4 h-4" />
-                    <span>Send Message (SMS)</span>
+                    <span>Message</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                   <button
@@ -499,10 +499,10 @@ export default function QRScannerModal({
                 <div className="space-y-2.5">
                   <div className="badge-saffron p-3 rounded-2xl text-xs flex items-center justify-center gap-2 font-medium">
                     <Clock className="w-4 h-4 text-[#c2410c] shrink-0" />
-                    <span>Friend Request Sent (Pending)</span>
+                    <span>Invitation Pending</span>
                   </div>
                   <p className="text-[11px] text-slate-400 leading-tight text-center">
-                    Waiting for {scannedPeer.name} to accept your request.
+                    Waiting for {scannedPeer.name} to accept your connection invitation.
                   </p>
                   <button
                     type="button"
@@ -526,10 +526,10 @@ export default function QRScannerModal({
                     ) : (
                       <CheckCircle2 className="w-4 h-4" />
                     )}
-                    <span>Accept Friend Request</span>
+                    <span>Accept Invitation</span>
                   </button>
                   <p className="text-[11px] text-slate-400 leading-tight text-center">
-                    {scannedPeer.name} sent you a friend request! Accept to become friends.
+                    {scannedPeer.name} sent you a connection invitation! Accept to become 1st-degree connections.
                   </p>
                   <button
                     type="button"
@@ -553,10 +553,10 @@ export default function QRScannerModal({
                     ) : (
                       <UserPlus className="w-4 h-4" />
                     )}
-                    <span>Send Friend Request</span>
+                    <span>Connect</span>
                   </button>
                   <p className="text-[11px] text-slate-400 leading-tight text-center">
-                    Send a friend request to connect and chat with {scannedPeer.name}.
+                    Send a connection invitation to connect with {scannedPeer.name}.
                   </p>
                   <button
                     type="button"

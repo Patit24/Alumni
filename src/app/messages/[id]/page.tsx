@@ -821,6 +821,11 @@ export default function DirectMessageChatPage(props: {
               <h2 className="text-xs sm:text-sm font-bold text-white truncate tracking-tight">
                 {peer?.name || "Alumni Contact"}
               </h2>
+              {connectionStatus === "CONNECTED" && (
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded-full inline-flex items-center gap-0.5 shrink-0">
+                  1st
+                </span>
+              )}
               {isSafetyVerified ? (
                 <span className="inline-flex items-center gap-0.5 text-[8px] sm:text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded shrink-0" title="Cryptographically Verified">
                   <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-400" /> Verified
@@ -868,13 +873,11 @@ export default function DirectMessageChatPage(props: {
 
           <button
             onClick={handleStartVoiceCall}
-            disabled={connectionStatus !== "CONNECTED" || trustLevel !== "TRUSTED"}
+            disabled={connectionStatus !== "CONNECTED"}
             className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/30 border border-white/10 text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
             title={
               connectionStatus !== "CONNECTED"
-                ? "First become friends to enable calls"
-                : trustLevel !== "TRUSTED"
-                ? "Mark user as Trusted to enable voice call"
+                ? "Connect with user to enable voice call"
                 : "Voice Call"
             }
           >
@@ -883,13 +886,11 @@ export default function DirectMessageChatPage(props: {
 
           <button
             onClick={handleStartVideoCall}
-            disabled={connectionStatus !== "CONNECTED" || trustLevel !== "TRUSTED"}
+            disabled={connectionStatus !== "CONNECTED"}
             className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-blue-500/20 hover:text-blue-400 hover:border-blue-500/30 border border-white/10 text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
             title={
               connectionStatus !== "CONNECTED"
-                ? "First become friends to enable calls"
-                : trustLevel !== "TRUSTED"
-                ? "Mark user as Trusted to enable video call"
+                ? "Connect with user to enable video call"
                 : "Video Call"
             }
           >
@@ -976,28 +977,6 @@ export default function DirectMessageChatPage(props: {
         </div>
       )}
 
-      {/* Trusted Contact Prompt Banner: Shown when connected as friends, but not yet marked as Trusted for calls */}
-      {connectionStatus === "CONNECTED" && trustLevel !== "TRUSTED" && (
-        <div className="bg-[#111726]/90 backdrop-blur-md border-b border-emerald-500/20 p-3 sm:px-4 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="h-8 w-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            </div>
-            <p className="text-slate-300 text-[11px] leading-relaxed">
-              <strong>Connected Friends:</strong> Mark {peer?.name || "this contact"} as Trusted to unlock voice & video calling.
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto w-full sm:w-auto">
-            <button
-              onClick={() => handleUpdateTrust("TRUSTED")}
-              className="btn-india-green flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer shadow-md active:scale-95 transition"
-            >
-              Mark as Trusted
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Options Dropdown Menu */}
       {showMenu && (
         <div className="absolute top-16 right-4 z-40 w-60 rounded-2xl bg-[#0d1326]/95 backdrop-blur-2xl border border-white/15 shadow-2xl py-2 text-xs divide-y divide-white/10">
@@ -1080,7 +1059,7 @@ export default function DirectMessageChatPage(props: {
                 className="w-full text-left px-4 py-2.5 hover:bg-amber-500/10 text-amber-400 flex items-center gap-2.5 font-medium transition"
               >
                 <UserMinus className="w-4 h-4" />
-                <span>Unfriend Contact</span>
+                <span>Remove Connection (1st Degree)</span>
               </button>
             )}
             <button
