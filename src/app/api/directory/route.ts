@@ -158,13 +158,6 @@ export async function GET(req: Request) {
     });
   } catch (error) {
     console.error("Directory GET error:", (error as Error)?.stack || error);
-    return NextResponse.json(
-      {
-        error: (error as any)?.message || "Failed to load directory",
-        code: (error as any)?.code,
-        meta: (error as any)?.meta,
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to load directory" }, { status: 500 });
   }
 }
