@@ -67,23 +67,32 @@ export default function MessagesHubPage() {
   const router = useRouter();
   const [tab, setTab] = useState<NavTab>("CHATS");
   const [searchQuery, setSearchQuery] = useState("");
-  const [contacts, setContacts] = useState<AlumniContact[]>([]);
+  const [contacts, setContacts] = useState<AlumniContact[]>(() => {
+    try {
+      return getCachedConnectionProfiles<AlumniContact>();
+    } catch {
+      return [];
+    }
+  });
   const [callLogs, setCallLogs] = useState<VaultCallLog[]>([]);
-  const [connectedPeerIds, setConnectedPeerIds] = useState<Set<string>>(new Set());
+  const [connectedPeerIds, setConnectedPeerIds] = useState<Set<string>>(() => {
+    try {
+      return new Set(getLocalConnectedPeerIds());
+    } catch {
+      return new Set();
+    }
+  });
 
   useEffect(() => {
     try {
       const cachedContacts = getCachedConnectionProfiles<AlumniContact>();
-      setContacts(cachedContacts);
+      if (cachedContacts.length > 0) setContacts(cachedContacts);
       const localPeers = getLocalConnectedPeerIds();
-      setConnectedPeerIds(new Set(localPeers));
+      if (localPeers.length > 0) setConnectedPeerIds(new Set(localPeers));
       getLatestMessagesPerPeer().then((latestMap) => {
         if (latestMap) setLatestMessages(latestMap);
       }).catch(() => {});
-      // Instantly unblock UI so messages render in 0ms on click
-      if (cachedContacts.length > 0 || localPeers.length > 0) {
-        setLoading(false);
-      }
+      setLoading(false);
     } catch {}
   }, []);
   const [latestMessages, setLatestMessages] = useState<Map<string, VaultMessage>>(new Map());
@@ -99,8 +108,12 @@ export default function MessagesHubPage() {
 
   const loadData = useCallback(async () => {
     try {
-      // Non-blocking background fetch: only set loading if we have zero data
-      setLoading((prev) => (contacts.length === 0 ? true : false));
+      // Non-blocking background fetch: only set loading if we have zero cached contacts & zero local peers
+      setLoading(() => {
+        const cached = getCachedConnectionProfiles();
+        const local = getLocalConnectedPeerIds();
+        return cached.length === 0 && local.length === 0;
+      });
       const meRes = await authFetch("/api/auth/me").catch(() => null);
       let currentUserId: string | null = null;
 

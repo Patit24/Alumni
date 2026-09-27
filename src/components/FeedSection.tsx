@@ -190,13 +190,23 @@ export default function FeedSection({
   batchYear,
   currentUserAvatar: initialAvatar,
 }: FeedSectionProps) {
-  const [feed, setFeed] = useState<FeedItemData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [feed, setFeed] = useState<FeedItemData[]>(() => getLocalFeedPosts(currentUserId));
+  const [loading, setLoading] = useState<boolean>(() => getLocalFeedPosts(currentUserId).length === 0);
   const [filter, setFilter] = useState<"ALL" | "BATCH" | "JOBS" | "MENTORSHIP" | "SAVED">("ALL");
   const [newPostText, setNewPostText] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(initialAvatar || null);
+
+  useEffect(() => {
+    if (feed.length === 0) {
+      const cached = getLocalFeedPosts(currentUserId);
+      if (cached.length > 0) {
+        setFeed(cached);
+        setLoading(false);
+      }
+    }
+  }, [currentUserId, feed.length]);
 
   useEffect(() => {
     if (initialAvatar) setCurrentUserAvatar(initialAvatar);
@@ -290,7 +300,9 @@ export default function FeedSection({
 
   const fetchFeed = useCallback(async (selectedFilter: string, silent = false) => {
     try {
-      if (!silent) setLoading(true);
+      if (!silent) {
+        setLoading((prev) => (getLocalFeedPosts(currentUserId).length === 0 ? true : false));
+      }
       const res = await fetch(`/api/feed?filter=${selectedFilter}`);
       if (!res.ok) throw new Error("Failed to load feed");
       const json = await res.json();
@@ -337,10 +349,10 @@ export default function FeedSection({
     }
   }, [currentUserId]);
 
-  // Initial load on filter change
+  // Initial load on filter change (silent SWR if feed already populated)
   useEffect(() => {
-    fetchFeed(filter);
-  }, [filter, fetchFeed]);
+    fetchFeed(filter, feed.length > 0);
+  }, [filter, fetchFeed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Rock-solid live synchronization: silent 6-second polling + visibility/focus instant refresh
   useEffect(() => {

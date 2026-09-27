@@ -8,6 +8,7 @@ import {
   addLocalConnectedPeer,
   cacheConnectionProfiles,
   setActiveVaultUser,
+  getActiveVaultUserId,
   VaultMessage,
 } from "@/lib/e2ee/vault";
 import { motion, AnimatePresence } from "framer-motion";
@@ -187,7 +188,8 @@ export default function GlobalRealtimeProvider() {
         // Read window.location.pathname live so we never need to re-subscribe on navigation.
         const unsubMsg = realtimeSignaling.onMessageReceived((msg: VaultMessage) => {
           // If this message was sent by the current user, DO NOT notify ourselves!
-          if (msg.senderId === user.id) {
+          const activeUid = getActiveVaultUserId() || user.id;
+          if (msg.senderId === user.id || msg.senderId === activeUid) {
             return;
           }
 

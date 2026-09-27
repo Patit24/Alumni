@@ -143,7 +143,19 @@ export default function DirectMessageChatPage(props: {
   const { id: peerId } = use(props.params);
 
   // States: synchronously read cached identity to prevent layout/alignment flash
-  const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string } | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = localStorage.getItem("alumni_user");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.id) return { id: parsed.id, name: parsed.name || "" };
+      }
+      const activeId = getActiveVaultUserId();
+      if (activeId) return { id: activeId, name: "" };
+    } catch {}
+    return null;
+  });
 
   useEffect(() => {
     try {
@@ -162,7 +174,28 @@ export default function DirectMessageChatPage(props: {
     } catch {}
   }, []);
 
-  const [peer, setPeer] = useState<PeerProfile | null>(null);
+  const [peer, setPeer] = useState<PeerProfile | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const activeId = getActiveVaultUserId();
+      const cached = getCachedConnectionProfiles(activeId || undefined);
+      const found = cached.find((p: any) => p?.id === peerId);
+      if (found && found.name && found.name.trim() !== "Alumni Member") {
+        return {
+          id: found.id,
+          name: found.name,
+          username: found.username,
+          avatarUrl: found.avatarUrl,
+          batchYear: found.batchYear,
+          currentRole: found.currentRole,
+          currentCompany: found.currentCompany,
+          verificationStatus: found.verificationStatus || "VERIFIED",
+          institution: found.institution,
+        };
+      }
+    } catch {}
+    return null;
+  });
 
   useEffect(() => {
     try {
@@ -299,8 +332,7 @@ export default function DirectMessageChatPage(props: {
 
     async function setupChat() {
       try {
-        setLoading(true);
-
+        // Run background crypto & device handshake without blocking UI display
         // Fetch current authenticated user
         const meRes = await authFetch("/api/auth/me");
         const meData = await meRes.json();
@@ -1333,7 +1365,7 @@ export default function DirectMessageChatPage(props: {
 
       {/* Messages Stream */}
       <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-2.5 scroll-smooth overscroll-contain">
-        {loading ? (
+        {loading && messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-2">
             <Loader2 className="w-6 h-6 animate-spin text-[#FF9933]" />
             <p className="text-xs font-medium">Establishing secure E2EE channel...</p>
