@@ -100,6 +100,8 @@ export default function MessagesHubPage() {
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  const [groups, setGroups] = useState<any[]>([]);
+  const [chatFilter, setChatFilter] = useState<"ALL" | "DIRECT" | "GROUPS">("ALL");
   const [showQrModal, setShowQrModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [currentUserProfile, setCurrentUserProfile] = useState<{
@@ -156,7 +158,7 @@ export default function MessagesHubPage() {
           )
         : "";
 
-      const [connRes, dirRes, calls, lockRes, convsRes, latestMap, reqsRes] = await Promise.all([
+      const [connRes, dirRes, calls, lockRes, convsRes, latestMap, reqsRes, groupsRes] = await Promise.all([
         authFetch(
           `/api/connections?type=connections&clientPeers=${encodeURIComponent(clientPeersQuery)}${
             clientProfilesQuery ? `&clientProfiles=${clientProfilesQuery}` : ""
@@ -168,7 +170,15 @@ export default function MessagesHubPage() {
         authFetch("/api/messages/conversations").catch(() => null),
         getLatestMessagesPerPeer(currentUserId || undefined).catch(() => new Map()),
         authFetch("/api/contacts/requests").catch(() => null),
+        authFetch("/api/groups").catch(() => null),
       ]);
+
+      if (groupsRes?.ok) {
+        const gData = await groupsRes.json();
+        if (Array.isArray(gData.groups)) {
+          setGroups(gData.groups);
+        }
+      }
 
       let loadedContacts: AlumniContact[] = [];
       if (dirRes?.ok) {
@@ -608,6 +618,14 @@ export default function MessagesHubPage() {
               <Scan className="w-4 h-4" />
             </button>
             <Link
+              href="/groups/create"
+              className="h-8 px-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 border border-emerald-500/20 text-xs font-bold flex items-center gap-1.5 transition active:scale-95"
+              title="New Group"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>New Group</span>
+            </Link>
+            <Link
               href="/directory"
               className="btn-saffron h-8 px-3 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm active:scale-95"
             >
@@ -753,41 +771,112 @@ export default function MessagesHubPage() {
 
         {/* ── CHATS TAB ── */}
         {tab === "CHATS" && (
-          <section className="mt-4">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <Loader2 className="w-7 h-7 animate-spin text-[#FF9933]" />
-                <p className="text-sm text-slate-400">Loading conversations…</p>
-              </div>
-            ) : connectedContacts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 px-6 text-center gap-4">
-                <div className="h-16 w-16 rounded-3xl bg-[#111726] border border-white/10 flex items-center justify-center shadow-lg shadow-black/40">
-                  <MessageSquare className="w-8 h-8 text-[#FF9933]" />
-                </div>
-                <div className="space-y-1.5">
-                  <h3 className="text-base font-bold text-white">
-                    {searchQuery ? "No matches found" : "No chats yet"}
-                  </h3>
-                  <p className="text-sm text-slate-400 max-w-xs leading-relaxed">
-                    {searchQuery
-                      ? "Try a different name or username."
-                      : "Connect with alumni to start encrypted conversations. Only mutual connections appear here."}
-                  </p>
-                </div>
-                {!searchQuery && (
-                  <Link
-                    href="/directory"
-                    className="btn-saffron inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-bold shadow-lg shadow-[#ff9933]/20 transition active:scale-95"
+          <section className="mt-2 space-y-3">
+            {/* Filter Pills (WhatsApp style: All, Direct, Groups) */}
+            <div className="flex items-center gap-2 px-4">
+              {(
+                [
+                  { id: "ALL" as const, label: "All" },
+                  { id: "DIRECT" as const, label: "Direct" },
+                  { id: "GROUPS" as const, label: `Groups (${groups.length})` },
+                ] as const
+              ).map((f) => {
+                const isActive = chatFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => {
+                      triggerHaptic("light");
+                      setChatFilter(f.id);
+                    }}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+                      isActive
+                        ? "bg-white/15 text-white border border-white/20"
+                        : "text-slate-400 hover:text-white hover:bg-white/5"
+                    }`}
                   >
-                    <Users className="w-4 h-4" />
-                    Find Alumni
-                  </Link>
-                )}
-              </div>
-            ) : (
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Groups Section in Chats (WhatsApp style) */}
+            {(chatFilter === "ALL" || chatFilter === "GROUPS") && groups.length > 0 && (
               <div className="bg-[#111726]/80 mx-4 rounded-2xl border border-white/10 shadow-lg shadow-black/40 overflow-hidden divide-y divide-white/8 backdrop-blur-xl">
-                <AnimatePresence initial={false}>
-                  {connectedContacts.map(contact => {
+                {groups.map((group: any) => (
+                  <Link
+                    key={group.id}
+                    href={`/groups/${group.id}`}
+                    prefetch={true}
+                    className="relative flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-white/[0.04] active:bg-white/[0.08] transition-colors select-none"
+                    onClick={() => triggerHaptic("light")}
+                  >
+                    <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-700 text-white flex items-center justify-center font-bold overflow-hidden shrink-0 shadow-sm">
+                      {group.avatar ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={group.avatar} alt={group.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <Users className="w-5 h-5 text-white" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-center mb-0.5">
+                        <span className="text-sm font-bold text-white truncate">{group.name}</span>
+                        <span className="text-[10px] text-emerald-400 font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                          {group.memberCount || 1} members
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 truncate">
+                        {group.description || (group.scope === "SAME_BATCH" ? "Batch group" : "Campus group")}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {/* Direct Conversations */}
+            {chatFilter !== "GROUPS" && (
+              <>
+                {connectedContacts.length === 0 && groups.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 px-6 text-center gap-4">
+                    <div className="h-16 w-16 rounded-3xl bg-[#111726] border border-white/10 flex items-center justify-center shadow-lg shadow-black/40">
+                      <MessageSquare className="w-8 h-8 text-[#FF9933]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h3 className="text-base font-bold text-white">
+                        {searchQuery ? "No matches found" : "No chats yet"}
+                      </h3>
+                      <p className="text-sm text-slate-400 max-w-xs leading-relaxed">
+                        {searchQuery
+                          ? "Try a different name or username."
+                          : "Connect with alumni or create a group to start chatting."}
+                      </p>
+                    </div>
+                    {!searchQuery && (
+                      <div className="flex items-center gap-2 flex-wrap justify-center">
+                        <Link
+                          href="/directory"
+                          className="btn-saffron inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-xs font-bold shadow-lg shadow-[#ff9933]/20 transition active:scale-95"
+                        >
+                          <Users className="w-4 h-4" />
+                          <span>Find Alumni</span>
+                        </Link>
+                        <Link
+                          href="/groups/create"
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold shadow-lg shadow-emerald-500/20 transition active:scale-95"
+                        >
+                          <Users className="w-4 h-4" />
+                          <span>New Group</span>
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-[#111726]/80 mx-4 rounded-2xl border border-white/10 shadow-lg shadow-black/40 overflow-hidden divide-y divide-white/8 backdrop-blur-xl">
+                    <AnimatePresence initial={false}>
+                      {connectedContacts.map(contact => {
                     const lastMsg = latestMessages.get(contact.id);
                     const isOutgoing = lastMsg && lastMsg.senderId !== contact.id;
                     const isPinned = pinnedIds.has(contact.id);
@@ -872,6 +961,8 @@ export default function MessagesHubPage() {
                 </AnimatePresence>
               </div>
             )}
+            </>
+          )}
           </section>
         )}
 

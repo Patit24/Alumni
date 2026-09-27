@@ -179,13 +179,13 @@ export default function GroupsPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => setShowModal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm"
+          <Link
+            href="/groups/create"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold rounded-xl transition shadow-sm active:scale-95"
           >
             <PlusCircle className="w-3.5 h-3.5" />
-            Create Group
-          </button>
+            <span>New Group</span>
+          </Link>
         </div>
       </header>
 

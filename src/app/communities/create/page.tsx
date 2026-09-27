@@ -180,7 +180,7 @@ export default function CreateCommunityPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 flex flex-col items-center pb-16">
+<div className="min-h-screen bg-black text-zinc-100 flex flex-col items-center pb-28 sm:pb-16">
       {/* Header */}
       <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-black/80 backdrop-blur-md">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -276,14 +276,15 @@ export default function CreateCommunityPage() {
               </div>
 
               {/* Next Button */}
-              <div className="mt-8 flex justify-end">
+              <div className="mt-8 mb-6 flex justify-end">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3 rounded-xl bg-cyan-500 text-black font-semibold hover:bg-cyan-400 transition-colors shadow-lg shadow-cyan-500/20"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-2xl bg-cyan-500 text-black font-bold hover:bg-cyan-400 active:scale-95 transition-all shadow-lg shadow-cyan-500/25 text-sm"
                 >
-                  <span>Continue with {activeTemplate.title}</span>
-                  <ChevronRight className="w-4 h-4" />
+                  <span className="hidden sm:inline">Continue with {activeTemplate.title}</span>
+                  <span className="sm:hidden">Continue to Details</span>
+                  <ChevronRight className="w-4 h-4 stroke-[3]" />
                 </button>
               </div>
             </motion.div>

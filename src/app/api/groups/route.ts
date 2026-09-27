@@ -84,7 +84,7 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/groups - Create a new group
+// POST /api/groups - Create a new group (WhatsApp style)
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser();
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { name, description, scope } = body;
+    const { name, description, scope, avatar, memberIds, isSecretMode, allowScreenshot } = body;
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: "Group name is required." }, { status: 400 });
@@ -101,29 +101,41 @@ export async function POST(req: Request) {
 
     const isBatchScope = scope === "SAME_BATCH";
 
+    // Deduplicate participant IDs excluding creator
+    const uniqueMemberIds: string[] = Array.isArray(memberIds)
+      ? Array.from(new Set(memberIds.filter((id: unknown): id is string => typeof id === "string" && Boolean(id) && id !== user.id)))
+      : [];
+
+    const memberCreations = [
+      { userId: user.id, role: "ADMIN" },
+      ...uniqueMemberIds.map((uid) => ({ userId: uid, role: "MEMBER" })),
+    ];
+
     const group = await db.group.create({
       data: {
         name: name.trim(),
         description: description?.trim() || null,
+        avatar: avatar || null,
         scope: isBatchScope ? "SAME_BATCH" : "INSTITUTION",
         batchYear: isBatchScope ? user.batchYear : null,
         institutionId: user.institutionId,
         createdById: user.id,
+        isSecretMode: Boolean(isSecretMode),
+        allowScreenshot: allowScreenshot !== undefined ? Boolean(allowScreenshot) : false,
         members: {
-          create: {
-            userId: user.id,
-            role: "ADMIN",
-          },
+          create: memberCreations,
         },
       },
     });
 
-    // Create a welcoming system message
+    // Create a welcoming system message (WhatsApp style)
     await db.chatMessage.create({
       data: {
         groupId: group.id,
         senderId: user.id,
-        content: `Welcome to ${group.name}! 🎉 Share notes, chat, or play music together from your phone.`,
+        content: uniqueMemberIds.length > 0
+          ? `${user.name} created group "${group.name}" with ${uniqueMemberIds.length + 1} participants.`
+          : `${user.name} created group "${group.name}".`,
         type: "SYSTEM",
       },
     });

@@ -45,11 +45,12 @@ export default function MobileBottomNav() {
     };
   }, []);
 
-  // Hide only on auth, inside direct chat, or communities channel where chat input takes bottom
+  // Hide on auth, direct chat rooms, group chats & wizards, and community channel screens
   if (
     pathname.startsWith("/auth") ||
     pathname.match(/^\/messages\/[^/]+$/) ||
-    pathname.match(/^\/groups\/[^/]+$/) ||
+    pathname.startsWith("/groups") ||
+    pathname.startsWith("/communities/create") ||
     pathname.match(/^\/communities\/[^/]+\/channels\/[^/]+$/)
   ) {
     return null;
