@@ -116,17 +116,31 @@ body {
 }
 
 /* Mobile App Native Feel & Safe Areas */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
 .pb-safe {
   padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
 }
 .pt-safe {
-  padding-top: max(8px, env(safe-area-inset-top, 0px));
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
 }
 .safe-top-inset {
   padding-top: env(safe-area-inset-top, 0px);
 }
 .safe-bottom-inset {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Universal Sticky & Fixed Header Safe Area for all mobile devices */
+header.sticky.top-0,
+header.fixed.top-0,
+.app-header-safe {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* Mobile App Smooth Touch Scrolling */

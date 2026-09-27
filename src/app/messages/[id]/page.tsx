@@ -1023,7 +1023,7 @@ export default function DirectMessageChatPage(props: {
       )}
 
       {/* Top Frosted Glass Header with Safe-Area Notch Inset */}
-      <header className="sticky top-0 z-30 bg-[#0a0f1d]/90 backdrop-blur-2xl px-3 sm:px-4 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5 flex items-center justify-between border-b border-white/10 shadow-lg shadow-black/40">
+      <header className="sticky top-0 z-30 bg-[#0a0f1d]/90 backdrop-blur-2xl px-3 sm:px-4 pt-[max(0.625rem,calc(0.625rem+env(safe-area-inset-top,0px)))] pb-2.5 flex items-center justify-between border-b border-white/10 shadow-lg shadow-black/40 app-header-safe">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <Link
             href="/messages"

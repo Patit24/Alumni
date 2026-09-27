@@ -40,7 +40,7 @@ export default async function HomePage(props: {
   if (!user) {
     // ── Samparka Premium Landing — 2026 "Made in India" Design ──
     return (
-      <main className="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden bg-[#080810]">
+      <main className="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden bg-[#080810] pt-[env(safe-area-inset-top,0px)]">
         <ClientAuthRedirect />
 
         {/* ── Ambient gradient blobs ── */}
@@ -66,7 +66,7 @@ export default async function HomePage(props: {
         </div>
 
         {/* ── Main content ── */}
-        <div className="relative z-10 w-full max-w-sm mx-auto px-5 py-12 sm:py-16 flex flex-col items-center text-center gap-7">
+        <div className="relative z-10 w-full max-w-sm mx-auto px-5 py-12 sm:py-16 flex flex-col items-center text-center gap-7 pt-[max(1.5rem,env(safe-area-inset-top,0px))]">
 
           {/* Logo */}
           <div className="relative h-20 w-20 rounded-3xl overflow-hidden shadow-2xl shadow-orange-500/25 border border-white/20 bg-white/10 backdrop-blur-xl flex items-center justify-center p-2.5 transition-transform duration-300 hover:scale-105">
@@ -233,7 +233,7 @@ export default async function HomePage(props: {
   return (
     <div className="min-h-screen bg-[#080811] text-white flex flex-col pb-28 sm:pb-16">
       {/* Global Floating Sticky Header Bar */}
-      <header className="sticky top-0 z-40 bg-[#0a0f1d]/90 backdrop-blur-xl border-b border-white/10 shadow-lg shadow-black/40">
+      <header className="sticky top-0 z-40 bg-[#0a0f1d]/90 backdrop-blur-xl border-b border-white/10 shadow-lg shadow-black/40 app-header-safe pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           {/* App Identity: Samparka */}
           <Link href="/" prefetch={true} className="flex items-center gap-2.5 group min-w-0 select-none">

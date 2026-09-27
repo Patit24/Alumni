@@ -442,7 +442,7 @@ export default function AuthPage() {
 
   /* ═══════════════════ RENDER ═══════════════════ */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 flex items-center justify-center p-4 pt-[max(1.5rem,calc(1rem+env(safe-area-inset-top,0px)))] pb-[max(1.5rem,calc(1rem+env(safe-area-inset-bottom,0px)))]">
       <div className="w-full max-w-sm">
         {/* Logo + Brand */}
         <div className="text-center mb-6">

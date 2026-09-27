@@ -350,7 +350,7 @@ export default function GlobalRealtimeProvider() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -20, scale: 0.96 }}
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
-          className={`fixed top-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50 bg-slate-900/95 text-white rounded-2xl p-4 shadow-2xl backdrop-blur-md border border-slate-700/80 cursor-pointer ${
+          className={`fixed top-[max(1rem,calc(1rem+env(safe-area-inset-top,0px)))] left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50 bg-slate-900/95 text-white rounded-2xl p-4 shadow-2xl backdrop-blur-md border border-slate-700/80 cursor-pointer ${
             activeToast.type === "CONNECTION_REQUEST" ? "space-y-3" : "flex items-center justify-between gap-3"
           }`}
           onClick={() => {

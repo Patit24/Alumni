@@ -113,7 +113,7 @@ export default async function ExplorePage() {
   return (
     <div className="min-h-screen bg-[#080811] text-white flex flex-col pb-28 sm:pb-16">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#0a0f1d]/90 backdrop-blur-xl border-b border-white/10 shadow-lg shadow-black/40">
+      <header className="sticky top-0 z-40 bg-[#0a0f1d]/90 backdrop-blur-xl border-b border-white/10 shadow-lg shadow-black/40 app-header-safe pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-[#FF9933] to-[#FF8008] text-white flex items-center justify-center shadow-md shadow-[#ff9933]/20">

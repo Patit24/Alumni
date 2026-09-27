@@ -1,6 +1,6 @@
 export default function ExploreLoading() {
   return (
-    <div className="min-h-screen bg-[#080811] text-white flex flex-col p-4 max-w-2xl mx-auto animate-pulse pb-24">
+    <div className="min-h-screen bg-[#080811] text-white flex flex-col p-4 pt-[max(1rem,calc(1rem+env(safe-area-inset-top,0px)))] max-w-2xl mx-auto animate-pulse pb-24">
       {/* Header Skeleton */}
       <div className="flex items-center justify-between py-3 mb-6">
         <div className="flex items-center gap-2">

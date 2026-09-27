@@ -229,7 +229,7 @@ export default function AntiScreenshotShield() {
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] bg-rose-950/90 text-rose-100 border border-rose-500/40 px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-semibold backdrop-blur-md"
+            className="fixed top-[max(1rem,calc(1rem+env(safe-area-inset-top,0px)))] left-1/2 -translate-x-1/2 z-[100000] bg-rose-950/90 text-rose-100 border border-rose-500/40 px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-semibold backdrop-blur-md"
           >
             <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{alertToast}</span>

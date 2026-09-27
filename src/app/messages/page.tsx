@@ -562,7 +562,7 @@ export default function MessagesHubPage() {
   return (
     <div className="min-h-screen bg-[#080811] text-white flex flex-col">
       {/* ── HEADER ─────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 bg-[#0a0f1d]/90 backdrop-blur-2xl border-b border-white/10 shadow-lg shadow-black/40">
+      <header className="sticky top-0 z-30 bg-[#0a0f1d]/90 backdrop-blur-2xl border-b border-white/10 shadow-lg shadow-black/40 app-header-safe pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           {/* Title */}
           <div className="flex items-center gap-2.5">

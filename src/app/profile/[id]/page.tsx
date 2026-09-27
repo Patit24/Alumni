@@ -67,7 +67,7 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
   return (
     <div className="min-h-screen bg-[#080811] text-white flex flex-col pb-28 sm:pb-16">
       {/* Top Header */}
-      <header className="sticky top-0 z-30 bg-[#0a0f1d]/90 backdrop-blur-xl border-b border-white/10 px-4 py-3 sm:px-8 shadow-lg shadow-black/40">
+      <header className="sticky top-0 z-30 bg-[#0a0f1d]/90 backdrop-blur-xl border-b border-white/10 px-4 pt-[max(0.75rem,calc(0.75rem+env(safe-area-inset-top,0px)))] pb-3 sm:px-8 shadow-lg shadow-black/40 app-header-safe">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <Link
             href="/directory"
