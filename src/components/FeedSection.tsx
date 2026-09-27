@@ -55,6 +55,13 @@ interface FeedItemData {
   savesCount?: number;
   isFriend?: boolean;
   isMutualInstitution?: boolean;
+  viralContext?: {
+    type: "LIKE" | "COMMENT";
+    userId: string;
+    userName: string;
+    userRole?: string | null;
+    userAvatar?: string | null;
+  } | null;
   comments?: CommentData[];
   actor: {
     id: string;
@@ -966,6 +973,30 @@ export default function FeedSection({
                 transition={{ duration: 0.3, delay: Math.min(index * 0.03, 0.3) }}
                 className="bg-[#111726]/80 rounded-3xl border border-white/10 p-5 shadow-xl shadow-black/40 hover:border-white/20 transition space-y-3 backdrop-blur-xl text-white"
               >
+                {/* Social Graph Viral Attribution Banner */}
+                {item.viralContext && (
+                  <div className="flex items-center gap-2 text-[11px] font-medium text-amber-300 pb-2.5 mb-1 border-b border-white/10 -mt-1">
+                    <div className="h-5 w-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                      {item.viralContext.type === "LIKE" ? (
+                        <ThumbsUp className="w-2.5 h-2.5 fill-amber-400" />
+                      ) : (
+                        <MessageSquare className="w-2.5 h-2.5 fill-amber-400" />
+                      )}
+                    </div>
+                    <span className="truncate">
+                      <Link
+                        href={`/profile/${item.viralContext.userId}`}
+                        className="font-bold hover:underline text-white"
+                      >
+                        {item.viralContext.userName}
+                      </Link>{" "}
+                      <span className="text-slate-300">
+                        {item.viralContext.type === "LIKE" ? "liked this post" : "commented on this post"}
+                      </span>
+                    </span>
+                  </div>
+                )}
+
                 {/* Author Info Header */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">

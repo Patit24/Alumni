@@ -272,13 +272,26 @@ export default function GroupChatRoomPage({
         setData((prev) => {
           if (!prev) return prev;
           if (prev.messages.some((m) => m.id === newMsg.id)) return prev;
+          // If this is current user's message that was added optimistically, replace temp message
+          const tempMatch = prev.messages.find(
+            (m) =>
+              m.id.startsWith("temp_") &&
+              m.sender.id === newMsg.sender.id &&
+              m.content === newMsg.content
+          );
+          const updatedMessages = tempMatch
+            ? prev.messages.map((m) => (m.id === tempMatch.id ? newMsg : m))
+            : [...prev.messages, newMsg];
           const updated = {
             ...prev,
-            messages: [...prev.messages, newMsg],
+            messages: updatedMessages,
           };
           saveLocalGroupData(groupId, updated);
           return updated;
         });
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 50);
       })
       .on("broadcast", { event: "screenshot-alert" }, (event) => {
         const payload = event.payload as { culpritName: string; timestamp: string };
@@ -468,33 +481,77 @@ export default function GroupChatRoomPage({
     }
   }
 
-  async function handleSendMessage(e?: React.FormEvent) {
+  function handleSendMessage(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() || !data) return;
 
     const messageText = inputMessage.trim();
     setInputMessage("");
     setShowAttachMenu(false);
 
-    try {
-      setSending(true);
-      const res = await fetch(`/api/groups/${groupId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: messageText,
-          type: "TEXT",
-        }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Failed to send");
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      content: messageText,
+      type: "TEXT",
+      createdAt: new Date().toISOString(),
+      sender: {
+        id: data.currentUser.id,
+        name: data.currentUser.name,
+        batchYear: data.group.batchYear || 2026,
+        currentRole: null,
+        currentCompany: null,
+        verificationStatus: "VERIFIED",
+      },
+    };
 
-      await fetchRoomData();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Error sending message");
-    } finally {
-      setSending(false);
-    }
+    // 1. Instant optimistic update (0ms latency)
+    setData((prev) => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        messages: [...prev.messages, optimisticMessage],
+      };
+      saveLocalGroupData(groupId, updated);
+      return updated;
+    });
+
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 10);
+
+    // 2. Background async network dispatch
+    (async () => {
+      try {
+        const res = await fetch(`/api/groups/${groupId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: messageText,
+            type: "TEXT",
+          }),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || "Failed to send");
+
+        if (result.message) {
+          setData((prev) => {
+            if (!prev) return prev;
+            const alreadyInserted = prev.messages.some((m) => m.id === result.message.id);
+            const updatedMessages = alreadyInserted
+              ? prev.messages.filter((m) => m.id !== tempId)
+              : prev.messages.map((m) =>
+                  m.id === tempId ? { ...m, ...result.message, id: result.message.id } : m
+                );
+            const updated = { ...prev, messages: updatedMessages };
+            saveLocalGroupData(groupId, updated);
+            return updated;
+          });
+        }
+      } catch (err: unknown) {
+        console.error("Error sending group message:", err);
+      }
+    })();
   }
 
   async function handleUpdateSecurity(setting: { isSecretMode?: boolean; allowScreenshot?: boolean }) {

@@ -49,6 +49,7 @@ export async function GET(req: Request) {
     }
 
     const friendIds = Array.from(friendIdsSet);
+    const viralFriendIds = friendIds.filter((id) => id !== user.id);
 
     // 2. Build where filter according to visibility rules:
     // - Regular posts / photo updates: show to all connected friends/contacts AND peers from mutual school/college
@@ -81,12 +82,16 @@ export async function GET(req: Request) {
         ],
       };
     } else {
-      // "ALL" (Default feed):
+      // "ALL" (Default feed with Social Graph Viral algorithm):
       where.OR = [
         // a) Any post / photo update from any connected peer, friend, or user themselves
         { actorId: { in: friendIds } },
         // b) Posts from alumni of the mutual school or college
         ...(user.institutionId ? [{ institutionId: user.institutionId }] : []),
+        // c) Social Graph Viral: Posts liked by any friend in user's network
+        ...(viralFriendIds.length > 0 ? [{ likes: { some: { userId: { in: viralFriendIds } } } }] : []),
+        // d) Social Graph Viral: Posts commented on by any friend in user's network
+        ...(viralFriendIds.length > 0 ? [{ comments: { some: { userId: { in: viralFriendIds } } } }] : []),
       ];
     }
 
@@ -110,6 +115,15 @@ export async function GET(req: Request) {
         likes: {
           select: {
             userId: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                avatarUrl: true,
+                currentRole: true,
+                currentCompany: true,
+              },
+            },
           },
         },
         saves: {
@@ -163,6 +177,43 @@ export async function GET(req: Request) {
         user.institutionId && item.institutionId === user.institutionId
       );
 
+      // Social Graph Viral Context:
+      // If a friend of the current user liked or commented on this post, surface attribution
+      let viralContext: {
+        type: "LIKE" | "COMMENT";
+        userId: string;
+        userName: string;
+        userRole?: string | null;
+        userAvatar?: string | null;
+      } | null = null;
+
+      if (item.actorId !== user.id) {
+        const friendComment = item.comments.find(
+          (c) => viralFriendIds.includes(c.userId) && c.userId !== item.actorId
+        );
+        const friendLike = item.likes.find(
+          (l) => viralFriendIds.includes(l.userId) && l.userId !== item.actorId
+        );
+
+        if (friendComment && friendComment.user) {
+          viralContext = {
+            type: "COMMENT",
+            userId: friendComment.user.id,
+            userName: friendComment.user.name,
+            userRole: friendComment.user.currentRole || null,
+            userAvatar: friendComment.user.avatarUrl || null,
+          };
+        } else if (friendLike && friendLike.user) {
+          viralContext = {
+            type: "LIKE",
+            userId: friendLike.user.id,
+            userName: friendLike.user.name,
+            userRole: friendLike.user.currentRole || null,
+            userAvatar: friendLike.user.avatarUrl || null,
+          };
+        }
+      }
+
       return {
         id: item.id,
         type: item.type,
@@ -176,6 +227,7 @@ export async function GET(req: Request) {
         sharesCount,
         isFriend,
         isMutualInstitution,
+        viralContext,
         comments: item.comments,
         metadata: {
           ...meta,

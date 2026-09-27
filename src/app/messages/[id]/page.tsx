@@ -798,7 +798,7 @@ export default function DirectMessageChatPage(props: {
   };
 
   // 2. Send End-to-End Encrypted Message
-  const handleSendMessage = async (textOrEvent?: React.FormEvent | string) => {
+  const handleSendMessage = (textOrEvent?: React.FormEvent | string) => {
     let cleanText = "";
     if (typeof textOrEvent === "string") {
       cleanText = textOrEvent.trim();
@@ -816,118 +816,120 @@ export default function DirectMessageChatPage(props: {
       return;
     }
 
-    // Lazily fetch shared key if not yet derived (peer may have registered their key
-    // after this chat was opened, or the initial fetch returned empty devices).
-    let activeSharedKey = sharedKey;
-    if (!activeSharedKey) {
-      try {
-        const devRes = await fetch(`/api/messages/devices?userId=${peerId}`);
-        const devData = await devRes.json();
-        if (devData.devices && devData.devices.length > 0 && devData.devices[0].publicKey) {
-          const localIdentity = await getOrCreateDeviceIdentity(currentUser.id);
-          const peerKey = await importPeerPublicKey(devData.devices[0].publicKey);
-          activeSharedKey = await deriveSharedSessionKey(localIdentity.privateKey, peerKey);
-          setSharedKey(activeSharedKey);
-        }
-      } catch {
-        // key fetch failed — proceed without encryption (will fail at encrypt step)
-      }
-    }
-
-    if (!activeSharedKey) {
-      try {
-        activeSharedKey = await derivePairwiseFallbackKey(currentUser.id, peerId);
-        setSharedKey(activeSharedKey);
-      } catch (err) {
-        console.warn("Fallback offline key derivation error:", err);
-      }
-    }
-
+    const currentReplyingTo = replyingTo;
     if (replyingTo) {
       cleanText = `↪️ Replying to "${replyingTo.text.slice(0, 30)}${replyingTo.text.length > 30 ? "..." : ""}":\n${cleanText}`;
       setReplyingTo(null);
     }
 
-    setSending(true);
+    // 0ms instant input reset & optimistic render
     setInputText("");
 
-    try {
-      const clientMsgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const expireSec = getDisappearingSeconds(messagePrivacy);
-      const expiresAt = expireSec ? Date.now() + expireSec * 1000 : undefined;
+    const clientMsgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const expireSec = getDisappearingSeconds(messagePrivacy);
+    const expiresAt = expireSec ? Date.now() + expireSec * 1000 : undefined;
 
-      // 1. Instant optimistic UI render (0ms latency)
-      const optimisticMsg: VaultMessage = {
-        id: clientMsgId,
-        clientMsgId,
-        peerId,
-        senderId: currentUser.id,
-        senderName: currentUser.name,
-        text: cleanText,
-        type: "TEXT",
-        status: "SENDING",
-        createdAt: Date.now(),
-        expiresAt,
-        disappearingSeconds: expireSec,
-        privacyMode: messagePrivacy,
-        replyToId: replyingTo?.id,
-        replySnippet: replyingTo?.text ? replyingTo.text.slice(0, 40) : undefined,
-      };
+    const optimisticMsg: VaultMessage = {
+      id: clientMsgId,
+      clientMsgId,
+      peerId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      text: cleanText,
+      type: "TEXT",
+      status: "SENDING",
+      createdAt: Date.now(),
+      expiresAt,
+      disappearingSeconds: expireSec,
+      privacyMode: messagePrivacy,
+      replyToId: currentReplyingTo?.id,
+      replySnippet: currentReplyingTo?.text ? currentReplyingTo.text.slice(0, 40) : undefined,
+    };
 
-      console.log(`[MESSAGE SEND] Sending optimistic message:`, clientMsgId);
-      setMessages((prev) => [...prev, optimisticMsg]);
-      scrollToBottom();
-      saveLocalMessage(optimisticMsg).catch(() => {});
+    console.log(`[MESSAGE SEND] Instant optimistic render:`, clientMsgId);
+    setMessages((prev) => [...prev, optimisticMsg]);
+    scrollToBottom();
+    saveLocalMessage(optimisticMsg).catch(() => {});
 
-      // 2. Authoritative server POST (Persisted in SQLite database & broadcast to both recipient & sender)
-      const res = await authFetch("/api/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipientId: peerId,
-          content: cleanText,
-          clientMsgId,
-          replyToId: replyingTo?.id,
-          replySnippet: replyingTo?.text ? replyingTo.text.slice(0, 40) : undefined,
-          disappearingSeconds: expireSec,
-          messageType: "TEXT",
-        }),
-      });
+    // Asynchronous background execution: key derivation & server dispatch
+    (async () => {
+      try {
+        let activeSharedKey = sharedKey;
+        if (!activeSharedKey) {
+          try {
+            const devRes = await fetch(`/api/messages/devices?userId=${peerId}`);
+            const devData = await devRes.json();
+            if (devData.devices && devData.devices.length > 0 && devData.devices[0].publicKey) {
+              const localIdentity = await getOrCreateDeviceIdentity(currentUser.id);
+              const peerKey = await importPeerPublicKey(devData.devices[0].publicKey);
+              activeSharedKey = await deriveSharedSessionKey(localIdentity.privateKey, peerKey);
+              setSharedKey(activeSharedKey);
+            }
+          } catch {
+            // key fetch failed — continue with fallback
+          }
+        }
 
-      if (res.ok) {
-        const data = await res.json();
-        const serverMsg = data.message;
-        const confirmedMsg: VaultMessage = {
-          id: serverMsg.id,
-          clientMsgId: serverMsg.clientMsgId || clientMsgId,
-          peerId,
-          senderId: currentUser.id,
-          senderName: currentUser.name,
-          text: serverMsg.content,
-          type: "TEXT",
-          status: "SENT",
-          createdAt: new Date(serverMsg.createdAt).getTime(),
-          expiresAt,
-          disappearingSeconds: expireSec,
-          privacyMode: messagePrivacy,
-          replyToId: serverMsg.replyToId,
-          replySnippet: serverMsg.replySnippet,
-        };
+        if (!activeSharedKey) {
+          try {
+            activeSharedKey = await derivePairwiseFallbackKey(currentUser.id, peerId);
+            setSharedKey(activeSharedKey);
+          } catch (err) {
+            console.warn("Fallback offline key derivation error:", err);
+          }
+        }
 
-        console.log(`[MESSAGE SERVER CONFIRMED] Server confirmed message ${serverMsg.id} (clientMsgId: ${clientMsgId})`);
-        await saveLocalMessage(confirmedMsg);
-        setMessages((prev) => reconcileMessages(prev, [confirmedMsg]));
-      } else {
-        console.warn(`[MESSAGE SEND] Server POST failed with status ${res.status}`);
+        // Authoritative server POST
+        const res = await authFetch("/api/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipientId: peerId,
+            content: cleanText,
+            clientMsgId,
+            replyToId: currentReplyingTo?.id,
+            replySnippet: currentReplyingTo?.text ? currentReplyingTo.text.slice(0, 40) : undefined,
+            disappearingSeconds: expireSec,
+            messageType: "TEXT",
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const serverMsg = data.message;
+          const confirmedMsg: VaultMessage = {
+            id: serverMsg.id,
+            clientMsgId: serverMsg.clientMsgId || clientMsgId,
+            peerId,
+            senderId: currentUser.id,
+            senderName: currentUser.name,
+            text: serverMsg.content,
+            type: "TEXT",
+            status: "SENT",
+            createdAt: new Date(serverMsg.createdAt).getTime(),
+            expiresAt,
+            disappearingSeconds: expireSec,
+            privacyMode: messagePrivacy,
+            replyToId: serverMsg.replyToId,
+            replySnippet: serverMsg.replySnippet,
+          };
+
+          console.log(`[MESSAGE SERVER CONFIRMED] Server confirmed message ${serverMsg.id} (clientMsgId: ${clientMsgId})`);
+          await saveLocalMessage(confirmedMsg);
+          setMessages((prev) => reconcileMessages(prev, [confirmedMsg]));
+        } else {
+          console.warn(`[MESSAGE SEND] Server POST failed with status ${res.status}`);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === clientMsgId ? { ...m, status: "FAILED" } : m))
+          );
+        }
+      } catch (err) {
+        console.error("Error sending direct message in background:", err);
         setMessages((prev) =>
           prev.map((m) => (m.id === clientMsgId ? { ...m, status: "FAILED" } : m))
         );
       }
-    } catch (err) {
-      console.error("Error sending direct message:", err);
-    } finally {
-      setSending(false);
-    }
+    })();
   };
 
   // View-Once Handler
