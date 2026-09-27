@@ -18,6 +18,7 @@ export interface CallSession {
   peerId: string;
   peerName: string;
   peerRole?: string | null;
+  peerAvatar?: string | null;
   callType: CallType;
   isIncoming: boolean;
   startTime?: number;
@@ -29,6 +30,7 @@ export interface WebRTCSignalingMessage {
   senderId: string;
   senderName?: string;
   senderRole?: string;
+  senderAvatar?: string | null;
   type: "REQUEST" | "ACCEPT" | "REJECT" | "OFFER" | "ANSWER" | "ICE" | "END";
   callType?: CallType;
   sdp?: RTCSessionDescriptionInit;
@@ -169,6 +171,7 @@ export class WebRTCManager {
 
   // Register outbound signaling sender (e.g. Supabase realtime)
   registerSignalSender(sender: (msg: WebRTCSignalingMessage) => void): () => void {
+    this.sendSignalListeners.clear();
     this.sendSignalListeners.add(sender);
     return () => {
       this.sendSignalListeners.delete(sender);
@@ -176,6 +179,7 @@ export class WebRTCManager {
   }
 
   setSignalSender(sender: (msg: WebRTCSignalingMessage) => void) {
+    this.sendSignalListeners.clear();
     this.sendSignalListeners.add(sender);
   }
 
@@ -196,7 +200,10 @@ export class WebRTCManager {
         }
       }
     }
-    if (cbs.onSendSignal) this.sendSignalListeners.add(cbs.onSendSignal);
+    if (cbs.onSendSignal) {
+      this.sendSignalListeners.clear();
+      this.sendSignalListeners.add(cbs.onSendSignal);
+    }
   }
 
   private setState(state: CallState) {
@@ -251,6 +258,16 @@ export class WebRTCManager {
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
       { urls: "stun:stun2.l.google.com:19302" },
+      { urls: "stun:stun.relay.metered.ca:80" },
+      {
+        urls: [
+          "turn:openrelay.metered.ca:80",
+          "turn:openrelay.metered.ca:443",
+          "turn:openrelay.metered.ca:443?transport=tcp",
+        ],
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
     ];
 
     // Optional configurable TURN server from environment
@@ -264,6 +281,8 @@ export class WebRTCManager {
 
     return servers;
   }
+
+  private connectionRecoveryTimer: NodeJS.Timeout | null = null;
 
   private createPeerConnection(): RTCPeerConnection {
     if (this.pc) {
@@ -306,12 +325,36 @@ export class WebRTCManager {
       this.notifyRemoteStream(stream);
     };
 
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        if (this.connectionRecoveryTimer) {
+          clearTimeout(this.connectionRecoveryTimer);
+          this.connectionRecoveryTimer = null;
+        }
+        tones.stop();
+        if (this.callState !== "CONNECTED") {
+          this.setState("CONNECTED");
+          this.startDurationTimer();
+        }
+      } else if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        if (this.callState === "CONNECTED") {
+          this.setState("RECONNECTING");
+        }
+      }
+    };
+
     pc.onconnectionstatechange = () => {
       switch (pc.connectionState) {
         case "connecting":
-          this.setState("CONNECTING");
+          if (this.callState !== "CONNECTED") {
+            this.setState("CONNECTING");
+          }
           break;
         case "connected":
+          if (this.connectionRecoveryTimer) {
+            clearTimeout(this.connectionRecoveryTimer);
+            this.connectionRecoveryTimer = null;
+          }
           tones.stop();
           this.setState("CONNECTED");
           this.startDurationTimer();
@@ -320,6 +363,17 @@ export class WebRTCManager {
           this.setState("RECONNECTING");
           break;
         case "failed":
+          // Give 6 seconds for ICE recovery / candidate renegotiation before terminating
+          if (!this.connectionRecoveryTimer) {
+            this.setState("RECONNECTING");
+            this.connectionRecoveryTimer = setTimeout(() => {
+              this.connectionRecoveryTimer = null;
+              if (this.pc && (this.pc.connectionState === "failed" || this.pc.iceConnectionState === "failed")) {
+                this.endCall(false);
+              }
+            }, 6000);
+          }
+          break;
         case "closed":
           this.endCall(false);
           break;
@@ -361,13 +415,20 @@ export class WebRTCManager {
   }
 
   // Caller starts outgoing call
-  async startCall(peerId: string, peerName: string, callType: CallType, peerRole?: string | null): Promise<void> {
+  async startCall(
+    peerId: string,
+    peerName: string,
+    callType: CallType,
+    peerRole?: string | null,
+    peerAvatar?: string | null
+  ): Promise<void> {
     const callId = `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     this.currentCall = {
       callId,
       peerId,
       peerName,
       peerRole,
+      peerAvatar,
       callType,
       isIncoming: false,
       duration: 0,
@@ -383,7 +444,16 @@ export class WebRTCManager {
       type: "REQUEST",
       callType,
       senderRole: peerRole || undefined,
+      senderAvatar: peerAvatar || undefined,
     });
+
+    // Pre-acquire local media so camera/mic permissions are checked immediately
+    // and outgoing video self-preview is available instantly
+    try {
+      await this.acquireMedia(callType);
+    } catch (err) {
+      console.warn("Pre-acquiring media during outgoing call failed or delayed:", err);
+    }
   }
 
   private isPrivacyLockActive: boolean = false;
@@ -393,7 +463,14 @@ export class WebRTCManager {
   }
 
   // Handle incoming call alert
-  handleIncomingCall(callId: string, callerId: string, callerName: string, callType: CallType, callerRole?: string | null) {
+  handleIncomingCall(
+    callId: string,
+    callerId: string,
+    callerName: string,
+    callType: CallType,
+    callerRole?: string | null,
+    callerAvatar?: string | null
+  ) {
     if (this.isPrivacyLockActive) {
       // Privacy Lock active: silently auto-reject call without ringing or exposing presence
       this.sendSignal({
@@ -421,6 +498,7 @@ export class WebRTCManager {
       peerId: callerId,
       peerName: callerName,
       peerRole: callerRole,
+      peerAvatar: callerAvatar,
       callType,
       isIncoming: true,
       duration: 0,
@@ -520,9 +598,20 @@ export class WebRTCManager {
 
   // Callee receives WebRTC Offer -> creates WebRTC Answer
   async handleOffer(offer: RTCSessionDescriptionInit): Promise<void> {
-    if (!this.pc || !this.currentCall) return;
+    if (!this.currentCall) return;
 
     try {
+      if (!this.pc) {
+        const stream = await this.acquireMedia(this.currentCall.callType);
+        const pc = this.createPeerConnection();
+        stream.getTracks().forEach((track) => {
+          track.enabled = true;
+          pc.addTrack(track, stream);
+        });
+      }
+
+      if (!this.pc) return;
+
       await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
 
       // Drain any queued ICE candidates
@@ -642,6 +731,11 @@ export class WebRTCManager {
   // End call and cleanup
   endCall(notifyPeer = true): void {
     tones.stop();
+
+    if (this.connectionRecoveryTimer) {
+      clearTimeout(this.connectionRecoveryTimer);
+      this.connectionRecoveryTimer = null;
+    }
 
     if (this.durationTimer) {
       clearInterval(this.durationTimer);

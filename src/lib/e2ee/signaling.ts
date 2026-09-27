@@ -53,15 +53,29 @@ class RealtimeSignalingService {
   private onConnectionRequestCbs = new Set<ConnectionRequestCallback>();
   private onConnectionAcceptedCbs = new Set<ConnectionAcceptedCallback>();
 
+  private peerChannelPromises = new Map<string, Promise<void>>();
+  private currentUserAvatar: string | null = null;
+
   private getPeerChannel(peerId: string) {
     if (!this.peerChannels.has(peerId)) {
       const supabase = createClient();
       const ch = supabase.channel(`p2p-signal:${peerId}`, {
         config: { broadcast: { ack: true } },
       });
-      ch.subscribe();
+
+      const subscribePromise = new Promise<void>((resolve) => {
+        ch.subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            resolve();
+          }
+        });
+        setTimeout(resolve, 1000);
+      });
+
       this.peerChannels.set(peerId, ch);
+      this.peerChannelPromises.set(peerId, subscribePromise);
     }
+
     return this.peerChannels.get(peerId)!;
   }
 
@@ -80,6 +94,7 @@ class RealtimeSignalingService {
       } catch {}
     }
     this.peerChannels.clear();
+    this.peerChannelPromises.clear();
     this.sharedKeys.clear();
     this.onMessageReceivedCbs.clear();
     this.onStatusUpdatedCbs.clear();
@@ -91,8 +106,11 @@ class RealtimeSignalingService {
     this.localPrivateKey = null;
   }
 
-  init(userId: string, userName: string, localPrivateKey: CryptoKey) {
-    if (this.currentUserId === userId && this.channel) return;
+  init(userId: string, userName: string, localPrivateKey: CryptoKey, userAvatar?: string | null) {
+    if (this.currentUserId === userId && this.channel) {
+      if (userAvatar) this.currentUserAvatar = userAvatar;
+      return;
+    }
 
     if (this.channel || (this.currentUserId && this.currentUserId !== userId)) {
       this.cleanup();
@@ -100,6 +118,7 @@ class RealtimeSignalingService {
 
     this.currentUserId = userId;
     this.currentUserName = userName;
+    this.currentUserAvatar = userAvatar || null;
     this.localPrivateKey = localPrivateKey;
 
     const supabase = createClient();
@@ -303,6 +322,8 @@ class RealtimeSignalingService {
     // 4. WebRTC Call Signaling
     this.channel.on("broadcast", { event: "webrtc-signal" }, async (event) => {
       const msg = event.payload as WebRTCSignalingMessage;
+      const curSession = webrtcManager.getCurrentSession();
+
       switch (msg.type) {
         case "REQUEST":
           webrtcManager.handleIncomingCall(
@@ -310,36 +331,49 @@ class RealtimeSignalingService {
             msg.senderId,
             msg.senderName || "Alumni Contact",
             msg.callType || "VOICE",
-            msg.senderRole
+            msg.senderRole,
+            msg.senderAvatar
           );
           break;
         case "ACCEPT":
-          await webrtcManager.handlePeerAccepted();
+          if (!curSession || curSession.callId === msg.callId) {
+            await webrtcManager.handlePeerAccepted();
+          }
           break;
         case "REJECT":
-          webrtcManager.endCall(false);
-          await saveCallLog({
-            id: msg.callId,
-            peerId: msg.senderId,
-            peerName: msg.senderName || "Alumni Contact",
-            callType: msg.callType || "VOICE",
-            direction: "OUTGOING",
-            status: msg.reason === "BUSY" ? "MISSED" : "DECLINED",
-            durationSeconds: 0,
-            timestamp: Date.now(),
-          });
+          if (!curSession || curSession.callId === msg.callId) {
+            webrtcManager.endCall(false);
+            await saveCallLog({
+              id: msg.callId,
+              peerId: msg.senderId,
+              peerName: msg.senderName || "Alumni Contact",
+              callType: msg.callType || "VOICE",
+              direction: "OUTGOING",
+              status: msg.reason === "BUSY" ? "MISSED" : "DECLINED",
+              durationSeconds: 0,
+              timestamp: Date.now(),
+            });
+          }
           break;
         case "OFFER":
-          if (msg.sdp) await webrtcManager.handleOffer(msg.sdp);
+          if ((!curSession || curSession.callId === msg.callId) && msg.sdp) {
+            await webrtcManager.handleOffer(msg.sdp);
+          }
           break;
         case "ANSWER":
-          if (msg.sdp) await webrtcManager.handleAnswer(msg.sdp);
+          if ((!curSession || curSession.callId === msg.callId) && msg.sdp) {
+            await webrtcManager.handleAnswer(msg.sdp);
+          }
           break;
         case "ICE":
-          if (msg.candidate) await webrtcManager.handleIceCandidate(msg.candidate);
+          if ((!curSession || curSession.callId === msg.callId) && msg.candidate) {
+            await webrtcManager.handleIceCandidate(msg.candidate);
+          }
           break;
         case "END":
-          webrtcManager.endCall(false);
+          if (!curSession || curSession.callId === msg.callId) {
+            webrtcManager.endCall(false);
+          }
           break;
       }
     });
@@ -372,6 +406,9 @@ class RealtimeSignalingService {
       if (!session) return;
       msg.senderId = this.currentUserId || "";
       msg.senderName = this.currentUserName || "Alumni Contact";
+      if (!msg.senderAvatar && this.currentUserAvatar) {
+        msg.senderAvatar = this.currentUserAvatar;
+      }
       this.sendSignalToPeer(session.peerId, msg);
     });
 
@@ -396,6 +433,8 @@ class RealtimeSignalingService {
   async sendSignalToPeer(peerId: string, signalMsg: WebRTCSignalingMessage) {
     try {
       const peerChannel = this.getPeerChannel(peerId);
+      const subPromise = this.peerChannelPromises.get(peerId);
+      if (subPromise) await subPromise;
       await peerChannel.send({
         type: "broadcast",
         event: "webrtc-signal",

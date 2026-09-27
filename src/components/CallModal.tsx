@@ -41,6 +41,7 @@ export default function CallModal() {
       isOpen={isOpen}
       peerName={session?.peerName || "Alumni Contact"}
       peerRole={session?.peerRole}
+      peerAvatar={session?.peerAvatar}
       isVideo={session?.callType === "VIDEO"}
       isCaller={!session?.isIncoming}
       callStatus={
@@ -48,6 +49,8 @@ export default function CallModal() {
           ? "RINGING"
           : callState === "CONNECTED"
           ? "CONNECTED"
+          : callState === "RECONNECTING"
+          ? "RECONNECTING"
           : "CONNECTING"
       }
       localStream={localStream}

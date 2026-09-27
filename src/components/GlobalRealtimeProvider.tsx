@@ -168,7 +168,7 @@ export default function GlobalRealtimeProvider() {
         }).catch(() => {});
 
         // 3. Initialize Realtime Signaling channel (subscribed globally across whole app)
-        realtimeSignaling.init(user.id, user.name, localIdentity.privateKey);
+        realtimeSignaling.init(user.id, user.name, localIdentity.privateKey, (user as any).avatarUrl || (user as any).image || null);
 
         // 4. Drain any pending offline messages from server queue
         await realtimeSignaling.drainPendingQueue();

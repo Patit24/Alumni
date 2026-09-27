@@ -449,7 +449,7 @@ export default function DirectMessageChatPage(props: {
         }
 
         // Initialize Realtime Signaling
-        realtimeSignaling.init(user.id, user.name, localIdentity.privateKey);
+        realtimeSignaling.init(user.id, user.name, localIdentity.privateKey, (user as any).avatarUrl || (user as any).image || null);
 
         // 1. Fast cache load from local vault
         const localMsgs = await getLocalMessages(peerId);
@@ -979,7 +979,8 @@ export default function DirectMessageChatPage(props: {
     const peerRole = peer?.currentRole
       ? `${peer.currentRole}${peer.currentCompany ? ` at ${peer.currentCompany}` : ""}`
       : undefined;
-    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VOICE", peerRole);
+    const peerAvatar = peer?.avatarUrl || (peer as any)?.image || undefined;
+    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VOICE", peerRole, peerAvatar);
   };
 
   // Start Video Call (Enforces Connected + Trusted Contact)
@@ -996,7 +997,8 @@ export default function DirectMessageChatPage(props: {
     const peerRole = peer?.currentRole
       ? `${peer.currentRole}${peer.currentCompany ? ` at ${peer.currentCompany}` : ""}`
       : undefined;
-    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VIDEO", peerRole);
+    const peerAvatar = peer?.avatarUrl || (peer as any)?.image || undefined;
+    await webrtcManager.startCall(peerId, peer?.name || "Alumni Contact", "VIDEO", peerRole, peerAvatar);
   };
 
   // Clear Chat History
