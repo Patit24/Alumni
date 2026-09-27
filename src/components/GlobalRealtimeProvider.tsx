@@ -186,6 +186,11 @@ export default function GlobalRealtimeProvider() {
         // 5. Global Message Received Listener
         // Read window.location.pathname live so we never need to re-subscribe on navigation.
         const unsubMsg = realtimeSignaling.onMessageReceived((msg: VaultMessage) => {
+          // If this message was sent by the current user, DO NOT notify ourselves!
+          if (msg.senderId === user.id) {
+            return;
+          }
+
           const peerProfile = (msg.senderName && msg.senderName.trim() !== "Alumni Member")
             ? { id: msg.senderId, name: msg.senderName.trim() }
             : undefined;
@@ -200,9 +205,9 @@ export default function GlobalRealtimeProvider() {
           // If user is NOT currently inside the specific chat with this sender
           const isCurrentlyInChat = window.location.pathname === `/messages/${msg.senderId}`;
           if (!isCurrentlyInChat) {
-            const senderName = msg.senderName || "A user";
-            const notificationTitle = `${senderName} is sms you`;
-            const notificationBody = "Tap and see sms";
+            const senderName = msg.senderName && msg.senderName.trim() !== "Alumni Member" ? msg.senderName.trim() : "New message";
+            const notificationTitle = senderName;
+            const notificationBody = msg.text ? (msg.text.length > 60 ? msg.text.slice(0, 60) + "…" : msg.text) : "Sent you a message";
 
             // In-app interactive toast
             showNotificationToast({

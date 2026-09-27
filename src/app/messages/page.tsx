@@ -790,19 +790,14 @@ export default function MessagesHubPage() {
                       getCachedConnectionProfiles<AlumniContact>(currentUserId || undefined).find((p) => p.id === contact.id)?.avatarUrl;
 
                     return (
-                      <motion.div
+                      <Link
                         key={contact.id}
-                        layout
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, x: -40 }}
-                        transition={MOTION_SPRINGS.gentle}
-                        whileTap={{ scale: 0.985, backgroundColor: "rgba(255,255,255,0.06)" }}
-                        className="relative flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-white/[0.04] transition-colors select-none"
+                        href={`/messages/${contact.id}`}
+                        prefetch={true}
+                        className="relative flex items-center gap-3.5 px-4 py-3 cursor-pointer hover:bg-white/[0.04] active:bg-white/[0.08] transition-colors select-none"
                         onClick={() => {
                           triggerHaptic("light");
                           addLocalConnectedPeer(contact.id, { ...contact, name: resolvedName, avatarUrl: resolvedAvatar }, currentUserId || undefined);
-                          router.push(`/messages/${contact.id}`);
                         }}
                       >
                         {/* Avatar + online dot */}
@@ -858,7 +853,7 @@ export default function MessagesHubPage() {
 
                         {/* Chevron */}
                         <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
-                      </motion.div>
+                      </Link>
                     );
                   })}
                 </AnimatePresence>

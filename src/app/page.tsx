@@ -19,7 +19,6 @@ import {
 import LogoutButton from "@/components/LogoutButton";
 import FeedSection from "@/components/FeedSection";
 import ClientAuthRedirect from "@/components/ClientAuthRedirect";
-import InstitutionDiscoverySection from "@/components/InstitutionDiscoverySection";
 import NavbarUserAvatar from "@/components/NavbarUserAvatar";
 
 import { redirect } from "next/navigation";
@@ -286,11 +285,6 @@ export default async function HomePage(props: {
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
 
-        {/* People from User's College / University / School Discovery Section */}
-        <InstitutionDiscoverySection
-          institutionId={user.institutionId}
-          initialInstitutionName={user.institution?.name}
-        />
 
         {/* Quick 1-Click Feature Shortcuts Hub */}
         <section className="space-y-3">
