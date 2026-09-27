@@ -136,6 +136,33 @@ function reconcileMessages(
   return Array.from(map.values()).sort((a, b) => a.createdAt - b.createdAt);
 }
 
+function getCachedConnectionStatus(peerId: string): "CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE" {
+  if (typeof window === "undefined") return "CONNECTED";
+  try {
+    const activeId = getActiveVaultUserId();
+    if (activeId) {
+      const savedRel = localStorage.getItem(`alumni_rel_status_${activeId}_${peerId}`);
+      if (savedRel && ["CONNECTED", "PENDING_OUTGOING", "PENDING_INCOMING", "NONE"].includes(savedRel)) {
+        return savedRel as "CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE";
+      }
+      const localPeers = getLocalConnectedPeerIds(activeId);
+      if (localPeers.includes(peerId)) {
+        return "CONNECTED";
+      }
+      const cached = getCachedConnectionProfiles(activeId);
+      const found = cached.find((c: any) => (c?.id || c?.userId) === peerId);
+      if (found) {
+        if (found.status === "CONNECTED" || found.status === "ACCEPTED" || found.isConnection) {
+          return "CONNECTED";
+        }
+        if (found.status === "PENDING_OUTGOING") return "PENDING_OUTGOING";
+        if (found.status === "PENDING_INCOMING") return "PENDING_INCOMING";
+      }
+    }
+  } catch {}
+  return "CONNECTED";
+}
+
 export default function DirectMessageChatPage(props: {
   params: Promise<{ id: string }>;
 }) {
@@ -219,6 +246,8 @@ export default function DirectMessageChatPage(props: {
       getLocalMessages(peerId).then((local) => {
         if (local && local.length > 0) {
           setMessages(local);
+          setConnectionStatus("CONNECTED");
+          setIsCheckingConnection(false);
         }
         setLoading(false);
       }).catch(() => {
@@ -242,7 +271,22 @@ export default function DirectMessageChatPage(props: {
 
   // Privacy & Trust States
   const [trustLevel, setTrustLevel] = useState<"UNKNOWN" | "REQUEST" | "CONNECTED" | "TRUSTED" | "BLOCKED">("REQUEST");
-  const [connectionStatus, setConnectionStatus] = useState<"CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE">("NONE");
+  const [connectionStatus, setConnectionStatus] = useState<"CONNECTED" | "PENDING_OUTGOING" | "PENDING_INCOMING" | "NONE">(() =>
+    getCachedConnectionStatus(peerId)
+  );
+  const [isCheckingConnection, setIsCheckingConnection] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const activeId = getActiveVaultUserId();
+      if (activeId) {
+        const savedRel = localStorage.getItem(`alumni_rel_status_${activeId}_${peerId}`);
+        if (savedRel) return false;
+        const localPeers = getLocalConnectedPeerIds(activeId);
+        if (localPeers.includes(peerId)) return false;
+      }
+    } catch {}
+    return true;
+  });
   const [isSafetyVerified, setIsSafetyVerified] = useState(false);
   const [keyRotatedWarning, setKeyRotatedWarning] = useState(false);
   const [peerReveals, setPeerReveals] = useState({ phone: false, email: false, work: false });
@@ -384,7 +428,13 @@ export default function DirectMessageChatPage(props: {
           }
         }
 
+        if (user?.id) {
+          try {
+            localStorage.setItem(`alumni_rel_status_${user.id}_${peerId}`, relStatus);
+          } catch {}
+        }
         setConnectionStatus(relStatus);
+        setIsCheckingConnection(false);
 
         const cachedProfiles = getCachedConnectionProfiles(user.id);
         const cachedPeer = cachedProfiles.find((p: any) => p?.id === peerId);
@@ -761,7 +811,7 @@ export default function DirectMessageChatPage(props: {
 
     if (!cleanText || !currentUser) return;
 
-    if (connectionStatus !== "CONNECTED") {
+    if (!isCheckingConnection && connectionStatus !== "CONNECTED") {
       alert("You cannot send messages until your connection request is accepted.");
       return;
     }
@@ -907,6 +957,9 @@ export default function DirectMessageChatPage(props: {
           setConnectionStatus("CONNECTED");
           if (currentUser) {
             addLocalConnectedPeer(peerId, currentUser.id);
+            try {
+              localStorage.setItem(`alumni_rel_status_${currentUser.id}_${peerId}`, "CONNECTED");
+            } catch {}
           }
           // Sync to /api/connections so connectionRequest is marked ACCEPTED
           await authFetch("/api/connections", {
@@ -919,6 +972,9 @@ export default function DirectMessageChatPage(props: {
           setConnectionStatus("NONE");
           if (currentUser) {
             removeLocalConnectedPeer(peerId, currentUser.id);
+            try {
+              localStorage.setItem(`alumni_rel_status_${currentUser.id}_${peerId}`, "NONE");
+            } catch {}
           }
           await authFetch("/api/connections", {
             method: "POST",
@@ -945,6 +1001,9 @@ export default function DirectMessageChatPage(props: {
       });
       if (currentUser) {
         removeLocalConnectedPeer(peerId, currentUser.id);
+        try {
+          localStorage.setItem(`alumni_rel_status_${currentUser.id}_${peerId}`, "NONE");
+        } catch {}
       }
       setConnectionStatus("NONE");
       setTrustLevel("REQUEST");
@@ -999,7 +1058,7 @@ export default function DirectMessageChatPage(props: {
 
   // Start Voice Call (Enforces Connected + Trusted Contact)
   const handleStartVoiceCall = async () => {
-    if (connectionStatus !== "CONNECTED") {
+    if (!isCheckingConnection && connectionStatus !== "CONNECTED") {
       alert("You must be connected friends before you can start voice calls.");
       return;
     }
@@ -1017,7 +1076,7 @@ export default function DirectMessageChatPage(props: {
 
   // Start Video Call (Enforces Connected + Trusted Contact)
   const handleStartVideoCall = async () => {
-    if (connectionStatus !== "CONNECTED") {
+    if (!isCheckingConnection && connectionStatus !== "CONNECTED") {
       alert("You must be connected friends before you can start video calls.");
       return;
     }
@@ -1142,10 +1201,10 @@ export default function DirectMessageChatPage(props: {
 
           <button
             onClick={handleStartVoiceCall}
-            disabled={connectionStatus !== "CONNECTED"}
+            disabled={!isCheckingConnection && connectionStatus !== "CONNECTED"}
             className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/30 border border-white/10 text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
             title={
-              connectionStatus !== "CONNECTED"
+              !isCheckingConnection && connectionStatus !== "CONNECTED"
                 ? "Connect with user to enable voice call"
                 : "Voice Call"
             }
@@ -1155,10 +1214,10 @@ export default function DirectMessageChatPage(props: {
 
           <button
             onClick={handleStartVideoCall}
-            disabled={connectionStatus !== "CONNECTED"}
+            disabled={!isCheckingConnection && connectionStatus !== "CONNECTED"}
             className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-white/5 hover:bg-blue-500/20 hover:text-blue-400 hover:border-blue-500/30 border border-white/10 text-slate-300 flex items-center justify-center transition active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
             title={
-              connectionStatus !== "CONNECTED"
+              !isCheckingConnection && connectionStatus !== "CONNECTED"
                 ? "Connect with user to enable video call"
                 : "Video Call"
             }
@@ -1208,8 +1267,8 @@ export default function DirectMessageChatPage(props: {
         </div>
       )}
 
-      {/* Relationship Banner: Only shown when NOT yet connected */}
-      {connectionStatus !== "CONNECTED" && (
+      {/* Relationship Banner: Only shown when NOT yet connected and verification finished */}
+      {!isCheckingConnection && connectionStatus !== "CONNECTED" && (
         <div className="bg-[#141b2e]/90 backdrop-blur-md border-b border-white/10 p-3 sm:px-4 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="h-8 w-8 rounded-xl bg-[#FF9933]/15 border border-[#FF9933]/30 flex items-center justify-center shrink-0">
@@ -1469,7 +1528,7 @@ export default function DirectMessageChatPage(props: {
         onCancelReply={() => setReplyingTo(null)}
         privacyMode={messagePrivacy}
         onPrivacyModeChange={setMessagePrivacy}
-        disabled={connectionStatus !== "CONNECTED" || trustLevel === "BLOCKED"}
+        disabled={(!isCheckingConnection && connectionStatus !== "CONNECTED") || trustLevel === "BLOCKED"}
       />
 
 
