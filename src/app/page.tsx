@@ -377,6 +377,7 @@ export default async function HomePage(props: {
             currentUserCompany={user.currentCompany}
             currentUserVerified={isVerified}
             batchYear={user.batchYear}
+            institutionId={user.institutionId || undefined}
             currentUserAvatar={user.avatarUrl}
           />
         </section>

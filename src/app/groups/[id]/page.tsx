@@ -12,25 +12,29 @@ import {
   Share2,
   Users,
   ShieldCheck,
-  Building,
-  GraduationCap,
   RefreshCw,
   FolderOpen,
   Radio,
   Sparkles,
   UserPlus,
   Briefcase,
-  CheckCircle2,
   ExternalLink,
   Plus,
-  ShieldAlert,
   Lock,
   CameraOff,
   Camera,
   AlertTriangle,
-  Clock,
-  EyeOff,
   Sliders,
+  CheckCheck,
+  Phone,
+  Video,
+  Search,
+  MoreVertical,
+  Info,
+  X,
+  ChevronRight,
+  LogOut,
+  Sparkle,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { setNativeScreenshotAllowed } from "@/lib/native-security";
@@ -93,6 +97,28 @@ interface GroupData {
   messages: Message[];
 }
 
+// WhatsApp Signature Member Colors
+const MEMBER_COLORS = [
+  "#25d366", // Emerald Green
+  "#53bdeb", // Sky Blue
+  "#f15c6d", // Coral Pink
+  "#e5a65c", // Gold Amber
+  "#a983f4", // Purple
+  "#34b7f1", // Cyan
+  "#ff72d2", // Magenta
+  "#20c997", // Teal
+  "#fd7e14", // Orange
+];
+
+function getSenderColor(senderId: string): string {
+  let hash = 0;
+  for (let i = 0; i < senderId.length; i++) {
+    hash = senderId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % MEMBER_COLORS.length;
+  return MEMBER_COLORS[index];
+}
+
 // Built-in campus radio & chill ambient tracks
 const PRESET_TRACKS = [
   {
@@ -112,6 +138,25 @@ const PRESET_TRACKS = [
   },
 ];
 
+function getLocalGroupData(groupId: string): GroupData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(`alumni_group_data_v2_${groupId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalGroupData(groupId: string, data: GroupData) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(`alumni_group_data_v2_${groupId}`, JSON.stringify(data));
+  } catch (e) {
+    console.warn("Could not cache group data:", e);
+  }
+}
+
 export default function GroupChatRoomPage({
   params,
 }: {
@@ -119,19 +164,33 @@ export default function GroupChatRoomPage({
 }) {
   const { id: groupId } = use(params);
 
-  const [data, setData] = useState<GroupData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // 0ms Cache-First Data Initialization
+  const [data, setData] = useState<GroupData | null>(() => getLocalGroupData(groupId));
+  const [loading, setLoading] = useState<boolean>(() => !getLocalGroupData(groupId));
   const [inputMessage, setInputMessage] = useState("");
   const [sending, setSending] = useState(false);
 
-  // In-App Music Player State
+  // Attachment Dock Menu
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+
+  // In-Chat Search
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // WhatsApp Group Info Drawer
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+
+  // In-App Ambient Music Player State
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrackName, setCurrentTrackName] = useState<string>("Campus Study Lo-Fi Beats");
   const [currentArtist, setCurrentArtist] = useState<string>("Alumni Chill Radio");
   const [audioProgress, setAudioProgress] = useState(0);
-  const [showMusicDock, setShowMusicDock] = useState(true);
+  const [showMusicDock, setShowMusicDock] = useState(false);
 
-  // Modal States
+  // Calling prompt
+  const [showCallPrompt, setShowCallPrompt] = useState<"audio" | "video" | null>(null);
+
+  // Modals
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [candidateUsers, setCandidateUsers] = useState<Member[]>([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
@@ -172,8 +231,9 @@ export default function GroupChatRoomPage({
     try {
       const res = await fetch(`/api/groups/${groupId}/messages`);
       if (!res.ok) throw new Error("Failed to load group");
-      const json = await res.json();
+      const json: GroupData = await res.json();
       setData(json);
+      saveLocalGroupData(groupId, json);
     } catch (err) {
       console.error(err);
     } finally {
@@ -187,9 +247,10 @@ export default function GroupChatRoomPage({
       try {
         const res = await fetch(`/api/groups/${groupId}/messages`);
         if (!res.ok) throw new Error("Failed to load group");
-        const json = await res.json();
+        const json: GroupData = await res.json();
         if (!ignore) {
           setData(json);
+          saveLocalGroupData(groupId, json);
           setLoading(false);
         }
       } catch (err) {
@@ -211,10 +272,12 @@ export default function GroupChatRoomPage({
         setData((prev) => {
           if (!prev) return prev;
           if (prev.messages.some((m) => m.id === newMsg.id)) return prev;
-          return {
+          const updated = {
             ...prev,
             messages: [...prev.messages, newMsg],
           };
+          saveLocalGroupData(groupId, updated);
+          return updated;
         });
       })
       .on("broadcast", { event: "screenshot-alert" }, (event) => {
@@ -228,7 +291,7 @@ export default function GroupChatRoomPage({
         const payload = event.payload as { isSecretMode: boolean; allowScreenshot: boolean };
         setData((prev) => {
           if (!prev) return prev;
-          return {
+          const updated = {
             ...prev,
             group: {
               ...prev.group,
@@ -236,6 +299,8 @@ export default function GroupChatRoomPage({
               allowScreenshot: payload.allowScreenshot,
             },
           };
+          saveLocalGroupData(groupId, updated);
+          return updated;
         });
       })
       .subscribe();
@@ -255,9 +320,8 @@ export default function GroupChatRoomPage({
   // Anti-Screenshot & Screen Capture Protection Listeners
   useEffect(() => {
     if (!data) return;
-    const { group, currentUser } = data;
+    const { group } = data;
 
-    // Report screenshot attempt to server and group
     const reportScreenshotAttempt = async () => {
       try {
         await fetch(`/api/groups/${groupId}/security`, {
@@ -268,7 +332,6 @@ export default function GroupChatRoomPage({
       }
     };
 
-    // Keyboard listener for screenshot shortcuts (PrintScreen, Cmd+Shift+3/4/5, Snipping tool, Windows key combos)
     const handleKeyDown = (e: KeyboardEvent) => {
       const isPrintScreen =
         e.key === "PrintScreen" ||
@@ -283,21 +346,16 @@ export default function GroupChatRoomPage({
 
       if (isPrintScreen || isMacScreenshot || isWindowsSnip) {
         if (!group.allowScreenshot) {
-          // Trigger instant blackout shield immediately to protect chat content
           setIsPrivacyShieldActive(true);
-          // Overwrite clipboard to prevent screenshot paste
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText("Screenshots are protected in this Alumni conversation.").catch(() => {});
           }
           setTimeout(() => setIsPrivacyShieldActive(false), 3000);
         }
-
-        // Notify entire group of screenshot action
         reportScreenshotAttempt();
       }
     };
 
-    // On blur / visibility change / snippet tool trigger, shield sensitive chat
     const handleVisibilityOrBlur = () => {
       if (!group.allowScreenshot) {
         setIsPrivacyShieldActive(true);
@@ -305,7 +363,6 @@ export default function GroupChatRoomPage({
     };
 
     const handleWindowFocus = () => {
-      // Delay unshield slightly to ensure snapshot tool has finished
       setTimeout(() => {
         setIsPrivacyShieldActive(false);
       }, 500);
@@ -376,7 +433,6 @@ export default function GroupChatRoomPage({
     }
   }
 
-  // Handle local mobile/PC file picker
   function handleDeviceFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -388,6 +444,7 @@ export default function GroupChatRoomPage({
         .play()
         .then(() => {
           setIsPlaying(true);
+          setShowMusicDock(true);
           const cleanName = file.name.replace(/\.[^/.]+$/, "");
           setCurrentTrackName(cleanName);
           setCurrentArtist("My Mobile Device");
@@ -403,6 +460,7 @@ export default function GroupChatRoomPage({
         .play()
         .then(() => {
           setIsPlaying(true);
+          setShowMusicDock(true);
           setCurrentTrackName(track.title);
           setCurrentArtist(track.artist);
         })
@@ -410,9 +468,13 @@ export default function GroupChatRoomPage({
     }
   }
 
-  async function handleSendMessage(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSendMessage(e?: React.FormEvent) {
+    if (e) e.preventDefault();
     if (!inputMessage.trim()) return;
+
+    const messageText = inputMessage.trim();
+    setInputMessage("");
+    setShowAttachMenu(false);
 
     try {
       setSending(true);
@@ -420,14 +482,13 @@ export default function GroupChatRoomPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: inputMessage,
+          content: messageText,
           type: "TEXT",
         }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to send");
 
-      setInputMessage("");
       await fetchRoomData();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error sending message");
@@ -436,7 +497,6 @@ export default function GroupChatRoomPage({
     }
   }
 
-  // Admin toggles security settings (Secret Mode or Screenshot Permission)
   async function handleUpdateSecurity(setting: { isSecretMode?: boolean; allowScreenshot?: boolean }) {
     try {
       setUpdatingSecurity(true);
@@ -450,13 +510,15 @@ export default function GroupChatRoomPage({
 
       setData((prev) => {
         if (!prev) return prev;
-        return {
+        const updated = {
           ...prev,
           group: {
             ...prev.group,
             ...json.group,
           },
         };
+        saveLocalGroupData(groupId, updated);
+        return updated;
       });
       await fetchRoomData();
     } catch (err: unknown) {
@@ -466,12 +528,12 @@ export default function GroupChatRoomPage({
     }
   }
 
-  // Share Spotify / Gaana / Apple Music link
   async function handleShareStreamingTrack() {
     if (!streamUrl.trim()) return;
 
     let title = "Shared Track";
-    const artist = streamService === "SPOTIFY" ? "Spotify Music" : streamService === "GAANA" ? "Gaana.com" : "Apple Music";
+    const artist =
+      streamService === "SPOTIFY" ? "Spotify Music" : streamService === "GAANA" ? "Gaana.com" : "Apple Music";
 
     if (streamService === "SPOTIFY") {
       title = "Spotify Track / Playlist";
@@ -504,7 +566,6 @@ export default function GroupChatRoomPage({
     }
   }
 
-  // Share Job Opportunity inside Group
   async function handleShareJob() {
     if (!jobForm.title || !jobForm.company) return;
 
@@ -531,7 +592,6 @@ export default function GroupChatRoomPage({
     }
   }
 
-  // Share Mentorship Offering inside Group
   async function handleShareMentorship() {
     try {
       await fetch(`/api/groups/${groupId}/messages`, {
@@ -553,7 +613,6 @@ export default function GroupChatRoomPage({
     }
   }
 
-  // Load candidate alumni to add to group
   async function openAddMember() {
     setShowAddMemberModal(true);
     setLoadingCandidates(true);
@@ -568,7 +627,6 @@ export default function GroupChatRoomPage({
     }
   }
 
-  // Add alumnus to group
   async function addMember(userId: string) {
     try {
       setAddingMemberId(userId);
@@ -608,12 +666,14 @@ export default function GroupChatRoomPage({
     }
   }
 
-  if (loading) {
+  if (loading && !data) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-2">
-          <RefreshCw className="w-6 h-6 text-pink-600 animate-spin" />
-          <p className="text-xs text-slate-500">Entering group lounge...</p>
+      <div className="min-h-screen bg-[#0b141a] flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-14 w-14 rounded-2xl bg-[#202c33] border border-[#2a3942] flex items-center justify-center shadow-lg">
+            <RefreshCw className="w-6 h-6 text-[#00a884] animate-spin" />
+          </div>
+          <p className="text-xs text-[#8696a0] font-medium tracking-wide">Connecting to WhatsApp lounge...</p>
         </div>
       </div>
     );
@@ -621,15 +681,35 @@ export default function GroupChatRoomPage({
 
   if (!data) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <p className="text-xs text-slate-500">Group not found or restricted by Secret Mode.</p>
+      <div className="min-h-screen bg-[#0b141a] flex items-center justify-center p-4">
+        <div className="max-w-sm text-center space-y-3 bg-[#111b21] p-6 rounded-3xl border border-[#2a3942]">
+          <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
+          <h2 className="text-base font-bold text-white">Group Not Available</h2>
+          <p className="text-xs text-[#8696a0]">
+            This group could not be found or you are not an authorized member.
+          </p>
+          <Link
+            href="/messages"
+            className="inline-block px-4 py-2 bg-[#00a884] hover:bg-[#008f6f] text-white text-xs font-bold rounded-xl transition"
+          >
+            Back to Chats
+          </Link>
+        </div>
       </div>
     );
   }
 
+  // Filter messages if search query is active
+  const filteredMessages = searchQuery.trim()
+    ? data.messages.filter((m) =>
+        m.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.sender.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : data.messages;
+
   return (
     <div
-      className={`min-h-screen bg-slate-100 flex flex-col justify-between select-none ${
+      className={`h-[100dvh] flex flex-col bg-[#0b141a] text-[#e9edef] overflow-hidden select-none ${
         !data.group.allowScreenshot ? "select-none screenshot-restricted" : ""
       } ${isPrivacyShieldActive ? "screenshot-shield-active" : ""}`}
       style={{
@@ -653,20 +733,20 @@ export default function GroupChatRoomPage({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center p-6 text-center text-white"
+            className="fixed inset-0 bg-[#0b141a]/98 backdrop-blur-2xl z-50 flex flex-col items-center justify-center p-6 text-center text-white"
           >
-            <div className="h-16 w-16 rounded-3xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mb-4 shadow-lg">
+            <div className="h-16 w-16 rounded-3xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mb-4 shadow-xl">
               <CameraOff className="w-8 h-8" />
             </div>
-            <h2 className="text-lg font-bold">Screenshot Protection Active</h2>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm">
-              The group admin has restricted screenshots for this room. Chat content is shielded to protect member privacy.
+            <h2 className="text-lg font-bold">Screenshot Protection Shield</h2>
+            <p className="text-xs text-[#8696a0] mt-2 max-w-sm leading-relaxed">
+              Screenshotting is strictly disabled in this group to protect student and alumni conversations.
             </p>
             <button
               onClick={() => setIsPrivacyShieldActive(false)}
-              className="mt-6 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl transition border border-slate-700"
+              className="mt-6 px-5 py-2.5 bg-[#202c33] hover:bg-[#2a3942] text-xs font-semibold rounded-xl transition border border-[#2a3942]"
             >
-              Resume Viewing
+              Resume Chat
             </button>
           </motion.div>
         )}
@@ -679,206 +759,289 @@ export default function GroupChatRoomPage({
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-16 left-1/2 -translate-x-1/2 z-40 bg-rose-600 text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 border border-rose-500"
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-40 bg-rose-600 text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 border border-rose-500 animate-bounce"
           >
-            <AlertTriangle className="w-4 h-4 text-white shrink-0 animate-bounce" />
-            <span>⚠️ {liveScreenshotAlert.culpritName} took a screenshot of this conversation!</span>
+            <AlertTriangle className="w-4 h-4 text-white shrink-0" />
+            <span>⚠️ {liveScreenshotAlert.culpritName} attempted a screenshot in this room!</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Group Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 py-3 shadow-xs">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/groups"
-              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600 transition"
+      {/* Call Prompt Modal */}
+      <AnimatePresence>
+        {showCallPrompt && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#202c33] border border-[#2a3942] rounded-3xl p-6 max-w-xs w-full text-center space-y-4 shadow-2xl"
             >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
+              <div className="h-16 w-16 mx-auto rounded-full bg-[#00a884]/20 text-[#00a884] flex items-center justify-center">
+                {showCallPrompt === "video" ? <Video className="w-8 h-8" /> : <Phone className="w-8 h-8" />}
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  Group {showCallPrompt === "video" ? "Video" : "Voice"} Call
+                </h3>
+                <p className="text-xs text-[#8696a0] mt-1">
+                  Start an encrypted group call with {data.group.memberCount} members of &ldquo;{data.group.name}&rdquo;?
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCallPrompt(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-[#111b21] text-xs font-bold text-[#8696a0] hover:text-white transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCallPrompt(null);
+                    alert("Group Calling feature is connecting with active members...");
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-[#00a884] hover:bg-[#008f6f] text-xs font-bold text-white transition shadow-md"
+                >
+                  Start Call
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-pink-500 to-purple-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm shadow-pink-500/20">
-              {data.group.name.charAt(0)}
+      {/* ── WhatsApp Header ── */}
+      <header className="bg-[#202c33] border-b border-[#2a3942] sticky top-0 z-30 px-3 sm:px-4 py-2.5 shadow-md flex items-center justify-between gap-2 pt-[max(0.6rem,env(safe-area-inset-top))]">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {/* Back button */}
+          <Link
+            href="/messages"
+            className="p-1.5 -ml-1 text-[#aebac1] hover:text-white rounded-full hover:bg-white/5 transition shrink-0"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+
+          {/* Group Avatar & Clickable Subject */}
+          <div
+            onClick={() => setShowGroupInfo(true)}
+            className="flex items-center gap-3 cursor-pointer min-w-0 flex-1 group"
+          >
+            <div className="relative shrink-0">
+              <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-[#FF9933] via-[#00a884] to-[#128C7E] p-[1.5px] shadow-sm">
+                <div className="h-full w-full rounded-full bg-[#111b21] flex items-center justify-center text-white font-bold text-sm">
+                  {data.group.name.charAt(0).toUpperCase()}
+                </div>
+              </div>
+              {data.group.isSecretMode && (
+                <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-amber-500 text-black flex items-center justify-center shadow-xs">
+                  <Lock className="w-2.5 h-2.5" />
+                </div>
+              )}
             </div>
 
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <h1 className="text-sm font-bold text-slate-900">{data.group.name}</h1>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pink-50 text-pink-700 border border-pink-200">
-                  {data.group.scope === "SAME_BATCH"
-                    ? `Class of ${data.group.batchYear}`
-                    : "University Wide"}
-                </span>
-
-                {data.group.isSecretMode && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900 text-amber-300 flex items-center gap-1 border border-slate-700">
-                    <Lock className="w-2.5 h-2.5" /> Secret • 48h Vanish
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-sm font-bold text-white truncate group-hover:text-[#00a884] transition">
+                  {data.group.name}
+                </h1>
+                {data.group.scope === "SAME_BATCH" && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                    &apos;{String(data.group.batchYear).slice(-2)}
                   </span>
                 )}
               </div>
-
-              <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                <Users className="w-3.5 h-3.5 text-slate-400" />
+              <p className="text-[11px] text-[#8696a0] truncate mt-0.5 flex items-center gap-1">
                 <span>{data.group.memberCount} members</span>
                 <span>•</span>
-                <span>{data.group.institutionName}</span>
+                <span className="truncate">tap here for group info</span>
               </p>
             </div>
           </div>
-
-          <div className="flex items-center gap-1.5">
-            {/* Admin Security / Privacy Settings Button */}
-            {data.currentUser.isAdmin && (
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowSecurityModal(true)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
-                  data.group.isSecretMode
-                    ? "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
-                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                }`}
-              >
-                <Sliders className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Security & Privacy</span>
-              </motion.button>
-            )}
-
-            {/* Add Member Button */}
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={openAddMember}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Add Member</span>
-            </motion.button>
-
-            {/* Toggle Music Player Dock */}
-            <button
-              onClick={() => setShowMusicDock(!showMusicDock)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                showMusicDock
-                  ? "bg-pink-50 text-pink-700 border border-pink-200"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              <Music className={`w-3.5 h-3.5 ${isPlaying ? "animate-bounce" : ""}`} />
-              <span>{isPlaying ? "Playing..." : "Music Lounge"}</span>
-            </button>
-          </div>
         </div>
 
-        {/* Secret Mode Banner */}
-        {data.group.isSecretMode && (
-          <div className="max-w-4xl mx-auto mt-2 bg-slate-900 text-amber-300 px-3 py-1.5 rounded-xl text-[11px] font-medium flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>
-                <strong>Secret Conversation Active:</strong> Older messages vanish after 48 hours. Only group members can view.
-              </span>
+        {/* Header Action Icons: Video, Voice, Search, Menu */}
+        <div className="flex items-center gap-1 shrink-0 text-[#aebac1]">
+          <button
+            onClick={() => setShowCallPrompt("video")}
+            className="p-2 hover:text-white hover:bg-white/5 rounded-full transition"
+            title="Group Video Call"
+          >
+            <Video className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => setShowCallPrompt("audio")}
+            className="p-2 hover:text-white hover:bg-white/5 rounded-full transition"
+            title="Group Voice Call"
+          >
+            <Phone className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className={`p-2 rounded-full transition ${
+              showSearch ? "text-[#00a884] bg-white/10" : "hover:text-white hover:bg-white/5"
+            }`}
+            title="Search in chat"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setShowMusicDock(!showMusicDock)}
+            className={`p-2 rounded-full transition ${
+              showMusicDock ? "text-pink-400 bg-white/10" : "hover:text-white hover:bg-white/5"
+            }`}
+            title="Campus Beats Radio"
+          >
+            <Music className={`w-4 h-4 ${isPlaying ? "animate-bounce text-pink-400" : ""}`} />
+          </button>
+          <button
+            onClick={() => setShowGroupInfo(true)}
+            className="p-2 hover:text-white hover:bg-white/5 rounded-full transition"
+            title="Group Info"
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+
+      {/* In-Chat Search Bar */}
+      <AnimatePresence>
+        {showSearch && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="bg-[#111b21] border-b border-[#2a3942] px-4 py-2 shrink-0 flex items-center gap-2"
+          >
+            <Search className="w-4 h-4 text-[#8696a0]" />
+            <input
+              type="text"
+              placeholder="Search conversation..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-transparent flex-1 text-xs text-white focus:outline-none placeholder:text-[#8696a0]"
+              autoFocus
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} className="text-[#8696a0] hover:text-white text-xs">
+                ✕
+              </button>
+            )}
+            <button onClick={() => setShowSearch(false)} className="text-xs text-[#00a884] font-semibold">
+              Done
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Sleek Ambient Campus Beats Radio Dock */}
+      <AnimatePresence>
+        {showMusicDock && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="bg-[#111b21]/95 border-b border-[#2a3942] px-4 py-2.5 shrink-0 z-20 backdrop-blur-md shadow-md"
+          >
+            <div className="max-w-4xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <button
+                  onClick={togglePlayPause}
+                  className="h-8 w-8 rounded-full bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center shrink-0 shadow-md transition"
+                >
+                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                </button>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-white truncate max-w-[200px] sm:max-w-xs">
+                    {currentTrackName}
+                  </p>
+                  <p className="text-[10px] text-pink-400 font-medium truncate">{currentArtist}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => playPresetTrack(PRESET_TRACKS[0])}
+                  className="px-2.5 py-1 rounded-lg bg-[#202c33] hover:bg-[#2a3942] text-[11px] font-semibold text-white transition border border-[#2a3942]"
+                >
+                  Study Lo-Fi
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-2.5 py-1 rounded-lg bg-[#202c33] hover:bg-[#2a3942] text-[11px] font-semibold text-white transition border border-[#2a3942]"
+                >
+                  Pick Audio
+                </button>
+                <button
+                  onClick={handleShareCurrentTrackToChat}
+                  className="p-1.5 rounded-lg bg-[#202c33] hover:bg-[#2a3942] text-[#8696a0] hover:text-white transition"
+                  title="Share track to chat"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setShowMusicDock(false)}
+                  className="p-1.5 text-[#8696a0] hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-            <span className="text-[10px] text-slate-400">
-              Screenshots: {data.group.allowScreenshot ? "Permitted" : "Blocked & Audited"}
+            {/* Progress bar */}
+            <div className="max-w-4xl mx-auto w-full h-1 bg-white/10 rounded-full mt-2 overflow-hidden">
+              <div className="h-full bg-pink-500 transition-all duration-300" style={{ width: `${audioProgress}%` }} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── WhatsApp Chat Wallpaper & Stream ── */}
+      <main className="flex-1 overflow-y-auto p-3 sm:p-4 max-w-4xl w-full mx-auto space-y-2 relative">
+        {/* Subtle WhatsApp dark wallpaper pattern overlay */}
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none opacity-25"
+          style={{
+            backgroundImage: "radial-gradient(#202c33 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+          }}
+        />
+
+        {/* Secret Mode Notice Pill */}
+        {data.group.isSecretMode && (
+          <div className="text-center my-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#182229]/95 text-amber-300 text-[11px] font-semibold border border-amber-500/20 shadow-sm">
+              <Lock className="w-3 h-3 text-amber-400" />
+              <span>Secret Conversation: Messages vanish after 48h · Screen capture protected</span>
             </span>
           </div>
         )}
-      </header>
 
-      {/* In-App Mobile & Streaming Music Player Bar */}
-      {showMusicDock && (
-        <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white px-4 py-3 border-b border-purple-900/50 shrink-0 shadow-md">
-          <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-            {/* Track Info & Play Button */}
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <button
-                onClick={togglePlayPause}
-                className="h-10 w-10 rounded-2xl bg-pink-500 hover:bg-pink-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-pink-500/20 transition"
-              >
-                {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-              </button>
-
-              <div className="overflow-hidden">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-white truncate max-w-[200px] sm:max-w-[280px]">
-                    {currentTrackName}
-                  </span>
-                  <span className="text-[10px] bg-pink-500/20 text-pink-300 px-1.5 py-0.5 rounded font-medium">
-                    {currentArtist}
-                  </span>
-                </div>
-                {/* Progress bar */}
-                <div className="w-48 sm:w-64 h-1.5 bg-white/20 rounded-full mt-1.5 overflow-hidden">
-                  <div
-                    className="h-full bg-pink-500 transition-all duration-200"
-                    style={{ width: `${audioProgress}%` }}
-                  />
-                </div>
-              </div>
+        {filteredMessages.length === 0 ? (
+          <div className="h-full min-h-[300px] flex flex-col items-center justify-center text-center p-6 text-[#8696a0] space-y-3">
+            <div className="h-16 w-16 rounded-3xl bg-[#202c33] border border-[#2a3942] flex items-center justify-center">
+              <Users className="w-8 h-8 text-[#00a884]" />
             </div>
-
-            {/* Audio Source Options */}
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
-              {/* Play from Device */}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-bold rounded-xl transition border border-white/10"
-              >
-                <FolderOpen className="w-3.5 h-3.5 text-pink-400" />
-                <span>Play from Mobile</span>
-              </button>
-
-              {/* Spotify / Gaana / Apple Music Player Button */}
-              <button
-                onClick={() => setShowStreamingModal(true)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-bold rounded-xl transition border border-emerald-500/30"
-              >
-                <Music className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Spotify / Gaana</span>
-              </button>
-
-              {/* Campus Lo-Fi Preset */}
-              <button
-                onClick={() => playPresetTrack(PRESET_TRACKS[0])}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-bold rounded-xl transition border border-white/10"
-              >
-                <Radio className="w-3.5 h-3.5 text-amber-400" />
-                <span>Campus Beats</span>
-              </button>
-
-              {/* Share current track to chat */}
-              <button
-                onClick={handleShareCurrentTrackToChat}
-                title="Share track in chat"
-                className="p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
+            <div>
+              <p className="text-sm font-bold text-white">Welcome to {data.group.name}</p>
+              <p className="text-xs text-[#8696a0] mt-1 max-w-xs">
+                Send the first message, share job referrals, or play campus music with your alumni group!
+              </p>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Chat Stream with DRM protection */}
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-4xl w-full mx-auto space-y-3">
-        {data.messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 space-y-2">
-            <Music className="w-10 h-10 text-slate-300 animate-pulse" />
-            <p className="text-xs">No messages yet. Start the conversation or share music from your mobile!</p>
           </div>
         ) : (
-          data.messages.map((msg) => {
+          filteredMessages.map((msg) => {
             const isMe = msg.sender.id === data.currentUser.id;
 
+            // System Message
             if (msg.type === "SYSTEM") {
               const isAlert = msg.content.includes("SCREENSHOT ALERT");
               return (
                 <div key={msg.id} className="text-center my-3">
                   <span
-                    className={`text-[11px] px-3 py-1 rounded-full font-medium shadow-2xs ${
+                    className={`inline-block text-[11px] px-3.5 py-1 rounded-lg font-medium shadow-xs ${
                       isAlert
-                        ? "bg-rose-100 text-rose-700 border border-rose-200 font-bold"
-                        : "bg-slate-200/80 text-slate-600"
+                        ? "bg-rose-950/80 text-rose-300 border border-rose-500/40 font-bold"
+                        : "bg-[#182229]/90 text-[#8696a0] border border-white/5"
                     }`}
                   >
                     {msg.content}
@@ -887,127 +1050,202 @@ export default function GroupChatRoomPage({
               );
             }
 
-            // In-App Job Opportunity Card
+            // Job Share Attachment Card
             if (msg.type === "JOB_SHARE" && msg.metadata) {
               return (
-                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-2`}>
-                  <div className="max-w-sm bg-purple-50 border border-purple-200 rounded-3xl p-4 shadow-xs space-y-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 rounded-xl bg-purple-600 text-white flex items-center justify-center">
-                        <Briefcase className="w-4 h-4" />
+                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-1.5`}>
+                  <div
+                    className={`max-w-sm rounded-2xl p-3.5 shadow-md border ${
+                      isMe
+                        ? "bg-[#005c4b] text-white border-emerald-600/40 rounded-tr-xs"
+                        : "bg-[#202c33] text-white border-purple-500/30 rounded-tl-xs"
+                    }`}
+                  >
+                    {!isMe && (
+                      <p
+                        className="text-xs font-bold mb-1.5 flex items-center gap-1"
+                        style={{ color: getSenderColor(msg.sender.id) }}
+                      >
+                        {msg.sender.name}
+                        {msg.sender.verificationStatus === "VERIFIED" && (
+                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                        )}
+                      </p>
+                    )}
+                    <div className="bg-[#111b21]/70 rounded-xl p-3 border border-white/10 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0">
+                          <Briefcase className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-extrabold uppercase text-purple-400 tracking-wide">
+                            Internal Referral
+                          </span>
+                          <p className="text-xs font-bold text-white truncate">{msg.metadata.jobTitle}</p>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-[10px] font-bold uppercase text-purple-700">Internal Referral</span>
-                        <p className="text-xs font-bold text-slate-900">{msg.metadata.jobTitle}</p>
-                      </div>
+                      <p className="text-[11px] text-[#8696a0]">
+                        {msg.metadata.company} • {msg.metadata.location}
+                      </p>
+                      <Link
+                        href="/jobs"
+                        className="block text-center py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg transition"
+                      >
+                        View & Apply on Jobs Board
+                      </Link>
                     </div>
-                    <p className="text-[11px] text-slate-600">
-                      {msg.metadata.company} • {msg.metadata.location}
-                    </p>
-                    <Link
-                      href="/jobs"
-                      className="block text-center py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition"
-                    >
-                      View & Apply on Jobs Board
-                    </Link>
+                    <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-white/50">
+                      <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      {isMe && <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" />}
+                    </div>
                   </div>
                 </div>
               );
             }
 
-            // In-App Mentorship Card
+            // Mentorship Share Attachment Card
             if (msg.type === "MENTORSHIP_SHARE" && msg.metadata) {
               return (
-                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-2`}>
-                  <div className="max-w-sm bg-indigo-50 border border-indigo-200 rounded-3xl p-4 shadow-xs space-y-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
-                        <Sparkles className="w-4 h-4" />
+                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-1.5`}>
+                  <div
+                    className={`max-w-sm rounded-2xl p-3.5 shadow-md border ${
+                      isMe
+                        ? "bg-[#005c4b] text-white border-emerald-600/40 rounded-tr-xs"
+                        : "bg-[#202c33] text-white border-indigo-500/30 rounded-tl-xs"
+                    }`}
+                  >
+                    {!isMe && (
+                      <p
+                        className="text-xs font-bold mb-1.5 flex items-center gap-1"
+                        style={{ color: getSenderColor(msg.sender.id) }}
+                      >
+                        {msg.sender.name}
+                        {msg.sender.verificationStatus === "VERIFIED" && (
+                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                        )}
+                      </p>
+                    )}
+                    <div className="bg-[#111b21]/70 rounded-xl p-3 border border-white/10 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-extrabold uppercase text-indigo-400 tracking-wide">
+                            Mentorship Slot
+                          </span>
+                          <p className="text-xs font-bold text-white truncate">{msg.metadata.topic}</p>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-[10px] font-bold uppercase text-indigo-700">Senior Mentorship Offer</span>
-                        <p className="text-xs font-bold text-slate-900">{msg.metadata.topic}</p>
-                      </div>
+                      <p className="text-[11px] text-[#8696a0]">
+                        Offered by {msg.sender.name} ({msg.sender.currentRole || "Alumni"})
+                      </p>
+                      <Link
+                        href="/mentorship"
+                        className="block text-center py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition"
+                      >
+                        Book 1-on-1 Session
+                      </Link>
                     </div>
-                    <p className="text-[11px] text-slate-600">
-                      Offered by {msg.sender.name} ({msg.sender.currentRole || "Alumni"} at {msg.sender.currentCompany || "Network"})
-                    </p>
-                    <Link
-                      href="/mentorship"
-                      className="block text-center py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition"
-                    >
-                      Book 1-on-1 Guidance Slot
-                    </Link>
+                    <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-white/50">
+                      <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      {isMe && <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" />}
+                    </div>
                   </div>
                 </div>
               );
             }
 
-            // Spotify / Gaana / Apple Music Player Card
+            // Spotify / Gaana / Streaming Card
             if (msg.type === "STREAMING_SHARE" && msg.metadata) {
               return (
-                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-2`}>
-                  <div className="max-w-sm bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border border-emerald-300/80 rounded-3xl p-4 shadow-xs space-y-3">
-                    <div className="flex items-center justify-between">
+                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-1.5`}>
+                  <div
+                    className={`max-w-sm rounded-2xl p-3.5 shadow-md border ${
+                      isMe
+                        ? "bg-[#005c4b] text-white border-emerald-600/40 rounded-tr-xs"
+                        : "bg-[#202c33] text-white border-emerald-500/30 rounded-tl-xs"
+                    }`}
+                  >
+                    {!isMe && (
+                      <p
+                        className="text-xs font-bold mb-1.5 flex items-center gap-1"
+                        style={{ color: getSenderColor(msg.sender.id) }}
+                      >
+                        {msg.sender.name}
+                      </p>
+                    )}
+                    <div className="bg-[#111b21]/70 rounded-xl p-3 border border-white/10 space-y-2">
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
+                        <div className="h-8 w-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
                           <Music className="w-4 h-4" />
                         </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-900">{msg.metadata.title}</p>
-                          <span className="text-[10px] text-emerald-700 font-semibold">{msg.metadata.artist}</span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">{msg.metadata.title}</p>
+                          <span className="text-[10px] text-emerald-400 font-semibold">{msg.metadata.artist}</span>
                         </div>
                       </div>
+                      <a
+                        href={msg.metadata.embedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-white" />
+                        <span>Play on {msg.metadata.artist}</span>
+                        <ExternalLink className="w-3 h-3 ml-0.5" />
+                      </a>
                     </div>
-                    <a
-                      href={msg.metadata.embedUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-white" />
-                      <span>Play on {msg.metadata.artist}</span>
-                      <ExternalLink className="w-3 h-3 ml-0.5" />
-                    </a>
+                    <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-white/50">
+                      <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      {isMe && <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" />}
+                    </div>
                   </div>
                 </div>
               );
             }
 
-            // Local Music Share
+            // In-Chat Music Audio Player Card
             if (msg.type === "MUSIC_SHARE") {
               return (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-2`}
-                >
-                  <div className="max-w-sm bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-indigo-500/10 border border-pink-200 rounded-3xl p-3.5 shadow-xs space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 rounded-xl bg-pink-600 text-white flex items-center justify-center">
-                        <Music className="w-4 h-4 animate-spin" />
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-bold text-slate-900">{msg.sender.name}</p>
-                        <p className="text-[10px] text-pink-600 font-semibold">Shared a music track</p>
-                      </div>
-                    </div>
-                    <div className="bg-white/80 rounded-2xl p-2.5 border border-pink-100 flex items-center justify-between">
-                      <div className="overflow-hidden mr-2">
-                        <p className="text-xs font-bold text-slate-800 truncate">{msg.metadata?.title || "Music Track"}</p>
-                        <p className="text-[10px] text-slate-500">{msg.metadata?.artist || "Audio"}</p>
+                <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-1.5`}>
+                  <div
+                    className={`max-w-sm rounded-2xl p-3.5 shadow-md border ${
+                      isMe
+                        ? "bg-[#005c4b] text-white border-emerald-600/40 rounded-tr-xs"
+                        : "bg-[#202c33] text-white border-pink-500/30 rounded-tl-xs"
+                    }`}
+                  >
+                    {!isMe && (
+                      <p
+                        className="text-xs font-bold mb-1.5 flex items-center gap-1"
+                        style={{ color: getSenderColor(msg.sender.id) }}
+                      >
+                        {msg.sender.name}
+                      </p>
+                    )}
+                    <div className="bg-[#111b21]/70 rounded-xl p-2.5 border border-white/10 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">{msg.metadata?.title || "Audio Track"}</p>
+                        <p className="text-[10px] text-pink-400 truncate">{msg.metadata?.artist || "Campus Radio"}</p>
                       </div>
                       <button
                         onClick={() => {
                           if (msg.metadata?.title) {
                             setCurrentTrackName(msg.metadata.title);
                             setCurrentArtist(msg.metadata.artist || "Audio");
+                            setShowMusicDock(true);
                             togglePlayPause();
                           }
                         }}
-                        className="p-2 bg-pink-600 text-white rounded-xl hover:bg-pink-700 transition shrink-0"
+                        className="h-8 w-8 rounded-full bg-pink-600 hover:bg-pink-500 text-white flex items-center justify-center shrink-0 transition"
                       >
-                        <Play className="w-3 h-3" />
+                        <Play className="w-3.5 h-3.5 ml-0.5" />
                       </button>
+                    </div>
+                    <div className="flex justify-end items-center gap-1 mt-1 text-[10px] text-white/50">
+                      <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      {isMe && <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" />}
                     </div>
                   </div>
                 </div>
@@ -1019,28 +1257,47 @@ export default function GroupChatRoomPage({
               minute: "2-digit",
             });
 
+            // Standard WhatsApp Chat Bubble
             return (
               <div
                 key={msg.id}
-                className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-1.5`}
+                className={`flex flex-col ${isMe ? "items-end" : "items-start"} my-1`}
               >
-                <div className="flex items-center gap-1.5 mb-1 text-[11px] text-slate-400 px-1">
-                  <span className="font-semibold text-slate-600">{msg.sender.name}</span>
-                  {msg.sender.verificationStatus === "VERIFIED" && (
-                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                  )}
-                  <span>• Class of {msg.sender.batchYear}</span>
-                  <span className="text-[10px] text-slate-400 ml-1">{timeString}</span>
-                </div>
-
                 <div
-                  className={`max-w-md px-4 py-2.5 rounded-2xl text-xs leading-relaxed shadow-xs ${
+                  className={`max-w-[85%] sm:max-w-md px-3.5 py-2 rounded-2xl text-[13px] leading-relaxed shadow-sm relative ${
                     isMe
-                      ? "bg-blue-600 text-white rounded-br-xs"
-                      : "bg-white text-slate-900 border border-slate-200/80 rounded-bl-xs"
+                      ? "bg-[#005c4b] text-[#e9edef] rounded-tr-xs"
+                      : "bg-[#202c33] text-[#e9edef] border border-white/5 rounded-tl-xs"
                   }`}
                 >
-                  <p className="break-words">{msg.content}</p>
+                  {/* Sender Name in distinct WhatsApp Color for incoming messages */}
+                  {!isMe && (
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span
+                        className="text-xs font-bold"
+                        style={{ color: getSenderColor(msg.sender.id) }}
+                      >
+                        {msg.sender.name}
+                      </span>
+                      {msg.sender.verificationStatus === "VERIFIED" && (
+                        <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      )}
+                      <span className="text-[10px] text-[#8696a0]">
+                        &apos;{String(msg.sender.batchYear).slice(-2)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Message Content */}
+                  <p className="break-words whitespace-pre-wrap">{msg.content}</p>
+
+                  {/* Timestamp & WhatsApp Status Checkmarks */}
+                  <div className="flex items-center justify-end gap-1 mt-1 text-[10px] text-[#8696a0] select-none float-right ml-3">
+                    <span className={isMe ? "text-white/60" : "text-[#8696a0]"}>{timeString}</span>
+                    {isMe && (
+                      <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb]" />
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -1049,74 +1306,298 @@ export default function GroupChatRoomPage({
         <div ref={messagesEndRef} />
       </main>
 
-      {/* Quick Action Shortcuts & Input Bar */}
-      <footer className="bg-white border-t border-slate-200 p-3 sm:p-4 shrink-0 shadow-xs space-y-2">
-        {/* Quick Sharing Shortcuts */}
-        <div className="max-w-4xl mx-auto flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-          <button
-            onClick={() => setShowShareJobModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold transition shrink-0"
+      {/* ── WhatsApp Floating Attachment Popup Tray ── */}
+      <AnimatePresence>
+        {showAttachMenu && (
+          <div
+            onClick={() => setShowAttachMenu(false)}
+            className="fixed inset-0 z-30 bg-black/20"
           >
-            <Briefcase className="w-3.5 h-3.5" /> Post Job in Group
-          </button>
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="absolute bottom-20 left-4 sm:left-auto bg-[#202c33] border border-[#2a3942] rounded-3xl p-3 shadow-2xl flex flex-col gap-2 z-40 max-w-xs"
+            >
+              <button
+                onClick={() => {
+                  setShowAttachMenu(false);
+                  setShowShareJobModal(true);
+                }}
+                className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-[#2a3942] transition text-left text-xs text-white"
+              >
+                <div className="h-10 w-10 rounded-full bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-bold text-white">Job Referral</p>
+                  <p className="text-[10px] text-[#8696a0]">Post opportunity for group</p>
+                </div>
+              </button>
 
-          <button
-            onClick={() => setShowShareMentorshipModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold transition shrink-0"
-          >
-            <Sparkles className="w-3.5 h-3.5" /> Offer Mentorship
-          </button>
+              <button
+                onClick={() => {
+                  setShowAttachMenu(false);
+                  setShowShareMentorshipModal(true);
+                }}
+                className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-[#2a3942] transition text-left text-xs text-white"
+              >
+                <div className="h-10 w-10 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-bold text-white">Mentorship Offer</p>
+                  <p className="text-[10px] text-[#8696a0]">Help juniors or batchmates</p>
+                </div>
+              </button>
 
-          <button
-            onClick={() => setShowStreamingModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold transition shrink-0"
-          >
-            <Music className="w-3.5 h-3.5" /> Spotify / Gaana Track
-          </button>
-        </div>
+              <button
+                onClick={() => {
+                  setShowAttachMenu(false);
+                  setShowStreamingModal(true);
+                }}
+                className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-[#2a3942] transition text-left text-xs text-white"
+              >
+                <div className="h-10 w-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <Music className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-bold text-white">Spotify / Gaana Track</p>
+                  <p className="text-[10px] text-[#8696a0]">Share playlist or music</p>
+                </div>
+              </button>
 
+              <button
+                onClick={() => {
+                  setShowAttachMenu(false);
+                  fileInputRef.current?.click();
+                }}
+                className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-[#2a3942] transition text-left text-xs text-white"
+              >
+                <div className="h-10 w-10 rounded-full bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                  <FolderOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-bold text-white">Audio File</p>
+                  <p className="text-[10px] text-[#8696a0]">Upload music from device</p>
+                </div>
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── WhatsApp Bottom Input Bar ── */}
+      <footer className="bg-[#202c33] border-t border-[#2a3942] p-2.5 sm:p-3 shrink-0 z-20 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex items-center gap-2">
+          {/* Attachment Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setShowAttachMenu(!showAttachMenu)}
+            className={`h-10 w-10 rounded-full flex items-center justify-center transition shrink-0 ${
+              showAttachMenu ? "bg-[#00a884] text-white rotate-45" : "text-[#8696a0] hover:text-white hover:bg-[#2a3942]"
+            }`}
+            title="Attach referral or music"
+          >
+            <Plus className="w-5 h-5 transition-transform" />
+          </button>
+
+          {/* WhatsApp Text Input Pill */}
           <input
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             placeholder={`Message ${data.group.name}...`}
-            className="flex-1 bg-slate-100 focus:bg-white text-xs text-slate-900 rounded-2xl px-4 py-3 border border-transparent focus:border-pink-500 focus:outline-none transition"
+            className="flex-1 bg-[#2a3942] text-sm text-[#e9edef] placeholder:text-[#8696a0] rounded-2xl px-4 py-2.5 border border-transparent focus:border-[#00a884] focus:outline-none transition"
           />
 
+          {/* WhatsApp Green Send Button */}
           <button
             type="submit"
             disabled={sending || !inputMessage.trim()}
-            className="p-3 bg-pink-600 hover:bg-pink-700 disabled:opacity-40 text-white rounded-2xl transition shadow-sm shrink-0"
+            className="h-10 w-10 bg-[#00a884] hover:bg-[#008f6f] disabled:opacity-40 text-white rounded-full flex items-center justify-center transition shadow-md shrink-0 active:scale-95"
+            title="Send Message"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-4 h-4 ml-0.5" />
           </button>
         </form>
       </footer>
 
-      {/* 1. Add Member Modal */}
+      {/* ── WhatsApp Group Info Drawer (Right Slide-Over) ── */}
+      <AnimatePresence>
+        {showGroupInfo && (
+          <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 280 }}
+              className="bg-[#111b21] w-full max-w-md h-full flex flex-col border-l border-[#2a3942] shadow-2xl overflow-y-auto"
+            >
+              {/* Drawer Top Header */}
+              <div className="bg-[#202c33] border-b border-[#2a3942] px-4 py-3 flex items-center gap-3 sticky top-0 z-10 pt-[max(0.75rem,env(safe-area-inset-top))]">
+                <button
+                  onClick={() => setShowGroupInfo(false)}
+                  className="p-1.5 text-[#8696a0] hover:text-white rounded-full transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <h2 className="text-base font-bold text-white">Group Info</h2>
+              </div>
+
+              {/* Group Profile Cover */}
+              <div className="bg-[#111b21] p-6 text-center border-b border-[#2a3942] space-y-3">
+                <div className="h-24 w-24 mx-auto rounded-full bg-gradient-to-tr from-[#FF9933] via-[#00a884] to-[#128C7E] p-1 shadow-xl">
+                  <div className="h-full w-full rounded-full bg-[#202c33] flex items-center justify-center text-3xl font-black text-white">
+                    {data.group.name.charAt(0).toUpperCase()}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white">{data.group.name}</h3>
+                  <p className="text-xs text-[#8696a0] mt-0.5">{data.group.institutionName}</p>
+                </div>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#202c33] text-[#00a884] border border-[#2a3942]">
+                    {data.group.scope === "SAME_BATCH" ? `Class of ${data.group.batchYear}` : "University Wide"}
+                  </span>
+                  {data.group.isSecretMode && (
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      Secret Mode
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Group Description */}
+              <div className="p-4 bg-[#111b21] border-b border-[#2a3942] space-y-1">
+                <p className="text-xs font-bold text-[#8696a0] uppercase tracking-wider">Description</p>
+                <p className="text-xs text-white leading-relaxed">
+                  {data.group.description || "Official alumni group on Samparka. Connect, share jobs, and network with peers."}
+                </p>
+              </div>
+
+              {/* Security & Admin Controls */}
+              <div className="p-4 bg-[#111b21] border-b border-[#2a3942] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#8696a0] uppercase tracking-wider">Privacy & Security</span>
+                  {data.currentUser.isAdmin && (
+                    <button
+                      onClick={() => setShowSecurityModal(true)}
+                      className="text-xs text-[#00a884] font-bold hover:underline"
+                    >
+                      Configure
+                    </button>
+                  )}
+                </div>
+                <div className="bg-[#202c33] p-3 rounded-2xl border border-[#2a3942] space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white flex items-center gap-2">
+                      <Lock className="w-3.5 h-3.5 text-amber-400" /> Secret Mode (48h vanish)
+                    </span>
+                    <span className="font-bold text-amber-400">{data.group.isSecretMode ? "ON" : "OFF"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white flex items-center gap-2">
+                      <Camera className="w-3.5 h-3.5 text-rose-400" /> Screenshot Capture
+                    </span>
+                    <span className="font-bold text-rose-400">{data.group.allowScreenshot ? "Allowed" : "Blocked"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Participants Section */}
+              <div className="p-4 bg-[#111b21] flex-1 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#8696a0] uppercase tracking-wider">
+                    {data.group.memberCount} Participants
+                  </span>
+                  <button
+                    onClick={openAddMember}
+                    className="inline-flex items-center gap-1.5 text-xs text-[#00a884] font-bold hover:underline"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Add Alumni</span>
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  {data.group.members.map((member) => {
+                    const isSelf = member.id === data.currentUser.id;
+                    const isGroupCreator = member.id === data.group.createdById;
+                    return (
+                      <div
+                        key={member.id}
+                        className="p-2.5 rounded-2xl bg-[#202c33] border border-[#2a3942] flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="h-9 w-9 rounded-full bg-[#111b21] border border-white/10 flex items-center justify-center font-bold text-xs text-white shrink-0">
+                            {member.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs font-bold text-white truncate">
+                                {member.name} {isSelf && <span className="text-[#8696a0] font-normal">(You)</span>}
+                              </span>
+                              {member.verificationStatus === "VERIFIED" && (
+                                <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-[10px] text-[#8696a0] truncate">
+                              Class of {member.batchYear} • {member.currentRole || "Alumnus"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {isGroupCreator && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#00a884]/20 text-[#00a884] border border-[#00a884]/30 shrink-0">
+                            Group Admin
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Exit Group Button */}
+              <div className="p-4 bg-[#111b21] border-t border-[#2a3942]">
+                <Link
+                  href="/messages"
+                  className="w-full py-2.5 rounded-xl bg-rose-950/40 text-rose-400 hover:bg-rose-900/60 border border-rose-800/40 flex items-center justify-center gap-2 text-xs font-bold transition"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Exit Group</span>
+                </Link>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Modal 1: Add Member Modal ── */}
       <AnimatePresence>
         {showAddMemberModal && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md rounded-3xl border border-slate-200 p-6 shadow-xl space-y-4 max-h-[85vh] flex flex-col"
+              className="bg-[#202c33] w-full max-w-md rounded-3xl border border-[#2a3942] p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col text-white"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-9 w-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <div className="h-9 w-9 rounded-xl bg-[#00a884]/20 text-[#00a884] flex items-center justify-center">
                     <UserPlus className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">Add Alumni to Group</h3>
-                    <p className="text-[11px] text-slate-500">From {data.group.institutionName}</p>
+                    <h3 className="text-sm font-bold text-white">Add Alumni to Group</h3>
+                    <p className="text-[11px] text-[#8696a0]">From {data.group.institutionName}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowAddMemberModal(false)}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                  className="text-xs font-bold text-[#8696a0] hover:text-white"
                 >
                   ✕
                 </button>
@@ -1124,32 +1605,32 @@ export default function GroupChatRoomPage({
 
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {loadingCandidates ? (
-                  <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
-                    <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />
+                  <div className="py-8 text-center text-[#8696a0] text-xs flex flex-col items-center gap-2">
+                    <RefreshCw className="w-5 h-5 animate-spin text-[#00a884]" />
                     <span>Finding alumni...</span>
                   </div>
                 ) : candidateUsers.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-8">
+                  <p className="text-xs text-[#8696a0] text-center py-8">
                     All matching alumni from this cohort are already in the group!
                   </p>
                 ) : (
                   candidateUsers.map((candidate) => (
                     <div
                       key={candidate.id}
-                      className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3"
+                      className="p-3 bg-[#111b21] rounded-2xl border border-[#2a3942] flex items-center justify-between gap-3"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 rounded-xl bg-slate-800 text-white flex items-center justify-center text-xs font-bold">
-                          {candidate.name.charAt(0)}
+                        <div className="h-9 w-9 rounded-full bg-[#202c33] text-white flex items-center justify-center text-xs font-bold">
+                          {candidate.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <div className="flex items-center gap-1">
-                            <span className="text-xs font-bold text-slate-900">{candidate.name}</span>
+                            <span className="text-xs font-bold text-white">{candidate.name}</span>
                             {candidate.verificationStatus === "VERIFIED" && (
-                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              <ShieldCheck className="w-3 h-3 text-emerald-400" />
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-500">
+                          <p className="text-[11px] text-[#8696a0]">
                             Class of {candidate.batchYear} • {candidate.currentRole || "Alumni"}
                           </p>
                         </div>
@@ -1158,7 +1639,7 @@ export default function GroupChatRoomPage({
                       <button
                         onClick={() => addMember(candidate.id)}
                         disabled={addingMemberId === candidate.id}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition"
+                        className="px-3 py-1.5 bg-[#00a884] hover:bg-[#008f6f] disabled:opacity-40 text-white text-xs font-bold rounded-xl transition"
                       >
                         {addingMemberId === candidate.id ? "Adding..." : "Add"}
                       </button>
@@ -1169,7 +1650,7 @@ export default function GroupChatRoomPage({
 
               <button
                 onClick={() => setShowAddMemberModal(false)}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                className="w-full py-2 bg-[#111b21] hover:bg-[#2a3942] text-[#8696a0] hover:text-white text-xs font-bold rounded-xl transition"
               >
                 Close
               </button>
@@ -1178,41 +1659,41 @@ export default function GroupChatRoomPage({
         )}
       </AnimatePresence>
 
-      {/* 2. Admin Security & Privacy Settings Modal */}
+      {/* ── Modal 2: Admin Security & Privacy Settings Modal ── */}
       <AnimatePresence>
         {showSecurityModal && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md rounded-3xl border border-slate-200 p-6 shadow-xl space-y-5"
+              className="bg-[#202c33] w-full max-w-md rounded-3xl border border-[#2a3942] p-6 shadow-2xl space-y-5 text-white"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-9 w-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                  <div className="h-9 w-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
                     <Sliders className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">Group Privacy & Security</h3>
-                    <p className="text-[11px] text-slate-500">Admin Controls for {data.group.name}</p>
+                    <h3 className="text-sm font-bold text-white">Group Privacy & Security</h3>
+                    <p className="text-[11px] text-[#8696a0]">Admin Controls for {data.group.name}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowSecurityModal(false)}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                  className="text-xs font-bold text-[#8696a0] hover:text-white"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {/* Secret Conversation Switch */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="p-3.5 rounded-2xl bg-[#111b21] border border-[#2a3942] space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Lock className="w-4 h-4 text-slate-700" />
-                      <span className="text-xs font-bold text-slate-900">Secret Conversation Mode</span>
+                      <Lock className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold text-white">Secret Conversation Mode</span>
                     </div>
                     <button
                       disabled={updatingSecurity}
@@ -1220,7 +1701,7 @@ export default function GroupChatRoomPage({
                         handleUpdateSecurity({ isSecretMode: !data.group.isSecretMode })
                       }
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        data.group.isSecretMode ? "bg-amber-500" : "bg-slate-300"
+                        data.group.isSecretMode ? "bg-amber-500" : "bg-slate-700"
                       }`}
                     >
                       <span
@@ -1230,21 +1711,17 @@ export default function GroupChatRoomPage({
                       />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    When enabled:
-                    <br />
-                    • <strong>2-Day Auto Vanishing:</strong> Chats older than 48 hours are automatically purged.
-                    <br />
-                    • <strong>Strict Privacy:</strong> Only members inside the group can view or track this conversation.
+                  <p className="text-[11px] text-[#8696a0] leading-relaxed">
+                    When enabled, older messages vanish after 48 hours to protect confidential discussions.
                   </p>
                 </div>
 
                 {/* Screenshot Permission Switch */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="p-3.5 rounded-2xl bg-[#111b21] border border-[#2a3942] space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Camera className="w-4 h-4 text-slate-700" />
-                      <span className="text-xs font-bold text-slate-900">Allow Screenshots</span>
+                      <Camera className="w-4 h-4 text-emerald-400" />
+                      <span className="text-xs font-bold text-white">Allow Screenshots</span>
                     </div>
                     <button
                       disabled={updatingSecurity}
@@ -1252,7 +1729,7 @@ export default function GroupChatRoomPage({
                         handleUpdateSecurity({ allowScreenshot: !data.group.allowScreenshot })
                       }
                       className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        data.group.allowScreenshot ? "bg-emerald-500" : "bg-slate-300"
+                        data.group.allowScreenshot ? "bg-[#00a884]" : "bg-slate-700"
                       }`}
                     >
                       <span
@@ -1262,47 +1739,43 @@ export default function GroupChatRoomPage({
                       />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    When <strong>OFF</strong> (default):
-                    <br />
-                    • Screen capture shortcuts are shielded with blackout overlays.
-                    <br />
-                    • If any member takes/attempts a screenshot, an audit alert will immediately announce <strong>who took the screenshot</strong> to the entire group.
+                  <p className="text-[11px] text-[#8696a0] leading-relaxed">
+                    When OFF, screenshots are blocked and attempts announce who took a screenshot to the group.
                   </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setShowSecurityModal(false)}
-                className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition"
+                className="w-full py-2.5 bg-[#00a884] hover:bg-[#008f6f] text-white text-xs font-bold rounded-xl transition shadow-md"
               >
-                Done
+                Save Settings
               </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* 3. Post Job In Group Modal */}
+      {/* ── Modal 3: Post Job In Group Modal ── */}
       <AnimatePresence>
         {showShareJobModal && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-sm rounded-3xl border border-slate-200 p-6 shadow-xl space-y-4"
+              className="bg-[#202c33] w-full max-w-sm rounded-3xl border border-[#2a3942] p-5 shadow-2xl space-y-4 text-white"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-9 w-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <div className="h-9 w-9 rounded-xl bg-purple-600/20 text-purple-400 flex items-center justify-center">
                     <Briefcase className="w-4 h-4" />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-900">Post Job in Group</h3>
+                  <h3 className="text-sm font-bold text-white">Post Job in Group</h3>
                 </div>
                 <button
                   onClick={() => setShowShareJobModal(false)}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                  className="text-xs font-bold text-[#8696a0] hover:text-white"
                 >
                   ✕
                 </button>
@@ -1310,42 +1783,42 @@ export default function GroupChatRoomPage({
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-700">Role Title *</label>
+                  <label className="text-xs font-bold text-[#8696a0]">Role Title *</label>
                   <input
                     type="text"
                     placeholder="e.g. Full Stack Developer"
                     value={jobForm.title}
                     onChange={(e) => setJobForm({ ...jobForm, title: e.target.value })}
-                    className="w-full mt-1 bg-slate-100 text-xs rounded-xl p-2.5 border border-transparent focus:border-purple-500 focus:bg-white focus:outline-none"
+                    className="w-full mt-1 bg-[#111b21] text-xs text-white rounded-xl p-2.5 border border-[#2a3942] focus:border-purple-500 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-700">Company *</label>
+                  <label className="text-xs font-bold text-[#8696a0]">Company *</label>
                   <input
                     type="text"
                     placeholder="e.g. Swiggy / Google / TCS"
                     value={jobForm.company}
                     onChange={(e) => setJobForm({ ...jobForm, company: e.target.value })}
-                    className="w-full mt-1 bg-slate-100 text-xs rounded-xl p-2.5 border border-transparent focus:border-purple-500 focus:bg-white focus:outline-none"
+                    className="w-full mt-1 bg-[#111b21] text-xs text-white rounded-xl p-2.5 border border-[#2a3942] focus:border-purple-500 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-700">Location</label>
+                  <label className="text-xs font-bold text-[#8696a0]">Location</label>
                   <input
                     type="text"
                     placeholder="e.g. Bengaluru / Kolkata / Remote"
                     value={jobForm.location}
                     onChange={(e) => setJobForm({ ...jobForm, location: e.target.value })}
-                    className="w-full mt-1 bg-slate-100 text-xs rounded-xl p-2.5 border border-transparent focus:border-purple-500 focus:bg-white focus:outline-none"
+                    className="w-full mt-1 bg-[#111b21] text-xs text-white rounded-xl p-2.5 border border-[#2a3942] focus:border-purple-500 focus:outline-none"
                   />
                 </div>
 
                 <button
                   onClick={handleShareJob}
                   disabled={!jobForm.title || !jobForm.company}
-                  className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-sm"
+                  className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-md"
                 >
                   Broadcast Job to Group
                 </button>
@@ -1355,26 +1828,26 @@ export default function GroupChatRoomPage({
         )}
       </AnimatePresence>
 
-      {/* 4. Offer Mentorship In Group Modal */}
+      {/* ── Modal 4: Offer Mentorship In Group Modal ── */}
       <AnimatePresence>
         {showShareMentorshipModal && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-sm rounded-3xl border border-slate-200 p-6 shadow-xl space-y-4"
+              className="bg-[#202c33] w-full max-w-sm rounded-3xl border border-[#2a3942] p-5 shadow-2xl space-y-4 text-white"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-9 w-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <div className="h-9 w-9 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
                     <Sparkles className="w-4 h-4" />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-900">Offer Mentorship in Group</h3>
+                  <h3 className="text-sm font-bold text-white">Offer Mentorship in Group</h3>
                 </div>
                 <button
                   onClick={() => setShowShareMentorshipModal(false)}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                  className="text-xs font-bold text-[#8696a0] hover:text-white"
                 >
                   ✕
                 </button>
@@ -1382,11 +1855,11 @@ export default function GroupChatRoomPage({
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-700">Topic You Can Help With</label>
+                  <label className="text-xs font-bold text-[#8696a0]">Topic You Can Help With</label>
                   <select
                     value={mentorForm.topic}
                     onChange={(e) => setMentorForm({ ...mentorForm, topic: e.target.value })}
-                    className="w-full mt-1 bg-slate-100 text-xs rounded-xl p-2.5 border border-transparent focus:border-indigo-500 focus:bg-white focus:outline-none"
+                    className="w-full mt-1 bg-[#111b21] text-xs text-white rounded-xl p-2.5 border border-[#2a3942] focus:border-indigo-500 focus:outline-none"
                   >
                     <option value="Resume Review & ATS Optimization">Resume Review & ATS Optimization</option>
                     <option value="Mock Technical Interview & DSA">Mock Technical Interview & DSA</option>
@@ -1397,7 +1870,7 @@ export default function GroupChatRoomPage({
 
                 <button
                   onClick={handleShareMentorship}
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm"
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-md"
                 >
                   Post Mentorship in Group
                 </button>
@@ -1407,26 +1880,26 @@ export default function GroupChatRoomPage({
         )}
       </AnimatePresence>
 
-      {/* 5. Spotify / Gaana / Apple Music Player Modal */}
+      {/* ── Modal 5: Spotify / Gaana / Apple Music Player Modal ── */}
       <AnimatePresence>
         {showStreamingModal && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-sm rounded-3xl border border-slate-200 p-6 shadow-xl space-y-4"
+              className="bg-[#202c33] w-full max-w-sm rounded-3xl border border-[#2a3942] p-5 shadow-2xl space-y-4 text-white"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
                     <Music className="w-4 h-4" />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-900">Music Streaming Player</h3>
+                  <h3 className="text-sm font-bold text-white">Music Streaming Player</h3>
                 </div>
                 <button
                   onClick={() => setShowStreamingModal(false)}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                  className="text-xs font-bold text-[#8696a0] hover:text-white"
                 >
                   ✕
                 </button>
@@ -1434,7 +1907,7 @@ export default function GroupChatRoomPage({
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-700">Choose Music App</label>
+                  <label className="text-xs font-bold text-[#8696a0]">Choose Music App</label>
                   <div className="grid grid-cols-3 gap-2 mt-1.5">
                     {(["SPOTIFY", "GAANA", "APPLE_MUSIC"] as const).map((s) => (
                       <button
@@ -1442,8 +1915,8 @@ export default function GroupChatRoomPage({
                         onClick={() => setStreamService(s)}
                         className={`py-2 text-[11px] font-bold rounded-xl border transition ${
                           streamService === s
-                            ? "bg-emerald-600 text-white border-emerald-600"
-                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                            ? "bg-[#00a884] text-white border-[#00a884]"
+                            : "bg-[#111b21] text-[#8696a0] border-[#2a3942] hover:text-white"
                         }`}
                       >
                         {s === "SPOTIFY" ? "Spotify" : s === "GAANA" ? "Gaana" : "Apple Music"}
@@ -1453,20 +1926,20 @@ export default function GroupChatRoomPage({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-700">Song / Playlist Link</label>
+                  <label className="text-xs font-bold text-[#8696a0]">Song / Playlist Link</label>
                   <input
                     type="url"
                     placeholder={`Paste ${streamService === "SPOTIFY" ? "open.spotify.com" : streamService === "GAANA" ? "gaana.com" : "music.apple.com"} track link...`}
                     value={streamUrl}
                     onChange={(e) => setStreamUrl(e.target.value)}
-                    className="w-full mt-1 bg-slate-100 text-xs rounded-xl p-2.5 border border-transparent focus:border-emerald-500 focus:bg-white focus:outline-none"
+                    className="w-full mt-1 bg-[#111b21] text-xs text-white rounded-xl p-2.5 border border-[#2a3942] focus:border-[#00a884] focus:outline-none"
                   />
                 </div>
 
                 <button
                   onClick={handleShareStreamingTrack}
                   disabled={!streamUrl.trim()}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-sm"
+                  className="w-full py-2.5 bg-[#00a884] hover:bg-[#008f6f] disabled:opacity-40 text-white text-xs font-bold rounded-xl transition shadow-md"
                 >
                   Share & Play in Group
                 </button>
