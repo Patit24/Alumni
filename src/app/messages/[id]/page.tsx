@@ -182,14 +182,25 @@ export default function DirectMessageChatPage(props: {
           institution: found.institution,
         });
       }
-    } catch {}
+      // Instant load local messages so chat renders in 0ms
+      getLocalMessages(peerId).then((local) => {
+        if (local && local.length > 0) {
+          setMessages(local);
+        }
+        setLoading(false);
+      }).catch(() => {
+        setLoading(false);
+      });
+    } catch {
+      setLoading(false);
+    }
   }, [peerId]);
   const [messages, setMessages] = useState<VaultMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const oldestTimestampRef = useRef<number | null>(null);
   const [inputText, setInputText] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [isPeerTyping, setIsPeerTyping] = useState(false);
   const [sharedKey, setSharedKey] = useState<CryptoKey | null>(null);

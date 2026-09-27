@@ -10,6 +10,19 @@ import { triggerHaptic, MOTION_SPRINGS } from "@/lib/motion/tokens";
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const [networkInvitesCount, setNetworkInvitesCount] = useState(0);
+  const [profileHref, setProfileHref] = useState("/profile");
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("alumni_user");
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u?.id) {
+          setProfileHref(`/profile/${u.id}`);
+        }
+      }
+    } catch {}
+  }, [pathname]);
 
   useEffect(() => {
     const fetchInvites = () => {
@@ -47,7 +60,7 @@ export default function MobileBottomNav() {
     { href: "/directory", label: "Network", icon: Users, badge: networkInvitesCount },
     { href: "/messages", label: "Messages", icon: MessageSquare },
     { href: "/explore", label: "Explore", icon: Compass },
-    { href: "/profile", label: "Profile", icon: User },
+    { href: profileHref, label: "Profile", icon: User },
   ];
 
   return (

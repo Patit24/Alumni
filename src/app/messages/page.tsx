@@ -72,11 +72,22 @@ export default function MessagesHubPage() {
   const [connectedPeerIds, setConnectedPeerIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setContacts(getCachedConnectionProfiles<AlumniContact>());
-    setConnectedPeerIds(new Set(getLocalConnectedPeerIds()));
+    try {
+      const cachedContacts = getCachedConnectionProfiles<AlumniContact>();
+      setContacts(cachedContacts);
+      const localPeers = getLocalConnectedPeerIds();
+      setConnectedPeerIds(new Set(localPeers));
+      getLatestMessagesPerPeer().then((latestMap) => {
+        if (latestMap) setLatestMessages(latestMap);
+      }).catch(() => {});
+      // Instantly unblock UI so messages render in 0ms on click
+      if (cachedContacts.length > 0 || localPeers.length > 0) {
+        setLoading(false);
+      }
+    } catch {}
   }, []);
   const [latestMessages, setLatestMessages] = useState<Map<string, VaultMessage>>(new Map());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
@@ -88,7 +99,8 @@ export default function MessagesHubPage() {
 
   const loadData = useCallback(async () => {
     try {
-      setLoading(true);
+      // Non-blocking background fetch: only set loading if we have zero data
+      setLoading((prev) => (contacts.length === 0 ? true : false));
       const meRes = await authFetch("/api/auth/me").catch(() => null);
       let currentUserId: string | null = null;
 

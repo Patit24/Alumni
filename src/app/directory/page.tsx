@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -84,7 +84,15 @@ export default function DirectoryPage() {
   });
   const [receivedInvitations, setReceivedInvitations] = useState<InvitationItem[]>([]);
   const [sentInvitations, setSentInvitations] = useState<InvitationItem[]>([]);
-  const [alumni, setAlumni] = useState<ConnectionProfile[]>([]);
+  const [alumni, setAlumni] = useState<ConnectionProfile[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("alumni_dir_cache");
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
   const [currentUser, setCurrentUser] = useState<CurrentUserContext | null>(null);
 
   // Filter & Search
@@ -100,7 +108,7 @@ export default function DirectoryPage() {
   const [availableDepts, setAvailableDepts] = useState<string[]>([]);
 
   // States & Status Map - seeded from local storage so connected friends show CONNECTED immediately
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     if (typeof window !== "undefined") return getActiveVaultUserId();
     return null;
@@ -212,10 +220,12 @@ export default function DirectoryPage() {
   }, [currentUserId]);
 
   // 2. Fetch Directory Recommendations & Users
+  const isInitialMount = useRef(true);
   useEffect(() => {
     let isCancelled = false;
     const fetchDirectory = async () => {
-      setLoading(true);
+      // Non-blocking: only show loading indicator if we don't have cached alumni
+      setLoading(alumni.length === 0);
       try {
         const params = new URLSearchParams();
         if (searchQuery.trim()) params.set("q", searchQuery.trim());
@@ -229,6 +239,9 @@ export default function DirectoryPage() {
 
         if (!isCancelled && data.alumni) {
           setAlumni(data.alumni);
+          try {
+            sessionStorage.setItem("alumni_dir_cache", JSON.stringify(data.alumni));
+          } catch {}
           if (data.currentUser) {
             setCurrentUser(data.currentUser);
             setCurrentUserId(data.currentUser.id);
@@ -245,7 +258,10 @@ export default function DirectoryPage() {
       }
     };
 
-    const debounce = setTimeout(fetchDirectory, 200);
+    // Instant fetch on initial mount, debounce only when typing search query
+    const delay = isInitialMount.current ? 0 : (searchQuery ? 200 : 0);
+    isInitialMount.current = false;
+    const debounce = setTimeout(fetchDirectory, delay);
     return () => {
       isCancelled = true;
       clearTimeout(debounce);
