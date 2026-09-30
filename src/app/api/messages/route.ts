@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { sendRealtimeBroadcast } from "@/lib/realtime-broadcast";
 import { canonicalUserPair } from "@/lib/connection-service";
 import { sendPushToUser } from "@/lib/push/push-service";
+import { publishToUserStream } from "@/lib/queue/redis-queue";
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +135,7 @@ export async function POST(req: Request) {
         actorId: user.id,
         type: "MESSAGE",
         title: `New message from ${user.name}`,
-        body: cleanContent.length > 60 ? `${cleanContent.slice(0, 57)}...` : cleanContent,
+        body: "New encrypted message received",
         data: JSON.stringify({
           messageId: message.id,
           conversationId,
@@ -178,6 +179,18 @@ export async function POST(req: Request) {
       conversationId,
       senderName: user.name,
     }).catch((e) => console.warn("Push notification dispatch error:", e));
+
+    // D) Publish to Redis Stream for fast cursor synchronization
+    publishToUserStream(recipientId, {
+      id: message.id,
+      clientMsgId: message.clientMsgId || undefined,
+      conversationId,
+      senderId: user.id,
+      recipientId,
+      encryptedPayload: message.content,
+      messageType: message.messageType,
+      createdAt: message.createdAt.toISOString(),
+    }).catch((e) => console.warn("Redis stream publish error:", e));
 
     return NextResponse.json({
       success: true,

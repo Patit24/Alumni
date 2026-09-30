@@ -57,6 +57,7 @@ import {
   deriveSharedSessionKey,
   derivePairwiseFallbackKey,
   encryptE2EEMessage,
+  decryptE2EEMessage,
   generateSafetyNumber,
 } from "@/lib/e2ee/crypto";
 import { realtimeSignaling } from "@/lib/e2ee/signaling";
@@ -808,6 +809,41 @@ export default function DirectMessageChatPage(props: {
                 disappearingSeconds: m.disappearingSeconds,
               }));
               setMessages((prev) => reconcileMessages(prev, freshServerMsgs));
+            }
+          }
+
+          // Cursor-based stream delta sync from Redis/PostgreSQL
+          const syncRes = await authFetch(`/api/messages/sync?cursor=${encodeURIComponent(new Date(Date.now() - 3600000).toISOString())}`);
+          if (syncRes.ok) {
+            const syncData = await syncRes.json();
+            if (Array.isArray(syncData.messages) && syncData.messages.length > 0) {
+              const deltaMsgs: VaultMessage[] = [];
+              for (const packet of syncData.messages) {
+                if (packet.senderId === peerId || packet.recipientId === peerId) {
+                  let text = packet.encryptedPayload;
+                  try {
+                    if (sharedKey && packet.encryptedPayload && packet.encryptedPayload.includes(":")) {
+                      const [ciphertext, iv] = packet.encryptedPayload.split(":");
+                      if (ciphertext && iv) {
+                        text = await decryptE2EEMessage(sharedKey, { ciphertext, iv });
+                      }
+                    }
+                  } catch {}
+                  deltaMsgs.push({
+                    id: packet.id,
+                    clientMsgId: packet.clientMsgId,
+                    peerId,
+                    senderId: packet.senderId,
+                    text,
+                    type: packet.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+                    status: "DELIVERED",
+                    createdAt: new Date(packet.createdAt).getTime() || Date.now(),
+                  });
+                }
+              }
+              if (deltaMsgs.length > 0) {
+                setMessages((prev) => reconcileMessages(prev, deltaMsgs));
+              }
             }
           }
         } catch {}

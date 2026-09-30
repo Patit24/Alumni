@@ -327,6 +327,29 @@ export class WebRTCManager {
   }
 
   private connectionRecoveryTimer: NodeJS.Timeout | null = null;
+  private dynamicIceServers: RTCIceServer[] | null = null;
+  private lastIceFetchTimestamp = 0;
+
+  async refreshTurnServers(): Promise<RTCIceServer[]> {
+    if (this.dynamicIceServers && Date.now() - this.lastIceFetchTimestamp < 3600000) {
+      return this.dynamicIceServers;
+    }
+    if (typeof window === "undefined") return this.getIceServers();
+    try {
+      const res = await fetch("/api/webrtc/turn-credentials");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.iceServers) && data.iceServers.length > 0) {
+          this.dynamicIceServers = data.iceServers;
+          this.lastIceFetchTimestamp = Date.now();
+          return data.iceServers;
+        }
+      }
+    } catch (err) {
+      console.warn("[WebRTC] Could not fetch authenticated TURN credentials, using fallback:", err);
+    }
+    return this.getIceServers();
+  }
 
   private createPeerConnection(): RTCPeerConnection {
     if (this.pc) {
@@ -335,7 +358,7 @@ export class WebRTCManager {
     }
 
     const pc = new RTCPeerConnection({
-      iceServers: this.getIceServers(),
+      iceServers: this.dynamicIceServers || this.getIceServers(),
       iceCandidatePoolSize: 2,
     });
 
@@ -602,6 +625,7 @@ export class WebRTCManager {
     this.setState("CONNECTING");
 
     try {
+      await this.refreshTurnServers();
       const stream = await this.acquireMedia(this.currentCall.callType);
       const pc = this.createPeerConnection();
 
@@ -641,6 +665,7 @@ export class WebRTCManager {
 
     try {
       if (!this.pc) {
+        await this.refreshTurnServers();
         const stream = await this.acquireMedia(this.currentCall.callType);
         const pc = this.createPeerConnection();
         stream.getTracks().forEach((track) => {
