@@ -3,6 +3,8 @@
  * Operates purely peer-to-peer with zero server media storage or call recording.
  */
 
+import { saveCallLog } from "@/lib/e2ee/vault";
+
 export type CallType = "VOICE" | "VIDEO";
 export type CallState =
   | "IDLE"
@@ -135,10 +137,52 @@ export class WebRTCManager {
   private stateChangeListeners = new Set<(state: CallState, session: CallSession | null) => void>();
   private remoteStreamListeners = new Set<(stream: MediaStream) => void>();
   private sendSignalListeners = new Set<(msg: WebRTCSignalingMessage) => void>();
+  private isReconnecting = false;
   private durationTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     // Default constructor
+  }
+
+  // Resilient ICE Restart for network handoffs (Wi-Fi <-> Cellular)
+  async restartIce(): Promise<void> {
+    if (!this.pc || !this.currentCall || this.isReconnecting) return;
+    this.isReconnecting = true;
+    this.setState("RECONNECTING");
+
+    // 10s recovery window before declaring call failed
+    if (!this.connectionRecoveryTimer) {
+      this.connectionRecoveryTimer = setTimeout(() => {
+        this.connectionRecoveryTimer = null;
+        if (
+          this.pc &&
+          (this.pc.connectionState === "failed" ||
+            this.pc.iceConnectionState === "failed" ||
+            this.pc.iceConnectionState === "disconnected")
+        ) {
+          console.warn("[WebRTC] ICE restart recovery window (10s) expired. Ending call.");
+          this.endCall(false);
+        }
+      }, 10000);
+    }
+
+    try {
+      if (!this.currentCall.isIncoming) {
+        console.log("[WebRTC] Initiating ICE restart renegotiation offer...");
+        const offer = await this.pc.createOffer({ iceRestart: true });
+        await this.pc.setLocalDescription(offer);
+        this.sendSignal({
+          callId: this.currentCall.callId,
+          senderId: "",
+          type: "OFFER",
+          sdp: offer,
+        });
+      }
+    } catch (err) {
+      console.error("[WebRTC] Error during ICE restart:", err);
+    } finally {
+      this.isReconnecting = false;
+    }
   }
 
   // Subscribe to call state transitions
@@ -331,14 +375,15 @@ export class WebRTCManager {
           clearTimeout(this.connectionRecoveryTimer);
           this.connectionRecoveryTimer = null;
         }
+        this.isReconnecting = false;
         tones.stop();
         if (this.callState !== "CONNECTED") {
           this.setState("CONNECTED");
           this.startDurationTimer();
         }
       } else if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
-        if (this.callState === "CONNECTED") {
-          this.setState("RECONNECTING");
+        if (this.callState === "CONNECTED" || this.callState === "CONNECTING") {
+          this.restartIce();
         }
       }
     };
@@ -346,7 +391,7 @@ export class WebRTCManager {
     pc.onconnectionstatechange = () => {
       switch (pc.connectionState) {
         case "connecting":
-          if (this.callState !== "CONNECTED") {
+          if (this.callState !== "CONNECTED" && this.callState !== "RECONNECTING") {
             this.setState("CONNECTING");
           }
           break;
@@ -355,24 +400,18 @@ export class WebRTCManager {
             clearTimeout(this.connectionRecoveryTimer);
             this.connectionRecoveryTimer = null;
           }
+          this.isReconnecting = false;
           tones.stop();
           this.setState("CONNECTED");
           this.startDurationTimer();
           break;
         case "disconnected":
-          this.setState("RECONNECTING");
+          if (this.callState === "CONNECTED") {
+            this.restartIce();
+          }
           break;
         case "failed":
-          // Give 6 seconds for ICE recovery / candidate renegotiation before terminating
-          if (!this.connectionRecoveryTimer) {
-            this.setState("RECONNECTING");
-            this.connectionRecoveryTimer = setTimeout(() => {
-              this.connectionRecoveryTimer = null;
-              if (this.pc && (this.pc.connectionState === "failed" || this.pc.iceConnectionState === "failed")) {
-                this.endCall(false);
-              }
-            }, 6000);
-          }
+          this.restartIce();
           break;
         case "closed":
           this.endCall(false);
@@ -751,25 +790,66 @@ export class WebRTCManager {
     }
 
     if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+      });
       this.localStream = null;
     }
 
+    if (this.remoteStream) {
+      this.remoteStream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+      });
+      this.remoteStream = null;
+    }
+
     if (this.pc) {
-      this.pc.close();
+      try {
+        this.pc.close();
+      } catch {}
       this.pc = null;
     }
 
-    this.remoteStream = null;
     this.iceCandidatesQueue = [];
+    this.isReconnecting = false;
 
     const endedCall = this.currentCall;
+    const previousState = this.callState;
     this.currentCall = null;
-    this.setState("IDLE");
+    this.setState("ENDED");
+    setTimeout(() => {
+      if (this.callState === "ENDED") {
+        this.setState("IDLE");
+      }
+    }, 1200);
 
-    // Optional callback for call logs
-    if (endedCall) {
-      // Returned for local vault saving
+    // Save call log to local encrypted vault
+    if (endedCall && typeof window !== "undefined") {
+      let status: "COMPLETED" | "MISSED" | "DECLINED" | "FAILED" = "COMPLETED";
+      if (endedCall.duration > 0) {
+        status = "COMPLETED";
+      } else if (endedCall.isIncoming) {
+        status = previousState === "RINGING" ? "MISSED" : "DECLINED";
+      } else {
+        status = previousState === "RECONNECTING" ? "FAILED" : "DECLINED";
+      }
+
+      saveCallLog({
+        id: endedCall.callId,
+        peerId: endedCall.peerId,
+        peerName: endedCall.peerName,
+        callType: endedCall.callType,
+        direction: endedCall.isIncoming ? "INCOMING" : "OUTGOING",
+        status,
+        durationSeconds: endedCall.duration || 0,
+        timestamp: endedCall.startTime || Date.now(),
+      }).catch((err) => {
+        console.warn("[WebRTC] Failed to save call log to vault:", err);
+      });
     }
   }
 }

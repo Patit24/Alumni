@@ -123,7 +123,7 @@ export async function GET(
         batchYear: group.batchYear,
         institutionName: group.institution.name,
         memberCount: group.members.length,
-        members: group.members.map((m) => m.user),
+        members: group.members.map((m) => ({ ...m.user, role: m.role })),
         isSecretMode: group.isSecretMode,
         allowScreenshot: group.allowScreenshot,
         createdById: group.createdById,

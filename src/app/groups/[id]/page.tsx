@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -35,6 +36,8 @@ import {
   ChevronRight,
   LogOut,
   Sparkle,
+  Crown,
+  UserMinus,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { setNativeScreenshotAllowed } from "@/lib/native-security";
@@ -46,6 +49,7 @@ interface Member {
   currentRole: string | null;
   currentCompany: string | null;
   verificationStatus: string;
+  role?: string;
 }
 
 interface Message {
@@ -162,6 +166,7 @@ export default function GroupChatRoomPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const router = useRouter();
   const { id: groupId } = use(params);
 
   // 0ms Cache-First Data Initialization
@@ -169,6 +174,8 @@ export default function GroupChatRoomPage({
   const [loading, setLoading] = useState<boolean>(() => !getLocalGroupData(groupId));
   const [inputMessage, setInputMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [selectedMemberAction, setSelectedMemberAction] = useState<Member | null>(null);
+  const [isProcessingMemberAction, setIsProcessingMemberAction] = useState(false);
 
   // Attachment Dock Menu
   const [showAttachMenu, setShowAttachMenu] = useState(false);
@@ -701,6 +708,85 @@ export default function GroupChatRoomPage({
     } finally {
       setAddingMemberId(null);
     }
+  }
+
+  async function removeMember(targetUserId: string) {
+    if (!data) return;
+    try {
+      setIsProcessingMemberAction(true);
+      const res = await fetch(`/api/groups/${groupId}/members`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: targetUserId }),
+      });
+      if (res.ok) {
+        if (targetUserId === data.currentUser.id) {
+          router.push("/messages");
+        } else {
+          setData((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              group: {
+                ...prev.group,
+                memberCount: Math.max(0, prev.group.memberCount - 1),
+                members: prev.group.members.filter((m) => m.id !== targetUserId),
+              },
+            };
+          });
+          setSelectedMemberAction(null);
+          await fetchRoomData();
+        }
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed to remove member");
+      }
+    } catch (err) {
+      console.error("Error removing member:", err);
+    } finally {
+      setIsProcessingMemberAction(false);
+    }
+  }
+
+  async function toggleAdminRole(targetUserId: string, currentRole?: string) {
+    if (!data) return;
+    const newRole = currentRole === "ADMIN" ? "MEMBER" : "ADMIN";
+    try {
+      setIsProcessingMemberAction(true);
+      const res = await fetch(`/api/groups/${groupId}/members`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: targetUserId, role: newRole }),
+      });
+      if (res.ok) {
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            group: {
+              ...prev.group,
+              members: prev.group.members.map((m) =>
+                m.id === targetUserId ? { ...m, role: newRole } : m
+              ),
+            },
+          };
+        });
+        setSelectedMemberAction(null);
+        await fetchRoomData();
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed to update member role");
+      }
+    } catch (err) {
+      console.error("Error updating member role:", err);
+    } finally {
+      setIsProcessingMemberAction(false);
+    }
+  }
+
+  async function handleExitGroup() {
+    if (!confirm("Are you sure you want to leave this group?")) return;
+    await removeMember(data?.currentUser.id || "");
   }
 
   async function handleShareCurrentTrackToChat() {
@@ -1581,7 +1667,9 @@ export default function GroupChatRoomPage({
                 <div className="space-y-1.5">
                   {data.group.members.map((member) => {
                     const isSelf = member.id === data.currentUser.id;
-                    const isGroupCreator = member.id === data.group.createdById;
+                    const isMemberAdmin = member.role === "ADMIN" || member.id === data.group.createdById;
+                    const canManage = data.currentUser.isAdmin && !isSelf && member.id !== data.group.createdById;
+
                     return (
                       <div
                         key={member.id}
@@ -1606,11 +1694,24 @@ export default function GroupChatRoomPage({
                           </div>
                         </div>
 
-                        {isGroupCreator && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#00a884]/20 text-[#00a884] border border-[#00a884]/30 shrink-0">
-                            Group Admin
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isMemberAdmin && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#00a884]/20 text-[#00a884] border border-[#00a884]/30 shrink-0">
+                              Group Admin
+                            </span>
+                          )}
+
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedMemberAction(member)}
+                              className="p-1.5 rounded-lg text-[#8696a0] hover:text-white hover:bg-white/5 transition"
+                              title="Member Options"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -1619,14 +1720,87 @@ export default function GroupChatRoomPage({
 
               {/* Exit Group Button */}
               <div className="p-4 bg-[#111b21] border-t border-[#2a3942]">
-                <Link
-                  href="/messages"
-                  className="w-full py-2.5 rounded-xl bg-rose-950/40 text-rose-400 hover:bg-rose-900/60 border border-rose-800/40 flex items-center justify-center gap-2 text-xs font-bold transition"
+                <button
+                  type="button"
+                  onClick={handleExitGroup}
+                  disabled={isProcessingMemberAction}
+                  className="w-full py-2.5 rounded-xl bg-rose-950/40 text-rose-400 hover:bg-rose-900/60 border border-rose-800/40 flex items-center justify-center gap-2 text-xs font-bold transition disabled:opacity-50 cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>Exit Group</span>
-                </Link>
+                </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Modal: Member Admin Actions ── */}
+      <AnimatePresence>
+        {selectedMemberAction && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 50, scale: 0.95 }}
+              className="bg-[#202c33] w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl border border-[#2a3942] p-5 shadow-2xl space-y-4 text-white"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#2a3942]">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-[#111b21] border border-white/10 flex items-center justify-center font-bold text-sm text-white shrink-0">
+                    {selectedMemberAction.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-white truncate">{selectedMemberAction.name}</h3>
+                    <p className="text-[11px] text-[#8696a0] truncate">
+                      {selectedMemberAction.role === "ADMIN" ? "Group Admin" : "Member"} • Class of {selectedMemberAction.batchYear}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMemberAction(null)}
+                  className="p-1.5 rounded-full hover:bg-white/10 text-[#8696a0] hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {/* Promote / Demote Admin */}
+                <button
+                  type="button"
+                  onClick={() => toggleAdminRole(selectedMemberAction.id, selectedMemberAction.role)}
+                  disabled={isProcessingMemberAction}
+                  className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl bg-[#111b21] hover:bg-[#2a3942] border border-[#2a3942] text-xs font-semibold text-white transition disabled:opacity-50 cursor-pointer"
+                >
+                  <Crown className="w-4 h-4 text-[#00a884]" />
+                  <span>
+                    {selectedMemberAction.role === "ADMIN"
+                      ? "Dismiss as Admin"
+                      : "Make Group Admin"}
+                  </span>
+                </button>
+
+                {/* Remove from group */}
+                <button
+                  type="button"
+                  onClick={() => removeMember(selectedMemberAction.id)}
+                  disabled={isProcessingMemberAction}
+                  className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl bg-rose-950/30 hover:bg-rose-950/60 border border-rose-900/30 text-xs font-semibold text-rose-400 transition disabled:opacity-50 cursor-pointer"
+                >
+                  <UserMinus className="w-4 h-4 text-rose-400" />
+                  <span>Remove from Group</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedMemberAction(null)}
+                className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs text-[#8696a0] hover:text-white font-medium transition cursor-pointer"
+              >
+                Cancel
+              </button>
             </motion.div>
           </div>
         )}
