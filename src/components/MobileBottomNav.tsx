@@ -60,7 +60,7 @@ export default function MobileBottomNav() {
     { href: "/", label: "Home", icon: Home },
     { href: "/directory", label: "Network", icon: Users, badge: networkInvitesCount },
     { href: "/messages", label: "Messages", icon: MessageSquare },
-    { href: "/explore", label: "Explore", icon: Compass },
+    { href: "/explore", label: "Hub", icon: Compass },
     { href: profileHref, label: "Profile", icon: User },
   ];
 

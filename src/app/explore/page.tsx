@@ -120,9 +120,9 @@ export default async function ExplorePage() {
               <Compass className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-base font-bold text-white tracking-tight">Explore Network</h1>
+              <h1 className="text-base font-bold text-white tracking-tight">Campus Hub</h1>
               <p className="text-[11px] text-slate-400 font-medium truncate max-w-[200px] sm:max-w-xs">
-                {user.institution?.name || "Campus Features"}
+                {user.institution?.name || "All Campus Features & Tools"}
               </p>
             </div>
           </div>
@@ -143,13 +143,13 @@ export default async function ExplorePage() {
         <div className="rounded-3xl bg-gradient-to-r from-[#FF9933] via-orange-600 to-[#138808] p-6 text-white shadow-xl shadow-black/50 relative overflow-hidden border border-white/15">
           <div className="relative z-10 max-w-lg space-y-2">
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-black/30 backdrop-blur-md text-[11px] font-bold text-white border border-white/20">
-              One-Tap Access
+              Campus Hub
             </span>
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
-              All Alumni Features, Right Here.
+              All Campus Features & Services
             </h2>
             <p className="text-xs sm:text-sm text-orange-100 leading-relaxed">
-              Every tool to connect, find career opportunities, and collaborate with your alma mater network.
+              Every tool to discover alumni, find career referrals, receive mentorship, join clubs, and connect with your alma mater.
             </p>
           </div>
           <div className="absolute -right-6 -bottom-6 w-36 h-36 rounded-full bg-white/15 blur-2xl pointer-events-none" />
@@ -158,7 +158,7 @@ export default async function ExplorePage() {
         {/* Primary Feature Hub Grid */}
         <section className="space-y-3">
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            All Features & Hubs
+            Campus Hub Features
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {primaryFeatures.map((f) => {

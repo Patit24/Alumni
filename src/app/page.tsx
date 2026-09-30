@@ -264,6 +264,16 @@ export default async function HomePage(props: {
           {/* Action Header Nav */}
           <div className="flex items-center gap-2 sm:gap-2.5">
             <Link
+              href="/explore"
+              prefetch={true}
+              className="h-9 px-2.5 sm:px-3 rounded-xl bg-[#FF9933]/10 hover:bg-[#FF9933]/20 active:scale-95 border border-[#FF9933]/30 text-[#FF9933] flex items-center gap-1.5 text-xs font-bold transition shrink-0"
+              title="Campus Hub & Features"
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Campus Hub</span>
+            </Link>
+
+            <Link
               href={`/profile/${user.id}`}
               prefetch={true}
               className="h-9 px-2.5 sm:px-3 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-200 flex items-center gap-2 text-xs font-semibold transition shrink-0"
@@ -284,92 +294,8 @@ export default async function HomePage(props: {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
-
-
-        {/* Quick 1-Click Feature Shortcuts Hub */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Campus Hub
-            </h2>
-            <Link
-              href="/explore"
-              className="text-xs font-bold text-[#FF9933] hover:text-orange-400 flex items-center gap-1 transition"
-            >
-              <span>All Features</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-            {/* Alumni Directory */}
-            <Link
-              href="/directory"
-              className="p-3.5 rounded-2xl bg-[#111726]/80 border border-white/10 hover:border-[#FF9933]/40 hover:bg-white/[0.04] transition group flex items-center gap-3 backdrop-blur-xl"
-            >
-              <div className="h-10 w-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <Users className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-white group-hover:text-[#FF9933] transition truncate">
-                  Network
-                </p>
-                <p className="text-[11px] text-slate-400 truncate">Find Alumni</p>
-              </div>
-            </Link>
-
-            {/* Jobs & Referrals */}
-            <Link
-              href="/jobs"
-              className="p-3.5 rounded-2xl bg-[#111726]/80 border border-white/10 hover:border-purple-400/40 hover:bg-white/[0.04] transition group flex items-center gap-3 backdrop-blur-xl"
-            >
-              <div className="h-10 w-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <Briefcase className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-white group-hover:text-purple-300 transition truncate">
-                  Jobs
-                </p>
-                <p className="text-[11px] text-slate-400 truncate">Referrals</p>
-              </div>
-            </Link>
-
-            {/* Senior Mentorship */}
-            <Link
-              href="/mentorship"
-              className="p-3.5 rounded-2xl bg-[#111726]/80 border border-white/10 hover:border-emerald-400/40 hover:bg-white/[0.04] transition group flex items-center gap-3 backdrop-blur-xl"
-            >
-              <div className="h-10 w-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-white group-hover:text-emerald-300 transition truncate">
-                  Mentorship
-                </p>
-                <p className="text-[11px] text-slate-400 truncate">1-on-1 Help</p>
-              </div>
-            </Link>
-
-            {/* Explore Hub */}
-            <Link
-              href="/explore"
-              className="p-3.5 rounded-2xl bg-gradient-to-r from-[#FF9933] via-orange-600 to-[#138808] text-white shadow-md shadow-[#ff9933]/20 hover:opacity-95 transition group flex items-center gap-3 active:scale-95"
-            >
-              <div className="h-10 w-10 rounded-xl bg-white/20 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                <Compass className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-white transition truncate">
-                  Explore Hub
-                </p>
-                <p className="text-[11px] text-orange-100 truncate">More Features</p>
-              </div>
-            </Link>
-          </div>
-        </section>
-
         {/* Campus & Alumni Feed */}
-        <section className="pt-2">
+        <section>
           <FeedSection
             currentUserId={user.id}
             currentUserName={user.name}
