@@ -95,6 +95,7 @@ interface FeedSectionProps {
   batchYear: number;
   institutionId?: string;
   currentUserAvatar?: string | null;
+  initialFeed?: FeedItemData[];
 }
 
 function getFeedCacheKey(userId?: string, filter = "ALL"): string {
@@ -215,14 +216,27 @@ export default function FeedSection({
   batchYear,
   currentUserAvatar: initialAvatar,
   institutionId,
+  initialFeed,
 }: FeedSectionProps) {
   const [filter, setFilter] = useState<"ALL" | "BATCH" | "JOBS" | "MENTORSHIP" | "SAVED">("ALL");
-  const [feed, setFeed] = useState<FeedItemData[]>(() => getLocalFeedPosts(currentUserId, "ALL"));
-  const [loading, setLoading] = useState<boolean>(() => getLocalFeedPosts(currentUserId, "ALL").length === 0);
+  const [feed, setFeed] = useState<FeedItemData[]>(() => {
+    if (initialFeed && initialFeed.length > 0) return initialFeed;
+    return getLocalFeedPosts(currentUserId, "ALL");
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (initialFeed && initialFeed.length > 0) return false;
+    return getLocalFeedPosts(currentUserId, "ALL").length === 0;
+  });
   const [newPostText, setNewPostText] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(initialAvatar || null);
+
+  useEffect(() => {
+    if (initialFeed && initialFeed.length > 0) {
+      syncLocalFeedPosts(initialFeed, currentUserId, "ALL");
+    }
+  }, [initialFeed, currentUserId]);
 
   useEffect(() => {
     if (feed.length === 0) {

@@ -248,6 +248,12 @@ export default function DirectMessageChatPage(props: {
           setMessages(local);
           setConnectionStatus("CONNECTED");
           setIsCheckingConnection(false);
+          const activeId = getActiveVaultUserId();
+          if (activeId) {
+            try {
+              localStorage.setItem(`alumni_rel_status_${activeId}_${peerId}`, "CONNECTED");
+            } catch {}
+          }
         }
         setLoading(false);
       }).catch(() => {
@@ -280,7 +286,7 @@ export default function DirectMessageChatPage(props: {
       const activeId = getActiveVaultUserId();
       if (activeId) {
         const savedRel = localStorage.getItem(`alumni_rel_status_${activeId}_${peerId}`);
-        if (savedRel) return false;
+        if (savedRel === "CONNECTED") return false;
         const localPeers = getLocalConnectedPeerIds(activeId);
         if (localPeers.includes(peerId)) return false;
       }
@@ -404,7 +410,7 @@ export default function DirectMessageChatPage(props: {
           const cData = await connRes.json();
           const rel = cData.relationship;
           if (rel) {
-            if (rel.status === "CONNECTED" || rel.isConnection) {
+            if (rel.status === "CONNECTED" || rel.status === "ACCEPTED" || rel.isConnection) {
               relStatus = "CONNECTED";
             } else if (rel.status === "PENDING_OUTGOING") {
               relStatus = "PENDING_OUTGOING";

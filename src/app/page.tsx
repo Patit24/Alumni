@@ -22,6 +22,7 @@ import ClientAuthRedirect from "@/components/ClientAuthRedirect";
 import NavbarUserAvatar from "@/components/NavbarUserAvatar";
 
 import { redirect } from "next/navigation";
+import { getFeedItemsForUser } from "@/lib/feed-service";
 
 export const dynamic = "force-dynamic";
 
@@ -230,6 +231,9 @@ export default async function HomePage(props: {
         .join(" ")
     : null;
 
+  // Fetch initial feed server-side to eliminate client flash / lag on reload
+  const initialFeed = await getFeedItemsForUser(user, "ALL");
+
   return (
     <div className="min-h-screen bg-[#080811] text-white flex flex-col pb-28 sm:pb-16">
       {/* Global Floating Sticky Header Bar */}
@@ -305,6 +309,7 @@ export default async function HomePage(props: {
             batchYear={user.batchYear}
             institutionId={user.institutionId || undefined}
             currentUserAvatar={user.avatarUrl}
+            initialFeed={initialFeed}
           />
         </section>
       </main>

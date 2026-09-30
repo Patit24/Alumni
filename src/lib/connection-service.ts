@@ -133,86 +133,10 @@ export async function ensurePeerUserExists(
       return peer;
     }
 
-    // Resolve institution
-    let institutionId =
-      profileData?.institution?.id ||
-      fallbackUser?.institutionId ||
-      null;
-
-    if (!institutionId) {
-      const defaultInst = await db.institution.findFirst();
-      if (defaultInst) {
-        institutionId = defaultInst.id;
-      } else {
-        const createdInst = await db.institution.create({
-          data: {
-            name: profileData?.institution?.name || "Campus Network",
-            slug: `inst-${Math.floor(1000 + Math.random() * 9000)}`,
-            type: "COLLEGE",
-          },
-        });
-        institutionId = createdInst.id;
-      }
-    }
-
-    // Resolve batch
-    const batchYear = profileData?.batchYear || fallbackUser?.batchYear || 2026;
-    let batch = await db.batch.findFirst({
-      where: { institutionId, year: batchYear },
-    });
-    if (!batch) {
-      batch = await db.batch.create({
-        data: {
-          institutionId,
-          year: batchYear,
-          estimatedSize: 60,
-        },
-      });
-    }
-
-    // Recover peer name from AppNotification if not supplied in profileData
-    let initialName = (profileData?.name && profileData.name.trim() !== "Alumni Member") ? profileData.name.trim() : null;
-    let initialAvatar = profileData?.avatarUrl || null;
-    let initialUsername = profileData?.username || null;
-    if (!initialName) {
-      const notif = await db.appNotification.findFirst({
-        where: { actorId: peerId },
-        orderBy: { createdAt: "desc" },
-      });
-      if (notif?.data) {
-        try {
-          const parsed = JSON.parse(notif.data);
-          const candName = parsed.peerName || parsed.senderName;
-          if (candName && candName.trim() !== "Alumni Member") {
-            initialName = candName.trim();
-          }
-          if (parsed.peerAvatarUrl) initialAvatar = parsed.peerAvatarUrl;
-          if (parsed.peerUsername) initialUsername = parsed.peerUsername;
-        } catch {}
-      }
-    }
-
-    // Create user in this SQLite container
-    peer = await db.user.create({
-      data: {
-        id: peerId,
-        name: initialName || "Alumni Member",
-        username: initialUsername,
-        avatarUrl: initialAvatar,
-        batchYear,
-        currentRole: profileData?.currentRole || null,
-        currentCompany: profileData?.currentCompany || null,
-        city: profileData?.city || null,
-        verificationStatus: profileData?.verificationStatus || "VERIFIED",
-        institutionId,
-        batchId: batch.id,
-      },
-      include: { institution: true, department: true, batch: true },
-    });
-
-    return peer;
+    // Peer does not exist in authoritative PostgreSQL database
+    return null;
   } catch (err) {
-    console.warn(`[ensurePeerUserExists] Error ensuring peer ${peerId}:`, err);
+    console.warn(`[ensurePeerUserExists] Error checking peer ${peerId}:`, err);
     return null;
   }
 }

@@ -30,78 +30,7 @@ export async function GET(req: Request) {
     const type = searchParams.get("type");
     const search = searchParams.get("search") || undefined;
     const limit = parseInt(searchParams.get("limit") || "20", 10);
-    const clientPeersParam = searchParams.get("clientPeers");
-    const clientProfilesParam = searchParams.get("clientProfiles");
 
-    const profilesMap = new Map<string, any>();
-    if (clientProfilesParam) {
-      try {
-        const parsed = JSON.parse(clientProfilesParam);
-        if (Array.isArray(parsed)) {
-          for (const p of parsed) {
-            if (p?.id && p.id !== user.id) {
-              profilesMap.set(p.id, p);
-            }
-          }
-        }
-      } catch {}
-    }
-
-    // Collect all peer IDs from clientPeers or clientProfiles to self-heal
-    const peerIdsToHeal = new Set<string>();
-    if (clientPeersParam) {
-      clientPeersParam
-        .split(",")
-        .map((s) => s.trim())
-        .filter((id) => id && id !== user.id)
-        .forEach((id) => peerIdsToHeal.add(id));
-    }
-    profilesMap.forEach((_, id) => peerIdsToHeal.add(id));
-
-    if (peerIdsToHeal.size > 0) {
-      for (const peerId of peerIdsToHeal) {
-        try {
-          const profileData = profilesMap.get(peerId);
-          // 1. Ensure peer user exists in this SQLite container with real profile data if provided
-          await ensurePeerUserExists(peerId, user, profileData);
-
-          // 2. Ensure connection request exists and is ACCEPTED
-          const { userAId, userBId } = canonicalUserPair(user.id, peerId);
-          const existing = await db.connectionRequest.findFirst({
-            where: {
-              OR: [
-                { userAId, userBId },
-                { senderId: user.id, receiverId: peerId },
-                { senderId: peerId, receiverId: user.id },
-              ],
-            },
-          });
-          if (!existing) {
-            await db.connectionRequest.create({
-              data: {
-                userAId,
-                userBId,
-                senderId: user.id,
-                receiverId: peerId,
-                initiatedBy: user.id,
-                status: "ACCEPTED",
-                acceptedAt: new Date(),
-              },
-            });
-          } else if (existing.status !== "ACCEPTED" && existing.status !== "CONNECTED") {
-            await db.connectionRequest.update({
-              where: { id: existing.id },
-              data: {
-                status: "ACCEPTED",
-                acceptedAt: existing.acceptedAt || new Date(),
-              },
-            });
-          }
-        } catch (healErr) {
-          console.warn(`[GET /api/connections] Error healing peer ${peerId}:`, healErr);
-        }
-      }
-    }
 
     // 1. Single user relationship lookup
     if (targetUserId) {
