@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sendRealtimeBroadcast } from "@/lib/realtime-broadcast";
-import { getRelationship } from "@/lib/connection-service";
+import { canonicalUserPair } from "@/lib/connection-service";
 
 export const dynamic = "force-dynamic";
 
@@ -33,38 +33,7 @@ export async function POST(req: Request) {
 
     const cleanContent = content.trim();
 
-    // 1. Check if recipient exists
-    const recipient = await db.user.findUnique({
-      where: { id: recipientId },
-      select: { id: true, name: true, avatarUrl: true },
-    });
-    if (!recipient) {
-      return NextResponse.json({ error: "Recipient user not found" }, { status: 404 });
-    }
-
-    // 2. Check block status
-    const isBlocked = await db.userBlock.findFirst({
-      where: {
-        OR: [
-          { blockerId: recipientId, blockedId: user.id },
-          { blockerId: user.id, blockedId: recipientId },
-        ],
-      },
-    });
-    if (isBlocked) {
-      return NextResponse.json({ error: "Cannot send message to this user" }, { status: 403 });
-    }
-
-    // 3. Verify connection relationship (Must be accepted 1st-degree friends)
-    const rel = await getRelationship(user.id, recipientId);
-    if (rel.status !== "CONNECTED") {
-      return NextResponse.json(
-        { error: "You must be connected friends before you can send messages" },
-        { status: 403 }
-      );
-    }
-
-    // 4. Idempotency / Deduplication check on clientMsgId
+    // 1. Fast-path Idempotency / Deduplication check (crucial for instant outbox retry)
     if (clientMsgId) {
       const existing = await db.directMessage.findFirst({
         where: {
@@ -78,9 +47,52 @@ export async function POST(req: Request) {
         },
       });
       if (existing) {
-        console.log(`[MESSAGE DEDUP] Message with clientMsgId ${clientMsgId} already exists:`, existing.id);
         return NextResponse.json({ success: true, message: existing, duplicate: true });
       }
+    }
+
+    // 2. Parallel Authorization & Relationship verification in a single round-trip
+    const { userAId, userBId } = canonicalUserPair(user.id, recipientId);
+    const [recipient, isBlocked, connection] = await Promise.all([
+      db.user.findUnique({
+        where: { id: recipientId },
+        select: { id: true, name: true, avatarUrl: true },
+      }),
+      db.userBlock.findFirst({
+        where: {
+          OR: [
+            { blockerId: recipientId, blockedId: user.id },
+            { blockerId: user.id, blockedId: recipientId },
+          ],
+        },
+        select: { id: true },
+      }),
+      db.connectionRequest.findFirst({
+        where: {
+          status: { in: ["ACCEPTED", "CONNECTED"] },
+          OR: [
+            { userAId, userBId },
+            { senderId: user.id, receiverId: recipientId },
+            { senderId: recipientId, receiverId: user.id },
+          ],
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!recipient) {
+      return NextResponse.json({ error: "Recipient user not found" }, { status: 404 });
+    }
+
+    if (isBlocked) {
+      return NextResponse.json({ error: "Cannot send message to this user" }, { status: 403 });
+    }
+
+    if (!connection) {
+      return NextResponse.json(
+        { error: "You must be connected friends before you can send messages" },
+        { status: 403 }
+      );
     }
 
     // Canonical conversation identifier

@@ -60,6 +60,7 @@ import {
   generateSafetyNumber,
 } from "@/lib/e2ee/crypto";
 import { realtimeSignaling } from "@/lib/e2ee/signaling";
+import { enqueueOutboxItem, removeOutboxItem, initOutboxNetworkListener } from "@/lib/e2ee/outbox";
 import { webrtcManager } from "@/lib/webrtc/call-manager";
 import { motion, AnimatePresence } from "framer-motion";
 import MessageBubble from "@/components/motion/MessageBubble";
@@ -379,6 +380,8 @@ export default function DirectMessageChatPage(props: {
     let unsubscribeMsg: (() => void) | null = null;
     let unsubscribeStatus: (() => void) | null = null;
     let unsubscribeTyping: (() => void) | null = null;
+    let unsubscribeOutbox: (() => void) | null = null;
+    let removeFocusListener: (() => void) | null = null;
 
     async function setupChat() {
       try {
@@ -631,12 +634,67 @@ export default function DirectMessageChatPage(props: {
         // Background drain of legacy offline encrypted messages
         realtimeSignaling.drainPendingQueue().catch(() => {});
 
-        // Listen for delivery/read receipts
+        // Listen for delivery/read receipts (match by server id OR clientMsgId)
         unsubscribeStatus = realtimeSignaling.onStatusUpdated((msgId, status) => {
           setMessages((prev) =>
-            prev.map((m) => (m.id === msgId ? { ...m, status } : m))
+            prev.map((m) =>
+              m.id === msgId || m.clientMsgId === msgId ? { ...m, status } : m
+            )
           );
         });
+
+        // Initialize persistent outbox drainer & network restoration listener
+        unsubscribeOutbox = initOutboxNetworkListener(user.id, (clientMsgId, serverMsg) => {
+          const confirmedMsg: VaultMessage = {
+            id: serverMsg.id,
+            clientMsgId,
+            peerId,
+            senderId: user.id,
+            senderName: user.name,
+            text: serverMsg.content,
+            type: "TEXT",
+            status: "SENT",
+            createdAt: new Date(serverMsg.createdAt).getTime(),
+            replyToId: serverMsg.replyToId,
+            replySnippet: serverMsg.replySnippet,
+          };
+          saveLocalMessage(confirmedMsg).catch(() => {});
+          setMessages((prev) => reconcileMessages(prev, [confirmedMsg]));
+        });
+
+        // Instant read receipt synchronization when window is focused/active
+        const syncReadReceipts = () => {
+          if (document.visibilityState === "visible") {
+            setMessages((current) => {
+              const unreadFromPeer = current.filter(
+                (m) => m.senderId === peerId && m.status !== "READ"
+              );
+              if (unreadFromPeer.length > 0) {
+                const ids = unreadFromPeer.map((m) => m.id);
+                realtimeSignaling.sendMessageStatus(peerId, ids, "READ");
+                authFetch("/api/messages/status", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ messageIds: ids, senderId: peerId, status: "READ" }),
+                }).catch(() => {});
+                return current.map((m) =>
+                  m.senderId === peerId && m.status !== "READ" ? { ...m, status: "READ" } : m
+                );
+              }
+              return current;
+            });
+          }
+        };
+
+        window.addEventListener("focus", syncReadReceipts);
+        document.addEventListener("visibilitychange", syncReadReceipts);
+        removeFocusListener = () => {
+          window.removeEventListener("focus", syncReadReceipts);
+          document.removeEventListener("visibilitychange", syncReadReceipts);
+        };
+
+        // Trigger once immediately
+        syncReadReceipts();
 
         // Listen for typing indicator
         unsubscribeTyping = realtimeSignaling.onTyping((pId, isTyping) => {
@@ -657,6 +715,8 @@ export default function DirectMessageChatPage(props: {
       if (unsubscribeMsg) unsubscribeMsg();
       if (unsubscribeStatus) unsubscribeStatus();
       if (unsubscribeTyping) unsubscribeTyping();
+      if (unsubscribeOutbox) unsubscribeOutbox();
+      if (removeFocusListener) removeFocusListener();
     };
   }, [peerId, router]);
 
@@ -852,40 +912,27 @@ export default function DirectMessageChatPage(props: {
       replySnippet: currentReplyingTo?.text ? currentReplyingTo.text.slice(0, 40) : undefined,
     };
 
-    console.log(`[MESSAGE SEND] Instant optimistic render:`, clientMsgId);
     setMessages((prev) => [...prev, optimisticMsg]);
     scrollToBottom();
     saveLocalMessage(optimisticMsg).catch(() => {});
 
-    // Asynchronous background execution: key derivation & server dispatch
+    // Save to persistent outbox queue
+    enqueueOutboxItem(currentUser.id, {
+      id: clientMsgId,
+      clientMsgId,
+      recipientId: peerId,
+      content: cleanText,
+      replyToId: currentReplyingTo?.id,
+      replySnippet: currentReplyingTo?.text ? currentReplyingTo.text.slice(0, 40) : undefined,
+      disappearingSeconds: expireSec,
+      privacyMode: messagePrivacy,
+      createdAt: Date.now(),
+      retries: 0,
+    });
+
+    // Lightning-speed immediate server dispatch (Zero blocking key derivation overhead)
     (async () => {
       try {
-        let activeSharedKey = sharedKey;
-        if (!activeSharedKey) {
-          try {
-            const devRes = await fetch(`/api/messages/devices?userId=${peerId}`);
-            const devData = await devRes.json();
-            if (devData.devices && devData.devices.length > 0 && devData.devices[0].publicKey) {
-              const localIdentity = await getOrCreateDeviceIdentity(currentUser.id);
-              const peerKey = await importPeerPublicKey(devData.devices[0].publicKey);
-              activeSharedKey = await deriveSharedSessionKey(localIdentity.privateKey, peerKey);
-              setSharedKey(activeSharedKey);
-            }
-          } catch {
-            // key fetch failed — continue with fallback
-          }
-        }
-
-        if (!activeSharedKey) {
-          try {
-            activeSharedKey = await derivePairwiseFallbackKey(currentUser.id, peerId);
-            setSharedKey(activeSharedKey);
-          } catch (err) {
-            console.warn("Fallback offline key derivation error:", err);
-          }
-        }
-
-        // Authoritative server POST
         const res = await authFetch("/api/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -903,6 +950,8 @@ export default function DirectMessageChatPage(props: {
         if (res.ok) {
           const data = await res.json();
           const serverMsg = data.message;
+          removeOutboxItem(currentUser.id, clientMsgId);
+
           const confirmedMsg: VaultMessage = {
             id: serverMsg.id,
             clientMsgId: serverMsg.clientMsgId || clientMsgId,
@@ -920,20 +969,14 @@ export default function DirectMessageChatPage(props: {
             replySnippet: serverMsg.replySnippet,
           };
 
-          console.log(`[MESSAGE SERVER CONFIRMED] Server confirmed message ${serverMsg.id} (clientMsgId: ${clientMsgId})`);
           await saveLocalMessage(confirmedMsg);
           setMessages((prev) => reconcileMessages(prev, [confirmedMsg]));
         } else {
-          console.warn(`[MESSAGE SEND] Server POST failed with status ${res.status}`);
-          setMessages((prev) =>
-            prev.map((m) => (m.id === clientMsgId ? { ...m, status: "FAILED" } : m))
-          );
+          console.warn(`[MESSAGE SEND] Server POST status: ${res.status}`);
+          // Outbox remains queued; background drain will retry when network conditions permit
         }
       } catch (err) {
-        console.error("Error sending direct message in background:", err);
-        setMessages((prev) =>
-          prev.map((m) => (m.id === clientMsgId ? { ...m, status: "FAILED" } : m))
-        );
+        console.warn("[MESSAGE SEND] Offline or network error; saved in outbox queue:", err);
       }
     })();
   };
