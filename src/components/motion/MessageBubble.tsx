@@ -12,9 +12,14 @@ import {
   Clock,
   CornerUpLeft,
   Camera,
+  Lock,
+  Download,
+  FileText,
+  Loader2,
 } from "lucide-react";
 import { VaultMessage } from "@/lib/e2ee/vault";
 import { MOTION_SPRINGS, triggerHaptic } from "@/lib/motion/tokens";
+import { fetchAndDecryptMedia, EncryptedMediaMetadata } from "@/lib/e2ee/media";
 
 interface MessageBubbleProps {
   message: VaultMessage;
@@ -46,6 +51,47 @@ function MessageBubbleComponent({
   const [reactions, setReactions] = useState<string[]>([]);
   const [isRevealed, setIsRevealed] = useState(false);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // E2EE Media Decryption
+  const mediaMeta: (EncryptedMediaMetadata & { type?: string }) | null = React.useMemo(() => {
+    if (!message.text || !message.text.startsWith('{"type":"MEDIA"')) return null;
+    try {
+      const parsed = JSON.parse(message.text);
+      if (parsed.type === "MEDIA" && parsed.ciphertextUrl && parsed.keyBase64) {
+        return parsed;
+      }
+    } catch {}
+    return null;
+  }, [message.text]);
+
+  const [decryptedUrl, setDecryptedUrl] = useState<string | null>(null);
+  const [isDecrypting, setIsDecrypting] = useState<boolean>(false);
+  const [decryptionError, setDecryptionError] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    if (!mediaMeta || decryptedUrl || isDecrypting || decryptionError) return;
+    let isMounted = true;
+    setIsDecrypting(true);
+
+    fetchAndDecryptMedia(mediaMeta)
+      .then((url) => {
+        if (isMounted) {
+          setDecryptedUrl(url);
+          setIsDecrypting(false);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to decrypt E2EE media:", err);
+        if (isMounted) {
+          setDecryptionError(true);
+          setIsDecrypting(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [mediaMeta, decryptedUrl, isDecrypting, decryptionError]);
 
   const handleDrag = (_: any, info: PanInfo) => {
     // Only allow swipe to reply towards right
@@ -171,6 +217,51 @@ function MessageBubbleComponent({
                 <span>Tap to View Once</span>
               </motion.button>
             )
+          ) : mediaMeta ? (
+            <div className="space-y-1.5 min-w-[200px]">
+              {mediaMeta.mimeType.startsWith("image/") ? (
+                decryptedUrl ? (
+                  <div className="space-y-1">
+                    <img
+                      src={decryptedUrl}
+                      alt={mediaMeta.fileName || "Encrypted photo"}
+                      className="rounded-xl max-h-72 w-full object-cover shadow-xs cursor-pointer hover:opacity-95 transition"
+                      onClick={() => window.open(decryptedUrl, "_blank")}
+                    />
+                    <div className="flex items-center gap-1 text-[9px] opacity-80 pt-0.5">
+                      <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
+                      <span>E2EE Encrypted Photo</span>
+                    </div>
+                  </div>
+                ) : isDecrypting ? (
+                  <div className="h-40 w-52 rounded-xl bg-white/5 border border-white/10 flex flex-col items-center justify-center gap-2 text-xs">
+                    <Loader2 className="w-5 h-5 animate-spin text-[#FF9933]" />
+                    <span className="text-[10px] text-slate-300">Decrypting E2EE photo...</span>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
+                    Failed to decrypt media
+                  </div>
+                )
+              ) : (
+                <a
+                  href={decryptedUrl || "#"}
+                  download={mediaMeta.fileName}
+                  className="flex items-center gap-2.5 p-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 transition"
+                >
+                  <div className="h-9 w-9 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold truncate text-white">{mediaMeta.fileName}</p>
+                    <p className="text-[10px] text-slate-400">
+                      {(mediaMeta.fileSize / 1024).toFixed(0)} KB • E2EE
+                    </p>
+                  </div>
+                  <Download className="w-4 h-4 text-slate-300 shrink-0" />
+                </a>
+              )}
+            </div>
           ) : (
             <div className="relative">
               <p

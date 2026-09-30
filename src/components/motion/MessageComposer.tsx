@@ -29,6 +29,7 @@ interface MessageComposerProps {
   inputText: string;
   onInputChange: (val: string) => void;
   onSend: (text: string) => void;
+  onSendMedia?: (file: File) => void | Promise<void>;
   replyingTo: VaultMessage | null;
   onCancelReply: () => void;
   privacyMode: MessagePrivacyMode;
@@ -40,6 +41,7 @@ export default function MessageComposer({
   inputText,
   onInputChange,
   onSend,
+  onSendMedia,
   replyingTo,
   onCancelReply,
   privacyMode,
@@ -52,6 +54,7 @@ export default function MessageComposer({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Auto-grow textarea
   useEffect(() => {
@@ -193,6 +196,21 @@ export default function MessageComposer({
         )}
       </AnimatePresence>
 
+      {/* Hidden File Input for Real Photo/Document Attachments */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            onSendMedia?.(file);
+            e.target.value = "";
+          }
+        }}
+      />
+
       {/* Floating Radial Attachment Tray */}
       <AnimatePresence>
         {showAttachments && (
@@ -215,9 +233,13 @@ export default function MessageComposer({
                   onClick={() => {
                     triggerHaptic("light");
                     setShowAttachments(false);
-                    onSend(`[Attached ${item.label}]`);
+                    if (["Gallery", "Camera", "Document"].includes(item.label) && onSendMedia) {
+                      fileInputRef.current?.click();
+                    } else {
+                      onSend(`[Attached ${item.label}]`);
+                    }
                   }}
-                  className="flex flex-col items-center gap-1 p-2 rounded-2xl hover:bg-white/5 transition"
+                  className="flex flex-col items-center gap-1 p-2 rounded-2xl hover:bg-white/5 transition cursor-pointer"
                 >
                   <div className={`h-10 w-10 rounded-2xl flex items-center justify-center ${item.color}`}>
                     <Icon className="w-5 h-5" />

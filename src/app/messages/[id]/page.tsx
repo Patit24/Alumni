@@ -61,6 +61,7 @@ import {
 } from "@/lib/e2ee/crypto";
 import { realtimeSignaling } from "@/lib/e2ee/signaling";
 import { enqueueOutboxItem, removeOutboxItem, initOutboxNetworkListener } from "@/lib/e2ee/outbox";
+import { encryptAndUploadMedia } from "@/lib/e2ee/media";
 import { webrtcManager } from "@/lib/webrtc/call-manager";
 import { motion, AnimatePresence } from "framer-motion";
 import MessageBubble from "@/components/motion/MessageBubble";
@@ -981,6 +982,20 @@ export default function DirectMessageChatPage(props: {
     })();
   };
 
+  // Encrypted E2EE Media Attachment Dispatcher
+  const handleSendMedia = async (file: File) => {
+    if (!peerId || !currentUser) return;
+    try {
+      triggerHaptic("medium");
+      const metadata = await encryptAndUploadMedia(file, "chats");
+      const payloadString = JSON.stringify({ type: "MEDIA", ...metadata });
+      handleSendMessage(payloadString);
+    } catch (err: any) {
+      console.error("Error sending encrypted media:", err);
+      alert(err?.message || "Failed to send encrypted media attachment");
+    }
+  };
+
   // View-Once Handler
   const handleRevealViewOnce = async (msg: VaultMessage) => {
     setViewedOnceSet((prev) => new Set(prev).add(msg.id));
@@ -1575,6 +1590,7 @@ export default function DirectMessageChatPage(props: {
         inputText={inputText}
         onInputChange={handleInputChange}
         onSend={(text) => handleSendMessage(text)}
+        onSendMedia={handleSendMedia}
         replyingTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
         privacyMode={messagePrivacy}

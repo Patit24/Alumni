@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sendRealtimeBroadcast } from "@/lib/realtime-broadcast";
 import { canonicalUserPair } from "@/lib/connection-service";
+import { sendPushToUser } from "@/lib/push/push-service";
 
 export const dynamic = "force-dynamic";
 
@@ -170,6 +171,13 @@ export async function POST(req: Request) {
     sendRealtimeBroadcast(`p2p-signal:${user.id}`, "direct-message-sent", {
       message: messagePayload,
     }).catch((e) => console.warn("Sender multi-session realtime broadcast error:", e));
+
+    // C) Dispatch background Ghost push notification to wake up recipient devices
+    sendPushToUser(recipientId, {
+      type: "MESSAGE",
+      conversationId,
+      senderName: user.name,
+    }).catch((e) => console.warn("Push notification dispatch error:", e));
 
     return NextResponse.json({
       success: true,

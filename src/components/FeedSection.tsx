@@ -27,6 +27,7 @@ import {
   BookmarkCheck,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+import { compressImage } from "@/lib/media-compressor";
 
 interface CommentData {
   id: string;
@@ -229,6 +230,7 @@ export default function FeedSection({
   });
   const [newPostText, setNewPostText] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(initialAvatar || null);
 
@@ -279,8 +281,8 @@ export default function FeedSection({
   const [isRealtimeActive, setIsRealtimeActive] = useState(false);
   const institutionIdRef = useRef<string | null>(null);
 
-  // Handle Photo Pick and Compression (optimized 900x900 JPEG ~50-80KB for permanent fast display)
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Photo Pick and Compression (optimized WebP/JPEG with storage upload pipeline)
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -289,53 +291,24 @@ export default function FeedSection({
       return;
     }
 
-    setUploadingImage(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 750;
-        const MAX_HEIGHT = 750;
-        let width = img.width;
-        let height = img.height;
+    if (file.size > 15 * 1024 * 1024) {
+      alert("Please select an image smaller than 15MB.");
+      return;
+    }
 
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = Math.round(width);
-        canvas.height = Math.round(height);
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.65);
-          setSelectedImage(compressedDataUrl);
-        } else {
-          setSelectedImage(result);
-        }
-        setUploadingImage(false);
-      };
-      img.onerror = () => {
-        alert("Could not process image file.");
-        setUploadingImage(false);
-      };
-      img.src = result;
-    };
-    reader.onerror = () => {
-      alert("Failed to read image file.");
+    try {
+      setUploadingImage(true);
+      const compressed = await compressImage(file, { maxDimension: 1440, quality: 0.82 });
+      setSelectedImageFile(compressed);
+      const previewUrl = URL.createObjectURL(compressed);
+      setSelectedImage(previewUrl);
+    } catch (err) {
+      console.warn("Image compression error, using raw file:", err);
+      setSelectedImageFile(file);
+      setSelectedImage(URL.createObjectURL(file));
+    } finally {
       setUploadingImage(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const fetchFeed = useCallback(async (selectedFilter: string, silent = false) => {
@@ -527,12 +500,40 @@ export default function FeedSection({
     try {
       setPosting(true);
       setSuccessMessage(null);
+
+      let finalImageUrl: string | null = null;
+      if (selectedImageFile) {
+        try {
+          const formData = new FormData();
+          formData.append("file", selectedImageFile);
+          formData.append("category", "feed");
+
+          const uploadRes = await fetch("/api/storage/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            finalImageUrl = uploadData.url;
+          } else {
+            console.warn("Storage upload failed, fallback to preview url");
+            finalImageUrl = selectedImage;
+          }
+        } catch (uploadErr) {
+          console.warn("Storage upload error, fallback to preview url:", uploadErr);
+          finalImageUrl = selectedImage;
+        }
+      } else if (selectedImage && (selectedImage.startsWith("http") || selectedImage.startsWith("/"))) {
+        finalImageUrl = selectedImage;
+      }
+
       const res = await fetch("/api/feed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: newPostText,
-          imageUrl: selectedImage,
+          imageUrl: finalImageUrl,
           type: "POST",
         }),
       });
@@ -552,6 +553,7 @@ export default function FeedSection({
 
       setNewPostText("");
       setSelectedImage(null);
+      setSelectedImageFile(null);
       setSuccessMessage("Update and photo shared live with your alumni network!");
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: unknown) {
