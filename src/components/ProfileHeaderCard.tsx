@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Briefcase,
@@ -69,14 +70,26 @@ interface ProfileHeaderCardProps {
     name: string;
   } | null;
   autoConnect?: boolean;
+  initialFriendsCount?: number;
+  initialFollowersCount?: number;
 }
 
 export default function ProfileHeaderCard({
   user: initialUser,
   currentUser,
   autoConnect = false,
+  initialFriendsCount = 0,
+  initialFollowersCount = 0,
 }: ProfileHeaderCardProps) {
   const router = useRouter();
+  const [friendsCount, setFriendsCount] = useState<number>(initialFriendsCount);
+  const [followersCount, setFollowersCount] = useState<number>(initialFollowersCount);
+
+  useEffect(() => {
+    if (initialFriendsCount !== undefined) setFriendsCount(initialFriendsCount);
+    if (initialFollowersCount !== undefined) setFollowersCount(initialFollowersCount);
+  }, [initialFriendsCount, initialFollowersCount]);
+
   const [user, setUser] = useState(() => {
     const cachedAvatar = typeof window !== "undefined" && initialUser?.id
       ? localStorage.getItem(`alumni_avatar_${initialUser.id}`)
@@ -311,14 +324,13 @@ export default function ProfileHeaderCard({
   });
   const [mutualCount, setMutualCount] = useState<number>(0);
 
-  // Fetch true relationship status and mutual connections from server
+  // Fetch true relationship status, mutual connections, and network counts from server
   useEffect(() => {
-    if (!currentUser || isOwnProfile) return;
-    const uid = currentUser.id || getActiveVaultUserId();
+    const uid = currentUser?.id || getActiveVaultUserId();
     const fetchStatus = () => {
       const localPeers = getLocalConnectedPeerIds(uid || undefined);
       const isLocallyConnected = localPeers.includes(user.id);
-      if (isLocallyConnected) {
+      if (isLocallyConnected && !isOwnProfile) {
         setRelStatus("CONNECTED");
       }
       const clientPeersQuery = isLocallyConnected ? user.id : "";
@@ -326,8 +338,12 @@ export default function ProfileHeaderCard({
       authFetch(url)
         .then((r) => r.json())
         .then((data) => {
+          if (data.networkStats) {
+            setFriendsCount(data.networkStats.friendsCount);
+            setFollowersCount(data.networkStats.followersCount);
+          }
           const rel = data.relationship;
-          if (rel) {
+          if (rel && !isOwnProfile) {
             if (rel.status === "CONNECTED" || rel.isConnection) {
               setRelStatus("CONNECTED");
               if (uid) addLocalConnectedPeer(user.id, uid);
@@ -350,7 +366,7 @@ export default function ProfileHeaderCard({
     fetchStatus();
     window.addEventListener("connection-requests-updated", fetchStatus);
     return () => window.removeEventListener("connection-requests-updated", fetchStatus);
-  }, [currentUser, isOwnProfile, user.id]);
+  }, [currentUser?.id, isOwnProfile, user.id]);
 
   const handleSendConnect = async () => {
     if (!currentUser) {
@@ -843,13 +859,40 @@ export default function ProfileHeaderCard({
               </span>
             </p>
 
-            {!isOwnProfile && mutualCount > 0 && (
-              <p className="text-xs text-slate-300 flex items-center gap-1.5 pt-0.5">
+            {/* LinkedIn-Style Network Stats: Friends / Connections & Followers */}
+            <div className="flex items-center gap-2 pt-1 text-xs flex-wrap">
+              <Link
+                href="/directory"
+                className="inline-flex items-center gap-1.5 text-slate-300 hover:text-[#FF9933] transition font-medium group"
+              >
                 <Users className="w-3.5 h-3.5 text-[#FF9933] shrink-0" />
-                <span className="text-[#FF9933] font-semibold">{mutualCount}</span>
-                <span>mutual {mutualCount === 1 ? "connection" : "connections"}</span>
-              </p>
-            )}
+                <span className="font-bold text-white group-hover:text-[#FF9933]">
+                  {friendsCount}
+                </span>
+                <span className="text-slate-400 group-hover:text-slate-300">
+                  {friendsCount === 1 ? "friend" : "friends"}
+                </span>
+              </Link>
+
+              <span className="text-slate-600">•</span>
+
+              <div className="inline-flex items-center gap-1.5 text-slate-300 font-medium">
+                <span className="font-bold text-white">{followersCount}</span>
+                <span className="text-slate-400">
+                  {followersCount === 1 ? "follower" : "followers"}
+                </span>
+              </div>
+
+              {!isOwnProfile && mutualCount > 0 && (
+                <>
+                  <span className="text-slate-600">•</span>
+                  <div className="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <span className="font-bold">{mutualCount}</span>
+                    <span className="text-emerald-300/80">mutual</span>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Meta Chips */}
             <div className="flex items-center gap-2 pt-1 flex-wrap text-xs font-medium text-slate-400">

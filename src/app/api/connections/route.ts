@@ -13,6 +13,7 @@ import {
   getMyConnections,
   getInvitations,
   getPeopleYouMayKnow,
+  getUserNetworkStats,
 } from "@/lib/connection-service";
 
 export const dynamic = "force-dynamic";
@@ -104,8 +105,11 @@ export async function GET(req: Request) {
 
     // 1. Single user relationship lookup
     if (targetUserId) {
-      const relationship = await getConnectionRelationship(user.id, targetUserId);
-      return NextResponse.json({ success: true, relationship });
+      const [relationship, networkStats] = await Promise.all([
+        getConnectionRelationship(user.id, targetUserId),
+        getUserNetworkStats(targetUserId),
+      ]);
+      return NextResponse.json({ success: true, relationship, networkStats });
     }
 
     // 2. Invitations (Received & Sent)
@@ -127,15 +131,18 @@ export async function GET(req: Request) {
     }
 
     // 5. Full Network Hub summary (default)
-    const [connections, invitations, suggestions] = await Promise.all([
+    const [connections, invitations, suggestions, networkStats] = await Promise.all([
       getMyConnections(user.id),
       getInvitations(user.id),
       getPeopleYouMayKnow(user.id, 12),
+      getUserNetworkStats(user.id),
     ]);
 
     return NextResponse.json({
       success: true,
-      connectionsCount: connections.length,
+      connectionsCount: networkStats.friendsCount,
+      followersCount: networkStats.followersCount,
+      networkStats,
       invitationsCount: invitations.received.length,
       receivedInvitations: invitations.received,
       sentInvitations: invitations.sent,

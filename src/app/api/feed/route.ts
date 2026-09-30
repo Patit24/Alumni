@@ -66,12 +66,16 @@ export async function GET(req: Request) {
       where.OR = [
         ...(user.institutionId ? [{ institutionId: user.institutionId }] : []),
         { actorId: { in: friendIds } },
+        ...(viralFriendIds.length > 0 ? [{ likes: { some: { userId: { in: viralFriendIds } } } }] : []),
+        ...(viralFriendIds.length > 0 ? [{ comments: { some: { userId: { in: viralFriendIds } } } }] : []),
       ];
     } else if (filter === "MENTORSHIP") {
       where.type = "MENTORSHIP_AVAILABLE";
       where.OR = [
         ...(user.institutionId ? [{ institutionId: user.institutionId }] : []),
         { actorId: { in: friendIds } },
+        ...(viralFriendIds.length > 0 ? [{ likes: { some: { userId: { in: viralFriendIds } } } }] : []),
+        ...(viralFriendIds.length > 0 ? [{ comments: { some: { userId: { in: viralFriendIds } } } }] : []),
       ];
     } else if (filter === "BATCH") {
       where.actor = {
@@ -185,31 +189,34 @@ export async function GET(req: Request) {
         userName: string;
         userRole?: string | null;
         userAvatar?: string | null;
+        otherCount?: number;
       } | null = null;
 
       if (item.actorId !== user.id) {
-        const friendComment = item.comments.find(
+        const friendComments = item.comments.filter(
           (c) => viralFriendIds.includes(c.userId) && c.userId !== item.actorId
         );
-        const friendLike = item.likes.find(
+        const friendLikes = item.likes.filter(
           (l) => viralFriendIds.includes(l.userId) && l.userId !== item.actorId
         );
 
-        if (friendComment && friendComment.user) {
+        if (friendComments.length > 0 && friendComments[0].user) {
           viralContext = {
             type: "COMMENT",
-            userId: friendComment.user.id,
-            userName: friendComment.user.name,
-            userRole: friendComment.user.currentRole || null,
-            userAvatar: friendComment.user.avatarUrl || null,
+            userId: friendComments[0].user.id,
+            userName: friendComments[0].user.name,
+            userRole: friendComments[0].user.currentRole || null,
+            userAvatar: friendComments[0].user.avatarUrl || null,
+            otherCount: Math.max(0, friendComments.length - 1),
           };
-        } else if (friendLike && friendLike.user) {
+        } else if (friendLikes.length > 0 && friendLikes[0].user) {
           viralContext = {
             type: "LIKE",
-            userId: friendLike.user.id,
-            userName: friendLike.user.name,
-            userRole: friendLike.user.currentRole || null,
-            userAvatar: friendLike.user.avatarUrl || null,
+            userId: friendLikes[0].user.id,
+            userName: friendLikes[0].user.name,
+            userRole: friendLikes[0].user.currentRole || null,
+            userAvatar: friendLikes[0].user.avatarUrl || null,
+            otherCount: Math.max(0, friendLikes.length - 1),
           };
         }
       }

@@ -1161,3 +1161,33 @@ export async function unfriendUser(currentUserId: string, targetUserId: string):
 export async function getConnectedFriends(userId: string): Promise<ConnectionProfile[]> {
   return getMyConnections(userId);
 }
+
+/**
+ * Returns canonical LinkedIn-style network counts for a user profile:
+ * - friendsCount: Total verified 1st-degree connections
+ * - followersCount: Total followers (all connections follow the user, plus incoming pending requesters)
+ */
+export async function getUserNetworkStats(userId: string): Promise<{
+  friendsCount: number;
+  followersCount: number;
+}> {
+  if (!userId) return { friendsCount: 0, followersCount: 0 };
+  try {
+    const connectedIds = await getConnectedUserIds(userId);
+    const friendsCount = connectedIds.size;
+
+    const incomingPending = await db.connectionRequest.count({
+      where: {
+        receiverId: userId,
+        status: "PENDING",
+        senderId: { notIn: Array.from(connectedIds) },
+      },
+    });
+
+    const followersCount = friendsCount + incomingPending;
+    return { friendsCount, followersCount };
+  } catch (err) {
+    console.error("getUserNetworkStats error:", err);
+    return { friendsCount: 0, followersCount: 0 };
+  }
+}

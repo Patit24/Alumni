@@ -61,6 +61,7 @@ interface FeedItemData {
     userName: string;
     userRole?: string | null;
     userAvatar?: string | null;
+    otherCount?: number;
   } | null;
   comments?: CommentData[];
   actor: {
@@ -435,12 +436,17 @@ export default function FeedSection({
           likesCount: number;
           actorId: string;
         };
-        updateLocalFeedPost(feedItemId, (p) => ({ ...p, likesCount }));
-        setFeed((prev) =>
-          prev.map((item) =>
+        setFeed((prev) => {
+          const exists = prev.some((item) => item.id === feedItemId);
+          if (!exists) {
+            fetchFeed(filter, true);
+            return prev;
+          }
+          return prev.map((item) =>
             item.id === feedItemId ? { ...item, likesCount } : item
-          )
-        );
+          );
+        });
+        updateLocalFeedPost(feedItemId, (p) => ({ ...p, likesCount }));
       })
       .on("broadcast", { event: "new-comment" }, (event) => {
         const { feedItemId, comment, totalComments } = event.payload as {
@@ -989,7 +995,12 @@ export default function FeedSection({
                         className="font-bold hover:underline text-white"
                       >
                         {item.viralContext.userName}
-                      </Link>{" "}
+                      </Link>
+                      {item.viralContext.otherCount && item.viralContext.otherCount > 0 ? (
+                        <span className="text-amber-200/90 font-semibold">
+                          {" "}and {item.viralContext.otherCount} other {item.viralContext.otherCount === 1 ? "friend" : "friends"}
+                        </span>
+                      ) : null}{" "}
                       <span className="text-slate-300">
                         {item.viralContext.type === "LIKE" ? "liked this post" : "commented on this post"}
                       </span>

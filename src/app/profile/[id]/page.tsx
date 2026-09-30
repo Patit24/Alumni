@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { getUserNetworkStats } from "@/lib/connection-service";
 import {
   ArrowLeft,
   Sparkles,
@@ -64,6 +65,9 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
     ? user.mentorTopics.split(",").map((t) => t.trim()).filter(Boolean)
     : [];
 
+  // Fetch verified network stats (Friends & Followers count)
+  const networkStats = await getUserNetworkStats(user.id);
+
   return (
     <div className="min-h-screen bg-[#080811] text-white flex flex-col pb-28 sm:pb-16">
       {/* Top Header */}
@@ -101,6 +105,8 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
           user={user as any}
           currentUser={currentUser ? { id: currentUser.id, name: currentUser.name } : null}
           autoConnect={isConnectAction}
+          initialFriendsCount={networkStats.friendsCount}
+          initialFollowersCount={networkStats.followersCount}
         />
 
         {/* Mentorship Section */}
