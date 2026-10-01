@@ -49,6 +49,8 @@ import {
   getActiveVaultUserId,
   getCachedConnectionProfiles,
   cacheConnectionProfiles,
+  getCachedRecentMessages,
+  cacheRecentMessages,
   VaultMessage,
 } from "@/lib/e2ee/vault";
 import { authFetch } from "@/lib/auth-fetch";
@@ -227,7 +229,28 @@ export default function DirectMessageChatPage(props: {
     return null;
   });
 
+  // Synchronous 0ms hot cache hydration
+  const [messages, setMessages] = useState<VaultMessage[]>(() => {
+    return getCachedRecentMessages(peerId);
+  });
+  const [isInitialLoadingMessages, setIsInitialLoadingMessages] = useState<boolean>(() => {
+    return getCachedRecentMessages(peerId).length === 0;
+  });
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const oldestTimestampRef = useRef<number | null>(null);
+  const [inputText, setInputText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [isPeerTyping, setIsPeerTyping] = useState(false);
+  const [sharedKey, setSharedKey] = useState<CryptoKey | null>(null);
+  const [safetyNumber, setSafetyNumber] = useState<string | null>(null);
+  const [myDeviceId, setMyDeviceId] = useState<string>("");
+
   useEffect(() => {
+    let isCancelled = false;
+
+    // 1. Peer profile resolution from cache
     try {
       const activeId = getActiveVaultUserId();
       const cached = getCachedConnectionProfiles(activeId || undefined);
@@ -245,10 +268,20 @@ export default function DirectMessageChatPage(props: {
           institution: found.institution,
         });
       }
-      // Instant load local messages so chat renders in 0ms
-      getLocalMessages(peerId).then((local) => {
-        if (local && local.length > 0) {
-          setMessages(local);
+    } catch {}
+
+    // 2. High-speed parallel message loading (IndexedDB + immediate server fetch)
+    async function loadFastMessages() {
+      // Step A: Immediately check IndexedDB
+      try {
+        const local = await getLocalMessages(peerId);
+        if (!isCancelled && local && local.length > 0) {
+          setMessages((prev) => {
+            const merged = reconcileMessages(prev, local);
+            cacheRecentMessages(peerId, merged);
+            return merged;
+          });
+          setIsInitialLoadingMessages(false);
           setConnectionStatus("CONNECTED");
           setIsCheckingConnection(false);
           const activeId = getActiveVaultUserId();
@@ -258,25 +291,104 @@ export default function DirectMessageChatPage(props: {
             } catch {}
           }
         }
-        setLoading(false);
-      }).catch(() => {
-        setLoading(false);
-      });
-    } catch {
-      setLoading(false);
+      } catch (err) {
+        console.warn("Fast-path local message read error:", err);
+      }
+
+      // Step B: Concurrently fetch authoritative messages from server with ZERO blocking dependencies
+      try {
+        const res = await authFetch(`/api/messages?peerId=${peerId}&limit=50`);
+        if (res.ok && !isCancelled) {
+          const data = await res.json();
+          if (Array.isArray(data.messages)) {
+            const serverMsgs: VaultMessage[] = data.messages.map((m: any) => ({
+              id: m.id,
+              clientMsgId: m.clientMsgId,
+              peerId,
+              senderId: m.senderId,
+              senderName: m.senderName,
+              text: m.content,
+              type: m.messageType === "EMOJI" ? "EMOJI" : "TEXT",
+              replyToId: m.replyToId,
+              replySnippet: m.replySnippet,
+              status: m.status || "SENT",
+              createdAt: new Date(m.createdAt).getTime() || Date.now(),
+              disappearingSeconds: m.disappearingSeconds,
+            }));
+
+            // Sync to local cache and IndexedDB in background
+            for (const sm of serverMsgs) {
+              saveLocalMessage(sm).catch(() => {});
+            }
+
+            setMessages((prev) => {
+              const reconciled = reconcileMessages(prev, serverMsgs);
+              cacheRecentMessages(peerId, reconciled);
+
+              // Authoritative senderName self-healing
+              const signedMsg = reconciled.find(
+                (m) => m.senderId === peerId && m.senderName && m.senderName.trim() !== "Alumni Member"
+              );
+              if (signedMsg?.senderName) {
+                const safeSenderName = signedMsg.senderName.trim();
+                setPeer((current) => {
+                  if (!current || !current.name || current.name.trim() === "Alumni Member") {
+                    const activeId = getActiveVaultUserId();
+                    const updated: PeerProfile = {
+                      id: peerId,
+                      name: safeSenderName,
+                      username: current?.username || null,
+                      avatarUrl: current?.avatarUrl || null,
+                      currentRole: current?.currentRole || null,
+                      currentCompany: current?.currentCompany || null,
+                      batchYear: current?.batchYear || 2026,
+                      verificationStatus: current?.verificationStatus || "VERIFIED",
+                      institution: current?.institution || null,
+                    };
+                    if (activeId) {
+                      cacheConnectionProfiles([updated], activeId);
+                      addLocalConnectedPeer(peerId, updated, activeId);
+                    }
+                    return updated;
+                  }
+                  return current;
+                });
+              }
+              return reconciled;
+            });
+
+            if (serverMsgs.length > 0) {
+              setConnectionStatus("CONNECTED");
+              setIsCheckingConnection(false);
+              const activeId = getActiveVaultUserId();
+              if (activeId) {
+                try {
+                  localStorage.setItem(`alumni_rel_status_${activeId}_${peerId}`, "CONNECTED");
+                } catch {}
+              }
+            }
+            if (data.oldestTimestamp) {
+              oldestTimestampRef.current = new Date(data.oldestTimestamp).getTime();
+            }
+            setHasMore(Boolean(data.hasMore));
+          }
+        }
+      } catch (fetchErr) {
+        console.warn("Fast-path server message fetch error:", fetchErr);
+      } finally {
+        if (!isCancelled) {
+          setIsInitialLoadingMessages(false);
+          setLoading(false);
+        }
+      }
     }
+
+    loadFastMessages();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [peerId]);
-  const [messages, setMessages] = useState<VaultMessage[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const oldestTimestampRef = useRef<number | null>(null);
-  const [inputText, setInputText] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [isPeerTyping, setIsPeerTyping] = useState(false);
-  const [sharedKey, setSharedKey] = useState<CryptoKey | null>(null);
-  const [safetyNumber, setSafetyNumber] = useState<string | null>(null);
-  const [myDeviceId, setMyDeviceId] = useState<string>("");
 
   // Privacy & Trust States
   const [trustLevel, setTrustLevel] = useState<"UNKNOWN" | "REQUEST" | "CONNECTED" | "TRUSTED" | "BLOCKED">("REQUEST");
@@ -543,76 +655,6 @@ export default function DirectMessageChatPage(props: {
 
         // Initialize Realtime Signaling
         realtimeSignaling.init(user.id, user.name, localIdentity.privateKey, (user as any).avatarUrl || (user as any).image || null);
-
-        // 1. Fast cache load from local vault
-        const localMsgs = await getLocalMessages(peerId);
-        if (localMsgs.length > 0) {
-          setMessages(localMsgs);
-        }
-
-        // 2. Fetch authoritative messages from server
-        try {
-          const res = await authFetch(`/api/messages?peerId=${peerId}&limit=50`);
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data.messages)) {
-              const serverMsgs: VaultMessage[] = data.messages.map((m: any) => ({
-                id: m.id,
-                clientMsgId: m.clientMsgId,
-                peerId,
-                senderId: m.senderId,
-                senderName: m.senderName,
-                text: m.content,
-                type: m.messageType === "EMOJI" ? "EMOJI" : "TEXT",
-                replyToId: m.replyToId,
-                replySnippet: m.replySnippet,
-                status: m.status || "SENT",
-                createdAt: new Date(m.createdAt).getTime() || Date.now(),
-                disappearingSeconds: m.disappearingSeconds,
-              }));
-
-              // Sync to local cache
-              for (const sm of serverMsgs) {
-                saveLocalMessage(sm).catch(() => {});
-              }
-
-              setMessages((prev) => {
-                const reconciled = reconcileMessages(prev, serverMsgs);
-                // Self-heal peer name if peer is currently "Alumni Member" or missing
-                const signedMsg = reconciled.find((m) => m.senderId === peerId && m.senderName && m.senderName.trim() !== "Alumni Member");
-                if (signedMsg?.senderName) {
-                  const safeSenderName = signedMsg.senderName.trim();
-                  setPeer((current) => {
-                    if (!current || !current.name || current.name.trim() === "Alumni Member") {
-                      const updated: PeerProfile = {
-                        id: peerId,
-                        name: safeSenderName,
-                        username: current?.username || null,
-                        avatarUrl: current?.avatarUrl || null,
-                        currentRole: current?.currentRole || null,
-                        currentCompany: current?.currentCompany || null,
-                        batchYear: current?.batchYear || 2026,
-                        verificationStatus: current?.verificationStatus || "VERIFIED",
-                        institution: current?.institution || null,
-                      };
-                      cacheConnectionProfiles([updated], user.id);
-                      addLocalConnectedPeer(peerId, updated, user.id);
-                      return updated;
-                    }
-                    return current;
-                  });
-                }
-                return reconciled;
-              });
-              if (data.oldestTimestamp) {
-                oldestTimestampRef.current = new Date(data.oldestTimestamp).getTime();
-              }
-              setHasMore(Boolean(data.hasMore));
-            }
-          }
-        } catch (fetchErr) {
-          console.warn("Failed to fetch authoritative messages:", fetchErr);
-        }
 
         // Listen for new incoming messages & multi-session outbound messages
         unsubscribeMsg = realtimeSignaling.onMessageReceived((msg) => {
@@ -1369,8 +1411,8 @@ export default function DirectMessageChatPage(props: {
         </div>
       )}
 
-      {/* Relationship Banner: Only shown when NOT yet connected and verification finished */}
-      {!isCheckingConnection && connectionStatus !== "CONNECTED" && (
+      {/* Relationship Banner: Only shown when NOT yet connected and verification finished and no existing conversation */}
+      {!isCheckingConnection && connectionStatus !== "CONNECTED" && messages.length === 0 && (
         <div className="bg-[#141b2e]/90 backdrop-blur-md border-b border-white/10 p-3 sm:px-4 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="h-8 w-8 rounded-xl bg-[#FF9933]/15 border border-[#FF9933]/30 flex items-center justify-center shrink-0">
@@ -1526,10 +1568,34 @@ export default function DirectMessageChatPage(props: {
 
       {/* Messages Stream */}
       <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-2.5 scroll-smooth overscroll-contain">
-        {loading && messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-2">
-            <Loader2 className="w-6 h-6 animate-spin text-[#FF9933]" />
-            <p className="text-xs font-medium">Establishing secure E2EE channel...</p>
+        {(isInitialLoadingMessages || loading) && messages.length === 0 ? (
+          <div className="flex flex-col space-y-4 px-2 py-6 animate-pulse">
+            <div className="flex items-start gap-2.5 max-w-[75%]">
+              <div className="w-8 h-8 rounded-2xl bg-white/10 shrink-0" />
+              <div className="space-y-1.5">
+                <div className="rounded-2xl rounded-tl-xs bg-white/10 h-10 w-44" />
+                <div className="h-2 w-12 bg-white/5 rounded" />
+              </div>
+            </div>
+            <div className="flex items-end justify-end w-full">
+              <div className="space-y-1.5 flex flex-col items-end">
+                <div className="rounded-2xl rounded-br-xs bg-[#FF9933]/25 h-10 w-36" />
+                <div className="h-2 w-10 bg-white/5 rounded" />
+              </div>
+            </div>
+            <div className="flex items-start gap-2.5 max-w-[75%]">
+              <div className="w-8 h-8 rounded-2xl bg-white/10 shrink-0" />
+              <div className="space-y-1.5">
+                <div className="rounded-2xl rounded-tl-xs bg-white/10 h-14 w-56" />
+                <div className="h-2 w-12 bg-white/5 rounded" />
+              </div>
+            </div>
+            <div className="flex items-end justify-end w-full">
+              <div className="space-y-1.5 flex flex-col items-end">
+                <div className="rounded-2xl rounded-br-xs bg-[#FF9933]/25 h-12 w-48" />
+                <div className="h-2 w-10 bg-white/5 rounded" />
+              </div>
+            </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-3.5 max-w-sm mx-auto px-2">

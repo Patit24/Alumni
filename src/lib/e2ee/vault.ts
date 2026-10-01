@@ -270,10 +270,62 @@ export async function getContact(userId: string): Promise<StoredContact | null> 
   });
 }
 
+const inMemoryRecentMessages = new Map<string, VaultMessage[]>();
+
 /**
- * Saves a decrypted message to the local vault
+ * Synchronously retrieves cached recent messages for a conversation (0ms hydration)
+ */
+export function getCachedRecentMessages(peerId: string): VaultMessage[] {
+  if (!peerId) return [];
+  if (inMemoryRecentMessages.has(peerId)) {
+    const mem = inMemoryRecentMessages.get(peerId)!;
+    if (mem && mem.length > 0) return mem;
+  }
+  if (typeof window !== "undefined") {
+    try {
+      const activeId = getActiveVaultUserId() || "guest";
+      const key = `alumni_recent_msgs_${activeId}_${peerId}`;
+      const raw = sessionStorage.getItem(key) || localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          inMemoryRecentMessages.set(peerId, parsed);
+          return parsed;
+        }
+      }
+    } catch {}
+  }
+  return [];
+}
+
+/**
+ * Updates the fast synchronous memory & sessionStorage message cache
+ */
+export function cacheRecentMessages(peerId: string, messages: VaultMessage[]): void {
+  if (!peerId || !messages || messages.length === 0) return;
+  const recent = messages.slice(-50);
+  inMemoryRecentMessages.set(peerId, recent);
+  if (typeof window !== "undefined") {
+    try {
+      const activeId = getActiveVaultUserId() || "guest";
+      const key = `alumni_recent_msgs_${activeId}_${peerId}`;
+      sessionStorage.setItem(key, JSON.stringify(recent));
+    } catch {}
+  }
+}
+
+/**
+ * Saves a decrypted message to the local vault and updates the hot cache
  */
 export async function saveLocalMessage(msg: VaultMessage): Promise<void> {
+  if (msg.peerId) {
+    const existing = getCachedRecentMessages(msg.peerId);
+    const updated = [
+      ...existing.filter((m) => m.id !== msg.id && (!msg.clientMsgId || m.clientMsgId !== msg.clientMsgId)),
+      msg,
+    ].sort((a, b) => a.createdAt - b.createdAt);
+    cacheRecentMessages(msg.peerId, updated);
+  }
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction("messages", "readwrite");
@@ -283,6 +335,7 @@ export async function saveLocalMessage(msg: VaultMessage): Promise<void> {
     req.onerror = () => reject(req.error);
   });
 }
+
 
 /**
  * Fetches messages for a specific 1-to-1 conversation, automatically purging expired disappearing messages
